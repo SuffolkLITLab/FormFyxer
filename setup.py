@@ -1,0 +1,21 @@
+import setuptools
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+    name='FormFyxer',
+    version='0.0.0',
+    author='Suffolk LIT Lab',
+    author_email='litlab@suffolk.edu',
+    description='A tool for learning about and pre-processing pdf forms.',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url='https://github.com/SuffolkLITLab/FormFyxer',
+    project_urls = {
+        "Bug Tracker": "https://github.com/SuffolkLITLab/FormFyxer/issues"
+    },
+    license='MIT',
+    packages=['formfyxer'],
+    install_requires=['os',  're', 'spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'json',  'numpy',  'sklearn', 'joblib',  'nltk.corpus',  'math',  'signal',  'contextlib'],
+)
