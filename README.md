@@ -14,9 +14,9 @@ Features:
 
 #### Demo of some of the features:
 ```python
-import FormFyxer
+import formfyxer as ff
 
-FormFyxer.parse_form("sample.pdf",title="Sample Form",jur="CA",cat="Housing",normalize=1,use_spot=0,rewrite=0)
+ff.parse_form("sample.pdf",title="Sample Form",jur="CA",cat="Housing",normalize=1,use_spot=0,rewrite=0)
 ```
 
 ## License

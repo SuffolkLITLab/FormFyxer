@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name='FormFyxer',
+    name='formfyxer',
     version='0.0.0',
     author='Suffolk LIT Lab',
     author_email='litlab@suffolk.edu',
