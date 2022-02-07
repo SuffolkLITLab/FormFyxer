@@ -17,5 +17,5 @@ setuptools.setup(
     },
     license='MIT',
     packages=['formfyxer'],
-    install_requires=['os',  're', 'spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'json',  'numpy',  'sklearn', 'joblib',  'nltk.corpus',  'math',  'signal',  'contextlib'],
+    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'json',  'numpy',  'sklearn', 'joblib',  'nltk.corpus',  'math',  'signal',  'contextlib'],
 )
