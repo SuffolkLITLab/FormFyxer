@@ -26,10 +26,10 @@ nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 
 # Load local variables, models, and API key(s).
 
-included_fields = load(os.path.join(os.path.dirname(__file__), '', 'included_fields.joblib'))
-jurisdictions = load(os.path.join(os.path.dirname(__file__), '', 'jurisdictions.joblib'))
-groups = load(os.path.join(os.path.dirname(__file__), '', 'groups.joblib'))
-clf_field_names = load(os.path.join(os.path.dirname(__file__), '', 'clf_field_names.joblib'))
+included_fields = load(os.path.join(os.path.dirname(__file__), 'data', 'included_fields.joblib'))
+jurisdictions = load(os.path.join(os.path.dirname(__file__), 'data', 'jurisdictions.joblib'))
+groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
+clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
 with open(os.path.join(os.path.dirname(__file__), '../../data/keys', 'spot_token.txt'), 'r') as file:
     spot_token = file.read().rstrip()
 
