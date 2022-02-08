@@ -33,7 +33,10 @@ try:
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 except OSError:
     print("Downloading word2vec model en_core_web_lg")
-    !python -m spacy download en_core_web_lg
+    import subprocess
+    bashCommand = "python -m spacy download en_core_web_lg"
+    process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+    output, error = process.communicate()
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 
 # Load local variables, models, and API key(s).
