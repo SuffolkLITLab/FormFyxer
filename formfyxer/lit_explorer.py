@@ -1,4 +1,4 @@
-# Updated on 2021-11-30
+# Updated on 2022-02-08
 
 import os
 import re
@@ -15,14 +15,26 @@ from sklearn.cluster import AffinityPropagation
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from joblib import load
-from nltk.corpus import stopwords
+try:
+    from nltk.corpus import stopwords
+except ImportError:
+    print("Downloading stopwords")
+    nltk.download('stopwords')
+    from nltk.corpus import stopwords
 import math
 import signal
 from contextlib import contextmanager
+import threading
+import _thread
 
 stop_words = set(stopwords.words('english'))
-nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 
+try:
+    nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
+except OSError:
+    print("Downloading word2vec model en_core_web_lg")
+    !python -m spacy download en_core_web_lg
+    nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 
 # Load local variables, models, and API key(s).
 
@@ -39,14 +51,23 @@ with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r'
 class TimeoutException(Exception): pass
 @contextmanager
 def time_limit(seconds):
-    def signal_handler(signum, frame):
-        raise TimeoutException("Timed out!")
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
+    timer = threading.Timer(seconds, lambda: _thread.interrupt_main())
+    timer.start()
     try:
         yield
+    except KeyboardInterrupt:
+        raise TimeoutException("Timed out.")
     finally:
-        signal.alarm(0)
+        # if the action ends in specified time, timer is canceled
+        timer.cancel()
+#    def signal_handler(signum, frame):
+#        raise TimeoutException("Timed out!")
+#    signal.signal(signal.SIGALRM, signal_handler)
+#    signal.alarm(seconds)
+#    try:
+#        yield
+#    finally:
+#        signal.alarm(0)
 
 # Pull ID values out of the LIST/NSMI results from Spot.
 
