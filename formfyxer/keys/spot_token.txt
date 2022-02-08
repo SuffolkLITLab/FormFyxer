@@ -1,0 +1,1 @@
+your_SPOT_API_token goes here

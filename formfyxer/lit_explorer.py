@@ -30,7 +30,7 @@ included_fields = load(os.path.join(os.path.dirname(__file__), 'data', 'included
 jurisdictions = load(os.path.join(os.path.dirname(__file__), 'data', 'jurisdictions.joblib'))
 groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
 clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
-with open(os.path.join(os.path.dirname(__file__), '../../data/keys', 'spot_token.txt'), 'r') as file:
+with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as file:
     spot_token = file.read().rstrip()
 
 
