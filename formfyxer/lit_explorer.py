@@ -311,7 +311,8 @@ def cluster_screens(fields=[],damping=0.7):
         vec_mat[i] = [nlp(reCase(fields[i])).vector][0]
 
     # create model
-    model = AffinityPropagation(damping=damping,random_state=4)
+    model = AffinityPropagation(damping=damping)
+    #model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consitent results. note will have to requier newer version
     # fit the model
     model.fit(vec_mat)
     # assign a cluster to each example
