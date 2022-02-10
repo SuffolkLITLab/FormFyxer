@@ -1,4 +1,4 @@
-# Updated on 2022-02-08
+# Updated on 2022-02-10
 
 import os
 import re
@@ -17,7 +17,7 @@ from sklearn.preprocessing import normalize
 from joblib import load
 try:
     from nltk.corpus import stopwords
-except ImportError:
+except:
     print("Downloading stopwords")
     nltk.download('stopwords')
     from nltk.corpus import stopwords
@@ -31,13 +31,14 @@ stop_words = set(stopwords.words('english'))
 
 try:
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
-except OSError:
+except:
     print("Downloading word2vec model en_core_web_lg")
     import subprocess
     bashCommand = "python -m spacy download en_core_web_lg"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
+
 
 # Load local variables, models, and API key(s).
 
@@ -49,7 +50,7 @@ with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r'
     spot_token = file.read().rstrip()
 
 
-# This creates a timeout exception that can be triggered when something hangs too long.
+# This creates a timeout exception that can be triggered when something hangs too long. 
 
 class TimeoutException(Exception): pass
 @contextmanager
@@ -125,7 +126,7 @@ def reCase(text):
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
 
 def regex_norm_field(text):
-
+    
     regex_list = [
 
         # Personal info
@@ -219,7 +220,7 @@ def reformat_field(text,max_length=30):
         else:
             return re.sub("\s+","_",text.lower())
 
-# Vectorize a string of text.
+# Vectorize a string of text. 
 
 def vectorize(text):
     output = nlp(str(text)).vector
@@ -241,7 +242,7 @@ def norm(row):
 # 1. It will `reCase` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
-# 4. If the prediction isn't very confident, it will run it through `reformat_field`
+# 4. If the prediction isn't very confident, it will run it through `reformat_field`  
 
 def normalize_name(jur,group,n,per,last_field,this_field):
 
@@ -296,10 +297,10 @@ def normalize_name(jur,group,n,per,last_field,this_field):
         return reformat_field(this_field),conf
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
-#
+# 
 # 1. It reads in a list of fields (e.g., `["user_name","user_address"]`)
 # 2. Splits each field into words (e.g., turning `user_name` into `user name`)
-# 3. It then turns these ngrams/"sentences" into vectors using word2vec.
+# 3. It then turns these ngrams/"sentences" into vectors using word2vec. 
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
 
 def cluster_screens(fields=[],damping=0.7):
@@ -353,7 +354,7 @@ def read_pdf (file):
                 #
                 #
                 #
-
+                
                 command="cp "+file+" tmp/temp.pdf; qpdf --password='' --decrypt tmp/temp.pdf "+file
                 os.system(command)
                 #print ('File Decrypted (qpdf)')
@@ -370,7 +371,7 @@ def read_pdf (file):
     except:
         return ""
 
-# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the file with the new fields (if `rewrite=1`).
+# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the file with the new fields (if `rewrite=1`). 
 
 def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewrite=0):
     f = PyPDF2.PdfFileReader(fileloc)
@@ -379,24 +380,24 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
         pdf = pikepdf.open(fileloc, allow_overwriting_input=True)
         pdf.save(fileloc)
         f = PyPDF2.PdfFileReader(fileloc)
-
+        
     npages = f.getNumPages()
-
+  
     # When reading some pdfs, this can hang due to their crazy field structure
     try:
         with time_limit(15):
             ff = f.getFields()
     except TimeoutException as e:
         print("Timed out!")
-        ff = None
-
+        ff = None   
+    
     if ff:
         fields = list(ff.keys())
     else:
         fields = []
     f_per_page = len(fields)/npages
     text = read_pdf(fileloc)
-
+    
     if title is None:
         title = reCase(re.search("(.*)\n",text).group(1).strip())
 
@@ -414,12 +415,12 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
         readbility = None
 
     if use_spot==1:
-        nmsi = spot(title + ". " +text)
+        nmsi = spot(title + ". " +text)      
     else:
         nmsi = []
-
+        
     if normalize==1:
-        i = 0
+        i = 0 
         length = len(fields)
         last = "null"
         new_fields = []
@@ -430,12 +431,12 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
             new_fields.append(this_field)
             new_fields_conf.append(this_conf)
             last = field
-
+        
         new_fields = [v + "__" + str(new_fields[:i].count(v) + 1) if new_fields.count(v) > 1 else v for i, v in enumerate(new_fields)]
     else:
         new_fields = fields
         new_fields_conf = []
-
+    
     stats = {
             "title":title,
             "category":cat,
@@ -447,15 +448,15 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
             "fields_conf":new_fields_conf,
             "fields_old":fields,
             "text":text
-            }
-
+            }    
+    
     if rewrite==1:
         try:
             if 1==1:
                 my_pdf = pikepdf.Pdf.open(fileloc, allow_overwriting_input=True)
                 fields_too = my_pdf.Root.AcroForm.Fields #[0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
                 #print(repr(fields_too))
-
+                
                 k =0
                 for field in new_fields:
                     #print(k,field)
@@ -483,16 +484,17 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
                 file.updatePageFormFieldValues(first_page,x)
 
                 output = open('blankPdf.pdf', 'wb')
-                file.write(output)
+                file.write(output)  
         except:
             error = "could not change form fields"
-
+    
     return stats
 
 def form_complexity(text,fields,reading_lv):
-
+    
     # check for fields that requier user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
-
+    
     return 0
+
