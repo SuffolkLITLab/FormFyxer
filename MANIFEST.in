@@ -1,2 +1,1 @@
-recursive-include *
-global-include *
+recursive-include data keys
