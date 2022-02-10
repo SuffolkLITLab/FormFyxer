@@ -14,6 +14,7 @@ pip install git+https://github.com/SuffolkLITLab/FormFyxer
 - [regex_norm_field](#formfyxerregex_norm_fieldtext)
 - [reformat_field](#formfyxerreformat_fieldtextmax_length30)
 - [normalize_name](#formfyxernormalize_namejurgroupnperlast_fieldthis_field)
+- [spot](#formfyxerspottextlower025pred05upper06)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
 
@@ -83,6 +84,28 @@ object
 >>> import formfyxer
 >>> normalize_name("UT",None,2,0.3,"null","Case Number")
 ('*docket_number', 1.0)
+```
+[back to top](#formfyxer)
+
+
+
+### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6)
+A simple wrapper for the LIT Lab's NLP issue spoter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this featuer **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
+
+Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` paremeters. These refer to the lower bound of the predicted likelihood an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
+
+#### Parameters:
+* **text : str** Text describing some fact pattern.
+* **lower : float between 0 and 1, default 0.25** Defines the cutoff for the lower bound of a prediction (`lower`) necessary to trigger inclusion in the results. That is, the lower bound of a prediction must exceed `lower` for it to appear in the results.
+* **pred : float between 0 and 1, default 0.5** Defines the cutoff for the prediction (`pred`) necessary to trigger inclusion in the results. That is, the prediction must exceed `pred` for it to appear in the results.
+* **upper : float between 0 and 1, default 0.6** Defines the cutoff for the upper bound of a prediction (`upper`) necessary to trigger inclusion in the results. That is, the upper bound of a prediction must exceed `upper` for it to appear in the results.
+#### Returns: 
+A list of LIST entities/issues found in the text.
+#### Example:
+```python
+>>> import formfyxer
+>>> formfyxer.spot("my landlord kicked me out")
+['HO-02-00-00-00', 'HO-00-00-00-00', 'HO-05-00-00-00', 'HO-06-00-00-00']
 ```
 [back to top](#formfyxer)
 
