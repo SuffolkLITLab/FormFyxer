@@ -25,7 +25,7 @@ Reformats snake_case, camelCase, and similarly-formated text into individual wor
 #### Parameters:
 * **text : str**
 #### Returns: 
-A string were words combined by cases like snake_case are split back into individual words. 
+A string where words combined by cases like snake_case are split back into individual words. 
 #### Example:
 ```python
 >>> import formfyxer
@@ -69,7 +69,7 @@ A snake_case string summarizing the input sentence.
 
 
 ### formfyxer.normalize_name(jur,group,n,per,last_field,this_field)
-This function will use the above functions to produce a field name conforming to the format of our [standard field names](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/). It does this first by applying `reCase()` to the text of a field. It then applies `regex_norm_field()`. If a standard field name is NOT found, it makes use of a machine learning model we have triained to classify the text as one of our standard field names. If the model is confident in a classification, it changes the text to that field name. If it us uncertian, it applies `reformat_field()`. The end result is that you can feed in a field name and recieve output that has been converted into either one of our standard fields or a a string of similar formatting. 
+This function will use the above functions to produce a field name conforming to the format of our [standard field names](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/). It does this first by applying `reCase()` to the text of a field. It then applies `regex_norm_field()`. If a standard field name is NOT found, it makes use of a machine learning model we have trained to classify the text as one of our standard field names. If the model is confident in a classification, it changes the text to that field name. If it us uncertian, it applies `reformat_field()`. The end result is that you can feed in a field name and receive output that has been converted into either one of our standard fields or a string of similar formatting. 
 #### Parameters:
 * **jur : str** The two-letter US postal jurisdiction code (e.g., MA).
 * **group : str** Eventually this should be a LIST issue, but right now it can be anything. 
@@ -90,9 +90,9 @@ object
 
 
 ### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6)
-A simple wrapper for the LIT Lab's NLP issue spoter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this featuer **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
+A simple wrapper for the LIT Lab's NLP issue spotter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this feature **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
 
-Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` paremeters. These refer to the lower bound of the predicted likelihood an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
+Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` paremeters. These refer to the lower bound of the predicted likelihood that an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
 
 #### Parameters:
 * **text : str** Text describing some fact pattern.
@@ -112,7 +112,7 @@ A list of LIST entities/issues found in the text.
 
 
 ### formfyxer.parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewrite=0)
-Read in a pdf with ore-existing form fields, pull out basic stats, attempt to normalize its field names, and re-write the file with the new fields (if rewrite=1). 
+Read in a pdf with pre-existing form fields, pull out basic stats, attempt to normalize its field names, and re-write the file with the new fields (if rewrite=1). 
 #### Parameters:
 * **fileloc :** the location of the pdf file to be processed.
 * **title : str, default None** The title of the form. If set to `None` the parser will make a best guess. 
@@ -144,7 +144,7 @@ Object containing a set of stats for the form. See below
 
 
 ### formfyxer.cluster_screens(fields,damping=0.7)
-This function will take a list of snake_case field names and group them by symatic similarity. 
+This function will take a list of snake_case field names and group them by semantic similarity. 
 #### Parameters:
 * **files : list** A list of snake_case field names.
 * **damping : float** A number betwen 0.5 and 1 controlling how similar members of a group need to be. 
