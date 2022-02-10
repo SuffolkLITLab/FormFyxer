@@ -14,7 +14,7 @@ pip install git+https://github.com/SuffolkLITLab/FormFyxer
 - [regex_norm_field](#formfyxerregex_norm_fieldtext)
 - [reformat_field](#formfyxerreformat_fieldtextmax_length30)
 - [normalize_name](#formfyxernormalize_namejurgroupnperlast_fieldthis_field)
-- [spot](#formfyxerspottextlower025pred05upper06)
+- [spot](#formfyxerspottextlower025pred05upper06verbose0)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
 
@@ -89,7 +89,7 @@ object
 
 
 
-### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6)
+### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0)
 A simple wrapper for the LIT Lab's NLP issue spotter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this feature **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
 
 Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` paremeters. These refer to the lower bound of the predicted likelihood that an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
@@ -99,6 +99,7 @@ Given a string, this function will return a list of LIST entities/issues found i
 * **lower : float between 0 and 1, default 0.25** Defines the cutoff for the lower bound of a prediction (`lower`) necessary to trigger inclusion in the results. That is, the lower bound of a prediction must exceed `lower` for it to appear in the results.
 * **pred : float between 0 and 1, default 0.5** Defines the cutoff for the prediction (`pred`) necessary to trigger inclusion in the results. That is, the prediction must exceed `pred` for it to appear in the results.
 * **upper : float between 0 and 1, default 0.6** Defines the cutoff for the upper bound of a prediction (`upper`) necessary to trigger inclusion in the results. That is, the upper bound of a prediction must exceed `upper` for it to appear in the results.
+* **verbose : 0 or 1, default 0** If set to 0 will return only a list of LIST IDs. If set to 1, will return a full set of Spot results. 
 #### Returns: 
 A list of LIST entities/issues found in the text.
 #### Example:
@@ -106,6 +107,40 @@ A list of LIST entities/issues found in the text.
 >>> import formfyxer
 >>> formfyxer.spot("my landlord kicked me out")
 ['HO-02-00-00-00', 'HO-00-00-00-00', 'HO-05-00-00-00', 'HO-06-00-00-00']
+
+>>> formfyxer.spot("my landlord kicked me out", verbose=1)
+{'build': 9,
+ 'query-id': '1efa5a098bc24f868684339f638ab7eb',
+ 'text': 'my landlord kicked me out',
+ 'save-text': 0,
+ 'cutoff-lower': 0.25,
+ 'cutoff-pred': 0.5,
+ 'cutoff-upper': 0.6,
+ 'labels': [{'id': 'HO-00-00-00-00',
+   'name': 'Housing',
+   'lower': 0.6614134886446631,
+   'pred': 0.7022160833303629,
+   'upper': 0.7208275781222152,
+   'children': [{'id': 'HO-02-00-00-00',
+     'name': 'Eviction from a home',
+     'lower': 0.4048013980740931,
+     'pred': 0.5571460102525152,
+     'upper': 0.6989976788434928},
+    {'id': 'HO-05-00-00-00',
+     'name': 'Problems with living conditions',
+     'lower': 0.3446066253503793,
+     'pred': 0.5070074487913626,
+     'upper': 0.6326627767849852},
+    {'id': 'HO-06-00-00-00',
+     'name': 'Renting or leasing a home',
+     'lower': 0.6799417713794678,
+     'pred': 0.8984004824420323,
+     'upper': 0.9210222500232965,
+     'children': [{'id': 'HO-02-00-00-00',
+       'name': 'Eviction from a home',
+       'lower': 0.4048013980740931,
+       'pred': 0.5571460102525152,
+       'upper': 0.6989976788434928}]}]}]}
 ```
 [back to top](#formfyxer)
 
