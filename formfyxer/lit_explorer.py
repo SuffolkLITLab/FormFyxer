@@ -93,7 +93,7 @@ def recursive_get_id(values_to_unpack, tmpl=None):
 
 # Call the Spot API, but return only the IDs of issues found in the text.
 
-def spot(text,lower=0.25,pred=0.5,upper=0.6):
+def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
 
     headers = { "Authorization": "Bearer " + spot_token, "Content-Type":"application/json" }
 
@@ -108,10 +108,13 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6):
     r = requests.post('https://spot.suffolklitlab.org/v0/entities-nested/', headers=headers, data=json.dumps(body))
     output_ = r.json()
 
-    try:
-        return list(recursive_get_id(output_["labels"]))
-    except:
-        return []
+    if verbose!=1:
+        try:
+            return list(recursive_get_id(output_["labels"]))
+        except:
+            return []
+    else:
+        return output_
 
 # A function to pull words out of snake_case, camelCase and the like.
 
