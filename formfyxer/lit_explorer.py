@@ -107,13 +107,17 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
 
     r = requests.post('https://spot.suffolklitlab.org/v0/entities-nested/', headers=headers, data=json.dumps(body))
     output_ = r.json()
-
-    if verbose!=1:
-        try:
-            return list(recursive_get_id(output_["labels"]))
-        except:
-            return []
-    else:
+    
+    try:
+        output_["build"]
+        if verbose!=1:
+            try:
+                return list(recursive_get_id(output_["labels"]))
+            except:
+                return []
+        else:
+            return output_
+    except:
         return output_
 
 # A function to pull words out of snake_case, camelCase and the like.
@@ -183,13 +187,12 @@ def reformat_field(text,max_length=30):
     filtered_title_words = filtered_sentence
 
     characters = len(' '.join(filtered_title_words))
-
+    
     if characters > 0:
 
         words = len(filtered_title_words)
         av_word_len = math.ceil(len(' '.join(filtered_title_words))/len(filtered_title_words))
         x_words = math.floor((max_length)/av_word_len)
-
 
         sim_mat = np.zeros([len(filtered_title_words),len(filtered_title_words)])
         # for each word compared to other
@@ -275,7 +278,7 @@ def normalize_name(jur,group,n,per,last_field,this_field):
                     params.append(0)
             params.append(n)
             params.append(per)
-            for vec in norm(vectorize(this_field)):
+            for vec in vectorize(this_field):
                 params.append(vec)
 
             for item in included_fields:
@@ -405,7 +408,11 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
     text = read_pdf(fileloc)
     
     if title is None:
-        title = reCase(re.search("(.*)\n",text).group(1).strip())
+        matches = re.search("(.*)\n",text)
+        if matches:
+            title = reCase(matches.group(1).strip())
+        else:
+            title = "(Untitled)"        
 
     try:
         #readbility = int(Readability(text).flesch_kincaid().grade_level)
