@@ -402,7 +402,11 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
     text = read_pdf(fileloc)
     
     if title is None:
-        title = reCase(re.search("(.*)\n",text).group(1).strip())
+        matches = re.search("(.*)\n",text)
+        if matches:
+            title = reCase(matches.group(1).strip())
+        else:
+            title = "(Untitled)"
 
     try:
         #readbility = int(Readability(text).flesch_kincaid().grade_level)
