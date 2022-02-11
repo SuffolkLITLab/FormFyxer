@@ -2,9 +2,10 @@ import io
 import math
 from enum import Enum
 import tempfile
-from typing import Any, Dict, Iterable, List, Union, Tuple, BinaryIO
+from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO
 from numbers import Number
 from pathlib import Path
+from io import StringIO
 
 import cv2
 from boxdetect import config
@@ -15,8 +16,15 @@ from pikepdf import Pdf
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
-######## PDF internals related funcitons ##########
+from pdfminer.converter import PDFLayoutAnalyzer
+from pdfminer.layout import LTPage
+from pdfminer.layout import LAParams, LTTextBoxHorizontal
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
 
+######## PDF internals related funcitons ##########
 
 class FieldType(Enum):
     TEXT = 'text'  # Text input Field
@@ -183,12 +191,40 @@ def swap_pdf_page(*, formed_pdf: Union[str, Path, Pdf], blank_pdf: Union[str, Pa
             blank_page.Annots.extend(blank_pdf.copy_foreign(annots))
     return blank_pdf
 
+class MyPDFPageAggregator(PDFLayoutAnalyzer):
+    def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
+        PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
+        self.results:List[LTPage] = []
+    
+    def receive_layout(self, ltpage: LTPage) -> None:
+        self.results.append(ltpage)
+    
+    def get_result(self) -> LTPage:
+        return self.results
+
+def get_textboxes_in_pdf(in_file:str) -> List:
+    if isinstance(in_file, str):
+        open_file = open(in_file, 'rb')
+    else:
+        open_file = in_file
+    parser = PDFParser(open_file)
+    doc = PDFDocument(parser)
+    rsrcmgr = PDFResourceManager()
+    device = MyPDFPageAggregator(rsrcmgr, laparams=LAParams()) 
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    page_count = 0
+    for page in PDFPage.create_pages(doc):
+        page_count += 1
+        interpreter.process_page(page)
+    if isinstance(in_file, str):
+        open_file.close() 
+    return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, LTTextBoxHorizontal) and obj.get_text().strip(' \n') != '']
+            for i in range(page_count)]
 
 ####### OpenCV related functions #########
 
 BoundingBox = Tuple[Number, Number, Number, Number]
 XYPair = Tuple[Number, Number]
-
 
 def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormField]]:
     dpi = 200
@@ -218,21 +254,34 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
 
     text_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
                        for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
+    print(text_pdf_bboxes)
     checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
                            for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+    text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
 
     fields = []
     i = 0
-    for bboxes_in_page, checkboxes_in_page in zip(text_pdf_bboxes, checkbox_pdf_bboxes):
-        page_fields = [FormField(f'page_{i}_field_{j}', FieldType.TEXT, bbox[0], bbox[1], configs={'width': bbox[2], 'height': 20})
-                       for j, bbox in enumerate(bboxes_in_page)]
+    for bboxes_in_page, checkboxes_in_page, text_in_page in zip(text_pdf_bboxes, checkbox_pdf_bboxes, text_in_pdf):
+        text_obj_bboxes = [text[1] for text in text_in_page]
+        page_fields = []
+        for j, field_bbox in enumerate(bboxes_in_page):
+          intersected = [obj for obj, intersect in zip(text_in_page, intersect_bboxs(field_bbox, text_obj_bboxes, dilation=50)) if intersect]
+          if intersected:
+              dists = [(bbox_distance(field_bbox, bbox)[0], obj) for obj, bbox, in intersected]
+              print(f'Choices: {[(dist, obj.get_text()) for dist, obj in dists]}')
+              min_obj = min(dists, key=lambda d: d[0])
+              label = min_obj[1].get_text().lower().strip(' \n\t_').replace(' ', '_').replace('\n', '_')
+          else:
+              label = f'page_{i}_field_{j}'
+          print(f'Using label: {label}')
+          page_fields.append(FormField(label, FieldType.TEXT, field_bbox[0], field_bbox[1], configs={'width': field_bbox[2], 'height': 16}))
+
         page_fields += [FormField(f'page_{i}_check_{j}', FieldType.CHECK_BOX, bbox[0] + bbox[2]/4, bbox[1] - bbox[3], configs={'size': min(bbox[2], bbox[3])})
                         for j, bbox in enumerate(checkboxes_in_page)]
         i += 1
         fields.append(page_fields)
 
     return fields
-
 
 def intersect_bbox(bbox_a, bbox_b, dilation=2) -> bool:
     a_bottom, a_top = bbox_a[1] - dilation, bbox_a[1] + bbox_a[3] + dilation
@@ -297,8 +346,6 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
                 min_dist = dist
     # get horizontal and vertical line pairs
     a_hori, a_vert = get_connected_edges(min_pair[0], points_a)
-    print(
-        f'min_pair: {min_pair[1]}, points_b: {points_b}, connected: {get_connected_edges}')
     b_hori, b_vert = get_connected_edges(min_pair[1], points_b)
     hori_dist = get_dist(a_hori[0], b_hori[0]) + get_dist(a_hori[1], b_hori[1])
     vert_dist = get_dist(a_vert[0], a_vert[0]) + get_dist(a_vert[1], b_vert[1])
@@ -308,7 +355,7 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
         return vert_dist, a_vert, b_vert
 
 
-def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndparray:
+def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
     # Just using the boxdetect library
     cfg = config.PipelinesConfig()
     # Defaults from the README. TODO(brycew): adjust per state?
@@ -362,14 +409,17 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
     vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_length))
     vertical_lines_img = cv2.dilate(
         cv2.erode(img_bin, vert_kernel, iterations=3), vert_kernel, iterations=3)
+    cv2.imwrite("Img_vert.png", vertical_lines_img)
     horiz_kernel = cv2.getStructuringElement(
         cv2.MORPH_RECT, (kernel_length, 1))
     horizontal_lines_img = cv2.dilate(
         cv2.erode(img_bin, horiz_kernel, iterations=3), horiz_kernel, iterations=3)
+    cv2.imwrite("Img_hori.png", vertical_lines_img)
 
     alpha = 0.5
     img_final_bin = cv2.addWeighted(
         vertical_lines_img, alpha, horizontal_lines_img, 1.0 - alpha, 0.0)
+    cv2.imwrite("Img_final_bin.png", img_final_bin)
 
     contours, _ = cv2.findContours(
         img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -391,6 +441,7 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
     (contours, boundingBoxes) = sort_contours(contours, method='top-to-bottom')
     vert_contours, _ = cv2.findContours(
         vertical_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # TODO(brycew): also consider checking that the PDF is really blank ~ 1 line space above the horiz line
     if vert_contours:
         # Don't consider horizontal lines that meet up against vertical lines as text fields
         (vert_contours, vert_bounding_boxes) = sort_contours(
