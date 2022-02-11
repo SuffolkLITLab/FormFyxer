@@ -1,1 +1,4 @@
 .ipynb_checkpoints
+formfyxer/__pycache__/**
+__pycache__/**
+*.egg-info/**

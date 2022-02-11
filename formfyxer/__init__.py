@@ -1,2 +1,2 @@
 from .lit_explorer import *
-import pdf_wrangling
+from .pdf_wrangling import *
