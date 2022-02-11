@@ -223,12 +223,6 @@ def reformat_field(text,max_length=30):
         else:
             return re.sub("\s+","_",text.lower())
 
-# Vectorize a string of text. 
-
-def vectorize(text):
-    output = nlp(str(text)).vector
-    return output
-
 # Normalize a word vector.
 
 def norm(row):
@@ -240,6 +234,15 @@ def norm(row):
         print("Error: ",e)
         print("===================")
         return np.NaN
+
+# Vectorize a string of text. 
+
+def vectorize(text, normalize=1):
+    output = nlp(str(text)).vector
+    if normalize==1:
+        return norm(output)
+    else:
+        return output
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `reCase` the variable text
