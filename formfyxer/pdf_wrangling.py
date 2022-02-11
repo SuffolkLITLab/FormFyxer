@@ -142,6 +142,17 @@ def set_fields(in_file, out_file, fields_per_page:Iterable[Iterable[FormField]])
             in_page.Annots.extend(in_pdf.copy_foreign(annots))
     in_pdf.save(out_file)
 
+def rename_pdf_fields(in_file:str, out_file:str, mapping:Dict[str, str])->None:
+    """Given a dictionary that maps old to new field names, rename the AcroForm
+    field with a matching key to the specified value"""
+    in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
+
+    for field in in_pdf.Root.AcroForm.Fields:
+        if field.T in mapping:
+            field.T = mapping[field.T]
+
+    in_pdf.save(out_file)
+
 
 ####### OpenCV related functions #########
 
@@ -172,9 +183,9 @@ def get_possible_fields(in_pdf_file):
                   for i, bboxes_in_page in enumerate(bboxes_per_page)]
     return new_coords
 
-def intersect_bbox(bbox_a, bbox_b, dialation=2) -> bool:
-    a_left, a_right = bbox_a[0] - dialation, bbox_a[0] + bbox_a[2] + dialation
-    a_bottom, a_top = bbox_a[1] - dialation, bbox_a[1] + bbox_a[3] + dialation
+def intersect_bbox(bbox_a, bbox_b, dilation=2) -> bool:
+    a_left, a_right = bbox_a[0] - dilation, bbox_a[0] + bbox_a[2] + dilation
+    a_bottom, a_top = bbox_a[1] - dilation, bbox_a[1] + bbox_a[3] + dilation
     b_left, b_right = bbox_b[0], bbox_b[0] + bbox_b[2]
     b_bottom, b_top = bbox_b[1], bbox_b[1] + bbox_b[3]
     if a_bottom > b_top or a_top < b_bottom:
