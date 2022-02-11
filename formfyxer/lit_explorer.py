@@ -15,8 +15,10 @@ from sklearn.cluster import AffinityPropagation
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from joblib import load
+import nltk
 try:
     from nltk.corpus import stopwords
+    stopwords.words
 except:
     print("Downloading stopwords")
     nltk.download('stopwords')
