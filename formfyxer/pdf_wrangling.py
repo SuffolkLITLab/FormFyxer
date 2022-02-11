@@ -143,7 +143,7 @@ def set_fields(in_file, out_file, fields_per_page:Iterable[Iterable[FormField]])
     in_pdf.save(out_file)
 
 def rename_pdf_fields(in_file:str, out_file:str, mapping:Dict[str, str])->None:
-    """Given a list of dictionaries, rename the AcroForm field with a matching
+    """Given a dictionar, rename the AcroForm field with a matching
     key to the specified value"""
     in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
 
