@@ -35,12 +35,12 @@ try:
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 except:
     print("Downloading word2vec model en_core_web_lg")
-    import subprocess
-    bashCommand = "python -m spacy download en_core_web_lg"
-    process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-    output, error = process.communicate()
+    spacy.cli.download.download("en_core_web_lg")
+    #import subprocess
+    #bashCommand = "python -m spacy download en_core_web_lg"
+    #process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+    #output, error = process.communicate()
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
-
 
 # Load local variables, models, and API key(s).
 
@@ -50,7 +50,6 @@ groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
 clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
 with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as file:
     spot_token = file.read().rstrip()
-
 
 # This creates a timeout exception that can be triggered when something hangs too long. 
 
