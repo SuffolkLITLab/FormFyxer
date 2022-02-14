@@ -1,5 +1,6 @@
 import io
 import math
+import re
 from enum import Enum
 import tempfile
 from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO
@@ -210,7 +211,7 @@ def get_textboxes_in_pdf(in_file:str) -> List:
     parser = PDFParser(open_file)
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
-    device = MyPDFPageAggregator(rsrcmgr, laparams=LAParams()) 
+    device = MyPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=0.02)) 
     interpreter = PDFPageInterpreter(rsrcmgr, device)
     page_count = 0
     for page in PDFPage.create_pages(doc):
@@ -270,7 +271,9 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
               dists = [(bbox_distance(field_bbox, bbox)[0], obj) for obj, bbox, in intersected]
               print(f'Choices: {[(dist, obj.get_text()) for dist, obj in dists]}')
               min_obj = min(dists, key=lambda d: d[0])
-              label = min_obj[1].get_text().lower().strip(' \n\t_').replace(' ', '_').replace('\n', '_')
+              # TODO(brycew): actual regex replacement of lots of underscores
+              label = re.sub('[\W]', '_', min_obj[1].get_text().lower().strip(' \n\t_,')) 
+              label = re.sub('_{3,}', '_', label)
           else:
               label = f'page_{i}_field_{j}'
           print(f'Using label: {label}')
@@ -347,12 +350,12 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
     # get horizontal and vertical line pairs
     a_hori, a_vert = get_connected_edges(min_pair[0], points_a)
     b_hori, b_vert = get_connected_edges(min_pair[1], points_b)
-    hori_dist = get_dist(a_hori[0], b_hori[0]) + get_dist(a_hori[1], b_hori[1])
-    vert_dist = get_dist(a_vert[0], a_vert[0]) + get_dist(a_vert[1], b_vert[1])
+    hori_dist = min(get_dist(a_hori[0], b_hori[0]), get_dist(a_hori[1], b_hori[1]))
+    vert_dist = min(get_dist(a_vert[0], a_vert[0]), get_dist(a_vert[1], b_vert[1]))
     if hori_dist < vert_dist:
-        return hori_dist, a_hori, b_hori
+        return hori_dist + vert_dist, a_hori, b_hori
     else:
-        return vert_dist, a_vert, b_vert
+        return vert_dist + hori_dist, a_vert, b_vert
 
 
 def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
