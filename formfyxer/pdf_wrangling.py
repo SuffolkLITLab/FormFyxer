@@ -3,7 +3,7 @@ import math
 import re
 from enum import Enum
 import tempfile
-from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO
+from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO, Mapping
 from numbers import Number
 from pathlib import Path
 from io import StringIO
@@ -127,7 +127,7 @@ def set_fields(in_file: Union[str, Path, BinaryIO],
 
     Example usage:
     ```
-    set_fields('no_fields.pdf', 'single_field_on_second_page.pdf', 
+    set_fields('no_fields.pdf', 'four_fields_on_second_page.pdf',
       [
         [],  # nothing on the first page
         [ # Second page
@@ -157,7 +157,7 @@ def set_fields(in_file: Union[str, Path, BinaryIO],
     in_pdf.save(out_file)
 
 
-def rename_pdf_fields(in_file: str, out_file: str, mapping: Dict[str, str]) -> None:
+def rename_pdf_fields(in_file: str, out_file: str, mapping: Mapping[str, str]) -> None:
     """Given a dictionary that maps old to new field names, rename the AcroForm
     field with a matching key to the specified value"""
     in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
@@ -204,6 +204,7 @@ class MyPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 def get_textboxes_in_pdf(in_file:str) -> List:
+    """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str):
         open_file = open(in_file, 'rb')
     else:
@@ -255,7 +256,6 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
 
     text_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
                        for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
-    print(text_pdf_bboxes)
     checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
                            for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
     text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
@@ -276,7 +276,6 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
               label = re.sub('_{3,}', '_', label)
           else:
               label = f'page_{i}_field_{j}'
-          print(f'Using label: {label}')
           page_fields.append(FormField(label, FieldType.TEXT, field_bbox[0], field_bbox[1], configs={'width': field_bbox[2], 'height': 16}))
 
         page_fields += [FormField(f'page_{i}_check_{j}', FieldType.CHECK_BOX, bbox[0] + bbox[2]/4, bbox[1] - bbox[3], configs={'size': min(bbox[2], bbox[3])})
@@ -300,6 +299,7 @@ def intersect_bbox(bbox_a, bbox_b, dilation=2) -> bool:
 
 
 def intersect_bboxs(bbox_a, bboxes, dilation=2) -> Iterable[bool]:
+    """Returns an iterable of booleans, one of each of the input bboxes, true if it collides with bbox_a"""
     a_left, a_right = bbox_a[0] - dilation, bbox_a[0] + bbox_a[2] + dilation
     a_bottom, a_top = bbox_a[1] - dilation, bbox_a[1] + bbox_a[3] + dilation
     return [a_top > bbox[1] and a_bottom < (bbox[1] + bbox[3]) and a_right > bbox[0] and a_left < (bbox[0] + bbox[2])
@@ -312,6 +312,7 @@ def get_dist_sq(point_a, point_b):
 
 
 def get_dist(point_a, point_b):
+    """euclidean (L^2 norm) distance between two points"""
     return math.sqrt((point_a[0] - point_b[0])**2 + (point_a[1] - point_b[1])**2)
 
 
@@ -330,7 +331,12 @@ def get_connected_edges(point, point_list):
 
 
 def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[XYPair, XYPair]]:
-    """bboxes are 4 floats, x, y, width and height"""
+    """Gets our specific "distance measure" between two different bounding boxes.
+    This distance is roughly the sum of the horizontal and vertical difference in alignment of 
+    the closest shared field-bounding box edge. We are trying to find which, given a list of text boxes
+    around a field, is the most likely to be the actual text label for the PDF field.
+
+    bboxes are 4 floats, x, y, width and height"""
     a_left, a_right = bbox_a[0], bbox_a[0] + bbox_a[2]
     a_bottom, a_top = bbox_a[1], bbox_a[1] + bbox_a[3]
     b_left, b_right = bbox_b[0], bbox_b[0] + bbox_b[2]
@@ -359,7 +365,7 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
 
 
 def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
-    # Just using the boxdetect library
+    """Uses boxdetect library to determine if there are checkboxes on an image of a PDF page"""
     cfg = config.PipelinesConfig()
     # Defaults from the README. TODO(brycew): adjust per state?
     cfg.width_range = (32, 65)
@@ -375,6 +381,8 @@ def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
 
 
 def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
+    """NOT Implemeneted placeholder for now.
+    Need to figure out how to the semantic difference between checkboxes and radio buttons"""
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
         img = cv2.imread(img, 0)
@@ -386,7 +394,8 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
 
 
 def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[BoundingBox]]:
-    """
+    """Uses openCV to attempt to find places where a PDF could expect an input text field.
+
     Caveats so far: only considers straight, normal horizonal lines that don't touch any vertical lines as fields
     Won't find field inputs as boxes
     """
@@ -460,7 +469,8 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
         return boundingBoxes
 
 
-def auto_add_fields(in_pdf_file, out_pdf_file):
+def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
+    """Uses `get_possible_fields` and `set_fields` to automatically add new fields
+    to an input PDF."""
     fields = get_possible_fields(in_pdf_file)
-    print(fields)
     set_fields(in_pdf_file, out_pdf_file, fields, overwrite=True)

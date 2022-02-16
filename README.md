@@ -18,7 +18,11 @@ pip install git+https://github.com/SuffolkLITLab/FormFyxer
 - [spot](#formfyxerspottextlower025pred05upper06verbose0)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
-
+- [set_fields](#set_fields)
+- [rename_pdf_fields](#rename_pdf_fields)
+- [swap_pdf_page](#swap_pdf_page)
+- [get_possible_fields](#get_possible_fields)
+- [auto_add_fields](#auto_add_fields)
 
 
 ### formfyxer.reCase(text)
@@ -278,7 +282,7 @@ Object containing a set of stats for the form. See below
 This function will take a list of snake_case field names and group them by semantic similarity. 
 #### Parameters:
 * **files : list** A list of snake_case field names.
-* **damping : float** A number betwen 0.5 and 1 controlling how similar members of a group need to be. 
+* **damping : float** A number between 0.5 and 1 controlling how similar members of a group need to be.
 #### Returns: 
 An object grouping together similar field names.  
 #### Example:
@@ -324,6 +328,88 @@ An object grouping together similar field names.
 ```
 [back to top](#formfyxer)
 
+### formfyxer.set_fields
+This function adds fields to an input PDF, writing the new PDF to a new file.
+#### Parameters:
+* `in_file: Union[str, Path, BinaryIO]`: the input file name or path of the PDF that we're adding the fields to
+* `out_file: Union[str, Path, BinaryIO]`: the output file name or path where the new version of `in_file` will be written. Doesn't need to exist.
+* `fields_per_page: Iterable[Iterable[FormField]]`: for each page, a series of fields that should be added to that page.
+* `overwrite:bool`: if the input file already has some fields (AcroForm fields specifically) and this value is true, it will erase those existing fields and just
+add `fields_per_page`. If not true and the input file has fields, we won't generate a PDF, since we don't currently have a way to merge AcroForm fields from different PDFs at the moment.
+### Returns:
+Nothing
+
+#### Example:
+```python
+set_fields('no_fields.pdf', 'four_fields_on_second_page.pdf', 
+      [
+        [],  # nothing on the first page
+        [ # Second page
+          FormField('new_field', 'text', 110, 105, configs={'width': 200, 'height': 30}),
+          # Choice needs value to be one of the possible options, and options to be a list of strings or tuples
+          FormField('new_choices', 'choice', 110, 400, configs={'value': 'Option 1', 'options': ['Option 1', 'Option 2']}),
+          # Radios need to have the same name, with different values
+          FormField('new_radio1', 'radio', 110, 600, configs={'value': 'option a'}),
+          FormField('new_radio1', 'radio', 110, 500, configs={'value': 'option b'})
+        ] 
+      ]
+)
+```
+
+### formfyxer.rename_pdf_fields
+Given a dictionary that maps existing PDF field names to the corresponding desired names, this function renames the PDF fields from an input file.
+#### Parameters:
+* `in_file: str`: the file name of an input file
+* `out_file: str`: the output file name. Doesn't need to exist, and will be overwritten if it does exist.
+* `mapping: Mapping`: a python dict from a current field name to the desired name
+#### Returns:
+Nothing.
+#### Example:
+```python
+rename_pdf_fields('current.pdf', 'new_field_names.pdf', 
+    {'abc123': 'user1_name', 'abc124': 'user1_address_city'})
+```
+
+### formfyxer.swap_pdf_page
+Copies the AcroForm fields from one PDF to another PDF (without AcroForm fields). Useful for if you want the places where a user enters data on a form to stay the
+same, but if you want to change out the backing text in the PDF
+#### Parameters:
+* `formed_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF that has AcroForm fields
+* `blank_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF without AcroForm fields
+#### Returns:
+A pikepdf.Pdf with the new fields. If `blank_pdf` was a pikepdf.Pdf object, the same object is returned
+#### Example:
+```python
+new_pdf_with_fields = swap_pdf_page(formed_pdf="old_pdf.pdf", "new_pdf_with_no_fields.pdf")
+new_pdf_with_fields.save("new_pdf_with_fields.pdf")
+```
+
+### formfyxer.get_possible_fields
+Given an input PDF, runs a series of heuristics to predict where there might be places for user enterable information (i.e. PDF fields), and returns those predictions
+#### Parameters:
+`in_pdf_file: Union[str, Path, bytes]`: the input PDF
+#### Returns:
+For each page in the input PDF, a list of predicted form fields
+#### Example:
+```python
+fields = get_possible_fields('no_fields.pdf')
+print(fields)
+[[Type: FieldType.TEXT, Name: name, User name: , X: 67.68, Y: 666.0, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}, Type: FieldType.TEXT, Name: address, User name: , X: 67.68, Y: 638.28, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}, Type: FieldType.TEXT, Name: city__state__zip, User name: , X: 67.67999999999999, Y: 610.5600000000001, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}, Type: FieldType.TEXT, Name: phone, User name: , X: 67.67999999999999, Y: 582.84, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}, Type: FieldType.TEXT, Name: email, User name: , X: 67.67999999999999, Y: 552.6, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}, Type: FieldType.TEXT, Name: email, User name: , X: 62.28, Y: 536.76, Configs: {'fieldFlags': 'doNotScroll', 'width': 479.16, 'height': 16}, Type: FieldType.TEXT, Name: in_the_district_justice_court_of_utah, User name: , X: 304.56000000000006, Y: 481.68, Configs: {'fieldFlags': 'doNotScroll', 'width': 125.64000000000001, 'height': 16}, Type: FieldType.TEXT, Name: judicial_district_county, User name: , X: 125.64000000000001, Y: 481.68, Configs: {'fieldFlags': 'doNotScroll', 'width': 78.84, 'height': 16}, Type: FieldType.TEXT, Name: court_address, User name: , X: 161.28000000000003, Y: 453.59999999999997, Configs: {'fieldFlags': 'doNotScroll', 'width': 374.40000000000003, 'height': 16}, Type: FieldType.TEXT, Name: , User name: , X: 325.08, Y: 352.43999999999994, Configs: {'fieldFlags': 'doNotScroll', 'width': 211.32, 'height': 16}, Type: FieldType.TEXT, Name: , User name: , X: 67.32000000000001, Y: 348.84, Configs: {'fieldFlags': 'doNotScroll', 'width': 234.35999999999999, 'height': 16}, Type: FieldType.TEXT, Name: judge, User name: , X: 325.08, Y: 312.84, Configs: {'fieldFlags': 'doNotScroll', 'width': 211.32, 'height': 16}, Type: FieldType.TEXT, Name: respondent_name_and_address, User name: , X: 62.28, Y: 253.44, Configs: {'fieldFlags': 'doNotScroll', 'width': 479.16, 'height': 16}, Type: FieldType.TEXT, Name: court_appoint_name__as_your_guardian_to, User name: , X: 157.32, Y: 156.24, Configs: {'fieldFlags': 'doNotScroll', 'width': 203.4, 'height': 16}, Type: FieldType.TEXT, Name: page_1_of_4, User name: , X: 67.67999999999999, Y: 46.800000000000004, Configs: {'fieldFlags': 'doNotScroll', 'width': 478.08, 'height': 16}]]
+```
+
+### formfyxer.auto_add_fields
+This function uses [`get_possible_fields`](#formfyxergetpossiblefields) and [`set_fields`](#formfyxersetfields) to automatically add new detected fields to an input PDF.
+#### Parameters:
+* `in_pdf_file: Union[str, Path]`: the input file name or path of the PDF where we'll try to find possible fields.
+* `out_pdf_file: Union[str, Path]`: the output file name or path of the PDF where a new version of `in_pdf_file` will be stored, with the new fields. Doesn't need to exist, but if a file does exist at that file name, it will be overwritten.
+
+#### Returns: 
+Nothing.
+
+#### Example:
+```python
+auto_add_fields('no_fields.pdf', 'newly_add_fields.pdf')
+```
 
 
 ## License
