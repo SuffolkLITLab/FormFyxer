@@ -381,7 +381,7 @@ def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
 
 
 def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
-    """NOT Implemeneted placeholder for now.
+    """NOT implemented placeholder for now.
     Need to figure out how to the semantic difference between checkboxes and radio buttons"""
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
