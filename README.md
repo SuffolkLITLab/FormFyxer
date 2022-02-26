@@ -18,15 +18,15 @@ pip install git+https://github.com/SuffolkLITLab/FormFyxer
 - [spot](#formfyxerspottextlower025pred05upper06verbose0)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
-- [set_fields](#set_fields)
-- [rename_pdf_fields](#rename_pdf_fields)
-- [swap_pdf_page](#swap_pdf_page)
-- [get_possible_fields](#get_possible_fields)
-- [auto_add_fields](#auto_add_fields)
+- [set_fields](#formfyxerset_fields)
+- [rename_pdf_fields](#formfyxerrename_pdf_fields)
+- [swap_pdf_page](#formfyxerswap_pdf_page)
+- [get_possible_fields](#formfyxerget_possible_fields)
+- [auto_add_fields](#formfyxerauto_add_fields)
 
 
 ### formfyxer.reCase(text)
-Reformats snake_case, camelCase, and similarly-formated text into individual words.
+Reformats snake_case, camelCase, and similarly-formatted text into individual words.
 #### Parameters:
 * **text : str**
 #### Returns: 
@@ -34,8 +34,8 @@ A string where words combined by cases like snake_case are split back into indiv
 #### Example:
 ```python
 >>> import formfyxer
->>> formfyxer.reCase("Reformat snake_case, camelCase, and similarly-formated text into individual words.")
-'Reformat snake case, camel Case, and similarly formated text into individual words.'
+>>> formfyxer.reCase("Reformat snake_case, camelCase, and similarly-formatted text into individual words.")
+'Reformat snake case, camel Case, and similarly formatted text into individual words.'
 ```
 [back to top](#formfyxer)
 
@@ -192,7 +192,7 @@ array([-5.26231120e-04,  2.24983986e-03, -8.35795340e-03,  4.02475413e-03,
 ### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0)
 A simple wrapper for the LIT Lab's NLP issue spotter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this feature **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
 
-Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` paremeters. These refer to the lower bound of the predicted likelihood that an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
+Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` parameters. These refer to the lower bound of the predicted likelihood that an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
 
 #### Parameters:
 * **text : str** Text describing some fact pattern.
@@ -410,7 +410,6 @@ Nothing.
 ```python
 auto_add_fields('no_fields.pdf', 'newly_add_fields.pdf')
 ```
-
 
 ## License
 [MIT](https://github.com/SuffolkLITLab/FormFyxer/blob/main/LICENSE)

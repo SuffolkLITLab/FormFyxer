@@ -28,6 +28,7 @@ import signal
 from contextlib import contextmanager
 import threading
 import _thread
+import subprocess
 
 stop_words = set(stopwords.words('english'))
 
@@ -35,11 +36,9 @@ try:
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 except:
     print("Downloading word2vec model en_core_web_lg")
-    spacy.cli.download("en_core_web_lg")
-    #import subprocess
-    #bashCommand = "python -m spacy download en_core_web_lg"
-    #process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-    #output, error = process.communicate()
+    bashCommand = "python -m spacy download en_core_web_lg"
+    process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+    output, error = process.communicate()
     nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
 
 # Load local variables, models, and API key(s).
