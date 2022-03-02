@@ -153,7 +153,7 @@ def set_fields(in_file: Union[str, Path, BinaryIO],
     _create_only_fields(io_obj, fields_per_page)
     temp_pdf = Pdf.open(io_obj)
 
-    in_pdf = swap_pdf_page(formed_pdf=temp_pdf, blank_pdf=in_pdf)
+    in_pdf = swap_pdf_page(source_pdf=temp_pdf, destination_pdf=in_pdf)
     in_pdf.save(out_file)
 
 
@@ -169,28 +169,36 @@ def rename_pdf_fields(in_file: str, out_file: str, mapping: Mapping[str, str]) -
     in_pdf.save(out_file)
 
 
-def swap_pdf_page(*, formed_pdf: Union[str, Path, Pdf], blank_pdf: Union[str, Path, Pdf]) -> Pdf:
-    """Copies the AcroForm fields from one PDF to another blank PDF form"""
-    if isinstance(formed_pdf, (str, Path)):
-        formed_pdf = Pdf.open(formed_pdf)
-    if isinstance(blank_pdf, (str, Path)):
-        blank_pdf = Pdf.open(blank_pdf)
+def swap_pdf_page(*, 
+                    source_pdf: Union[str, Path, Pdf],
+                    destination_pdf: Union[str, Path, Pdf],
+                    source_offset : int = 0,
+                    destination_offset : int = 0,
+                    append_fields : bool = False
+                 ) -> Pdf:
+    """Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
+    the source and destination PDFs. By default, it will remove any existing annotations (which include form fields) 
+    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
+    if isinstance(source_pdf, (str, Path)):
+        source_pdf = Pdf.open(source_pdf)
+    if isinstance(destination_pdf, (str, Path)):
+        destination_pdf = Pdf.open(destination_pdf)
 
-    if not hasattr(formed_pdf.Root, 'AcroForm'):
+    if not hasattr(source_pdf.Root, 'AcroForm'):
         # if the given PDF doesn't have any fields, don't copy them!
-        return blank_pdf
+        return destination_pdf
 
-    foreign_root = blank_pdf.copy_foreign(formed_pdf.Root)
-    blank_pdf.Root.AcroForm = foreign_root.AcroForm
-    for blank_page, formed_page in zip(blank_pdf.pages, formed_pdf.pages):
-        if not hasattr(formed_page, 'Annots'):
+    foreign_root = destination_pdf.copy_foreign(source_pdf.Root)
+    destination_pdf.Root.AcroForm = foreign_root.AcroForm
+    for destination_page, source_page in zip(destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]):
+        if not hasattr(source_page, 'Annots'):
             continue  # no fields on this page, skip
-        annots = formed_pdf.make_indirect(formed_page.Annots)
-        if not hasattr(blank_page, 'Annots'):
-            blank_page['/Annots'] = blank_pdf.copy_foreign(annots)
+        annots = source_pdf.make_indirect(source_page.Annots)
+        if append_fields and hasattr(destination_page, 'Annots'):
+            destination_page.Annots.extend(destination_pdf.copy_foreign(annots))            
         else:
-            blank_page.Annots.extend(blank_pdf.copy_foreign(annots))
-    return blank_pdf
+            destination_page['/Annots'] = destination_pdf.copy_foreign(annots)
+    return destination_pdf
 
 class MyPDFPageAggregator(PDFLayoutAnalyzer):
     def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
