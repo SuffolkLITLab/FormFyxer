@@ -371,16 +371,19 @@ rename_pdf_fields('current.pdf', 'new_field_names.pdf',
 ```
 
 ### formfyxer.swap_pdf_page
-Copies the AcroForm fields from one PDF to another PDF (without AcroForm fields). Useful for if you want the places where a user enters data on a form to stay the
-same, but if you want to change out the backing text in the PDF
+Copies the AcroForm fields from one PDF to another PDF (without AcroForm fields). Useful for getting started with an updated PDF form, where the old fields 
+are pretty close to where they should go on the new document.
 #### Parameters:
-* `formed_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF that has AcroForm fields
-* `blank_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF without AcroForm fields
+* `source_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF that has AcroForm fields
+* `destination_pdf: Union[str, Path, Pdf]`: a file name or path to a PDF without AcroForm fields. Existing fields will be removed.
+* `source_offset: int`: the starting page that fields will be copied from. Defaults to 0
+* `destination_offset: int`: the start page that fields will be copied to. Defaults to 0
+* `append_annotations: bool`: controls whether formfyxer will try to append form fields instead of overwriting. Defaults to false; when enabled may lead to undefined behavior
 #### Returns:
 A pikepdf.Pdf with the new fields. If `blank_pdf` was a pikepdf.Pdf object, the same object is returned
 #### Example:
 ```python
-new_pdf_with_fields = swap_pdf_page(formed_pdf="old_pdf.pdf", "new_pdf_with_no_fields.pdf")
+new_pdf_with_fields = swap_pdf_page(source_pdf="old_pdf.pdf", destination_pdf="new_pdf_with_no_fields.pdf")
 new_pdf_with_fields.save("new_pdf_with_fields.pdf")
 ```
 
