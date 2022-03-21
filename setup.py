@@ -17,6 +17,6 @@ setuptools.setup(
     },
     license='MIT',
     packages=['formfyxer'],
-    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python'],
+    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'networkx', 'numpy',  'sklearn', 'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python'],
     include_package_data = True
 )
