@@ -14,7 +14,7 @@ class InstallSpacyModelCommand(install):
 
 setuptools.setup(
     name='formfyxer',
-    version='0.0.7',
+    version='0.0.7-test2',
     author='Suffolk LIT Lab',
     author_email='litlab@suffolk.edu',
     description='A tool for learning about and pre-processing pdf forms.',
