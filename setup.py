@@ -26,7 +26,10 @@ setuptools.setup(
     },
     license='MIT',
     packages=['formfyxer'],
-    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python'],
+    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 
+        'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python',
+        'click<8.1.0' # click 8.1.0 breaks spacy, but they haven't patched it?: https://github.com/explosion/spaCy/pull/10573
+    ],
     cmdclass={
       'install': InstallSpacyModelCommand,
     },
