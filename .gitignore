@@ -3,3 +3,4 @@ formfyxer/__pycache__/**
 *.pyc
 __pycache__/**
 *.egg-info/**
+.history/

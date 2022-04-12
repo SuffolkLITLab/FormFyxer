@@ -144,7 +144,7 @@ def set_fields(in_file: Union[str, Path, BinaryIO],
     if not fields_per_page:
         # Nothing to do, lol
         return
-    in_pdf = Pdf.open(in_file)
+    in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
     if hasattr(in_pdf.Root, 'AcroForm') and not overwrite:
         print('Not going to overwrite the existing AcroForm!')
         return None
@@ -180,9 +180,9 @@ def swap_pdf_page(*,
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields) 
     in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
     if isinstance(source_pdf, (str, Path)):
-        source_pdf = Pdf.open(source_pdf)
+        source_pdf = Pdf.open(source_pdf, allow_overwriting_input=True)
     if isinstance(destination_pdf, (str, Path)):
-        destination_pdf = Pdf.open(destination_pdf)
+        destination_pdf = Pdf.open(destination_pdf, allow_overwriting_input=True)
 
     if not hasattr(source_pdf.Root, 'AcroForm'):
         # if the given PDF doesn't have any fields, don't copy them!
