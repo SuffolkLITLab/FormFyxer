@@ -1,4 +1,4 @@
-# Updated on 2022-02-11
+# Updated on 2022-03-21
 
 import os
 import re
@@ -8,6 +8,7 @@ import pikepdf
 import textstat
 import requests
 import json
+import networkx as nx
 import numpy as np
 from numpy import unique
 from numpy import where
@@ -24,22 +25,26 @@ except:
     nltk.download('stopwords')
     from nltk.corpus import stopwords
 import math
-import signal
 from contextlib import contextmanager
 import threading
 import _thread
-import subprocess
 
 stop_words = set(stopwords.words('english'))
 
 try:
-    nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
+    # this takes a while to load
+    import en_core_web_lg 
+    nlp = en_core_web_lg.load()
 except:
     print("Downloading word2vec model en_core_web_lg")
+    import subprocess
     bashCommand = "python -m spacy download en_core_web_lg"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
-    nlp = spacy.load('en_core_web_lg') # this takes a while to loadimport os
+    print(f"output of word2vec model download: {output}")
+    import en_core_web_lg
+    nlp = en_core_web_lg.load()
+
 
 # Load local variables, models, and API key(s).
 
@@ -49,6 +54,7 @@ groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
 clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
 with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as file:
     spot_token = file.read().rstrip()
+
 
 # This creates a timeout exception that can be triggered when something hangs too long. 
 
@@ -172,7 +178,7 @@ def regex_norm_field(text):
 
 # Tranforms a string of text into a snake_case variable close in length to `max_length` name by summarizing the string and stiching the summary together in snake_case. h/t h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
 
-def reformat_field(text,max_length=30):
+def reformat_field(text, max_length=30):
     orig_title = text.lower()
     orig_title = re.sub("[^a-zA-Z]+"," ",orig_title)
     orig_title_words = orig_title.split()
@@ -240,9 +246,9 @@ def norm(row):
 
 # Vectorize a string of text. 
 
-def vectorize(text, normalize=1):
+def vectorize(text, normalize=True):
     output = nlp(str(text)).vector
-    if normalize==1:
+    if normalize:
         return norm(output)
     else:
         return output
@@ -253,10 +259,9 @@ def vectorize(text, normalize=1):
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`  
 
-def normalize_name(jur,group,n,per,last_field,this_field):
-
-    # Add hard coded conversions maybe by calling a function
-    # if returns 0 then fail over to ML or otherway around poor prob -> check hard-coded
+def normalize_name(jur, group, n, per, last_field, this_field):
+    """Add hard coded conversions maybe by calling a function
+    if returns 0 then fail over to ML or otherway around poor prob -> check hard-coded"""
 
     if this_field not in included_fields:
         this_field = reCase(this_field)
@@ -264,15 +269,15 @@ def normalize_name(jur,group,n,per,last_field,this_field):
         out_put = regex_norm_field(this_field)
         conf = 1.0
 
-        if out_put==this_field:
+        if out_put == this_field:
             params = []
             for item in jurisdictions:
-                if jur== item:
+                if jur == item:
                     params.append(1)
                 else:
                     params.append(0)
             for item in groups:
-                if group== item:
+                if group == item:
                     params.append(1)
                 else:
                     params.append(0)
@@ -282,7 +287,7 @@ def normalize_name(jur,group,n,per,last_field,this_field):
                 params.append(vec)
 
             for item in included_fields:
-                if last_field==item:
+                if last_field == item:
                     params.append(1)
                 else:
                     params.append(0)
@@ -313,8 +318,8 @@ def normalize_name(jur,group,n,per,last_field,this_field):
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
 
 def cluster_screens(fields=[],damping=0.7):
-    # Takes in a list (fields) and returns a suggested screen grouping
-    # Set damping to value >= 0.5 or < 1 to tune how related screens should be
+    """Takes in a list (fields) and returns a suggested screen grouping
+    Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
 
     vec_mat = np.zeros([len(fields),300])
     for i in range(len(fields)):
@@ -332,17 +337,13 @@ def cluster_screens(fields=[],damping=0.7):
 
     screens = {}
     #sim = np.zeros([5,300])
-    i=0
-    for cluster in clusters:
+    for i, cluster in enumerate(clusters):
         this_screen = where(yhat == cluster)[0]
         vars = []
-        j=0
         for screen in this_screen:
             #sim[screen]=vec_mat[screen] # use this spot to add up vectors for compare to list
             vars.append(fields[screen])
-            j+=1
         screens["screen_%s"%i]=vars
-        i+=1
 
     return screens
 
@@ -357,11 +358,8 @@ def read_pdf (file):
                 #print ('File Decrypted (PyPDF2)')
             except:
                 #
-                #
                 # This didn't go so well on my Windows box so I just ran this in the pdf folder's cmd:
                 # for %f in (*.*) do copy %f temp.pdf /Y && "C:\Program Files (x86)\qpdf-8.0.2\bin\qpdf.exe" --password="" --decrypt temp.pdf %f
-                #
-                #
                 #
                 
                 command="cp "+file+" tmp/temp.pdf; qpdf --password='' --decrypt tmp/temp.pdf "+file
@@ -382,7 +380,7 @@ def read_pdf (file):
 
 # Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the file with the new fields (if `rewrite=1`). 
 
-def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewrite=0):
+def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0, rewrite=0):
     f = PyPDF2.PdfFileReader(fileloc)
 
     if f.isEncrypted:
@@ -432,7 +430,7 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
     else:
         nmsi = []
         
-    if normalize==1:
+    if normalize == 1:
         i = 0 
         length = len(fields)
         last = "null"
@@ -463,41 +461,20 @@ def parse_form(fileloc,title=None,jur=None,cat=None,normalize=1,use_spot=0,rewri
             "text":text
             }    
     
-    if rewrite==1:
+    if rewrite == 1:
         try:
-            if 1==1:
-                my_pdf = pikepdf.Pdf.open(fileloc, allow_overwriting_input=True)
-                fields_too = my_pdf.Root.AcroForm.Fields #[0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
-                #print(repr(fields_too))
-                
-                k =0
-                for field in new_fields:
-                    #print(k,field)
-                    fields_too[k].T = re.sub("^\*","",field)
-                    k+=1
+            my_pdf = pikepdf.Pdf.open(fileloc, allow_overwriting_input=True)
+            fields_too = my_pdf.Root.AcroForm.Fields #[0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
+            #print(repr(fields_too))
 
-                #f2.T = 'new_hospital_name'
-                #filename = re.search("\/(\w*\.pdf)$",fileloc).groups()[0]
-                #my_pdf.save('/%s'%(filename))
-                my_pdf.save(fileloc)
-            else:
-                file = PdfFileWriter()
+            for k, field in enumerate(new_fields):
+                #print(k,field)
+                fields_too[k].T = re.sub("^\*","",field)
 
-                first_page = f.getPage(0)
-
-                file.cloneDocumentFromReader(f)
-                #file.appendPagesFromReader(f)
-
-                x ={}
-                for y in ff:
-                    x[y]=""
-
-                #print(x)
-
-                file.updatePageFormFieldValues(first_page,x)
-
-                output = open('blankPdf.pdf', 'wb')
-                file.write(output)  
+            #f2.T = 'new_hospital_name'
+            #filename = re.search("\/(\w*\.pdf)$",fileloc).groups()[0]
+            #my_pdf.save('/%s'%(filename))
+            my_pdf.save(fileloc)
         except:
             error = "could not change form fields"
     
