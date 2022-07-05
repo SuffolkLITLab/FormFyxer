@@ -158,7 +158,7 @@ def regex_norm_field(text):
         ["^Email( Adress)$","users1_email"],
 
         # Parties
-        ["^plaintiff\(?s?\)?$","plantiff1_name"],
+        ["^plaintiff\(?s?\)?$","plaintiff1_name"],
         ["^defendant\(?s?\)?$","defendant1_name"],
         ["^petitioner\(?s?\)?$","petitioners1_name"],
         ["^respondent\(?s?\)?$","respondents1_name"],
