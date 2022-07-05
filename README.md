@@ -4,9 +4,15 @@ A Python package with a collection of functions for learning about and pre-proce
 ## Installation and updating
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install FormFyxer.
 Rerun this command to check for and install updates directly from GitHub.
+
 ```bash
 pip install git+https://github.com/SuffolkLITLab/FormFyxer
 ```
+
+If you are on Mac or Windows, you'll need to install [poppler](https://poppler.freedesktop.org/) for your respective platform.
+If you are on Anaconda, simply run `conda install poppler`. Otherwise, follow the instructions here:
+- [macOS instructions](https://macappstore.org/poppler/)
+- [Windows download](https://github.com/oschwartz10612/poppler-windows/releases/tag/v22.04.0-0)
 
 ## Functions
 
@@ -298,7 +304,7 @@ An object grouping together similar field names.
         "users1_address_zip",
         "users1_phone_number",
         "users1_email",
-        "plantiffs1_name",
+        "plaintiffs1_name",
         "defendants1_name",
         "petitioners1_name",
         "respondents1_name",
@@ -318,7 +324,7 @@ An object grouping together similar field names.
   'users1_phone_number',
   'users1_email',
   'users1_signature'],
- 'screen_1': ['plantiffs1_name',
+ 'screen_1': ['plaintiffs1_name',
   'defendants1_name',
   'petitioners1_name',
   'respondents1_name'],
