@@ -17,6 +17,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
 from pdfminer.converter import PDFLayoutAnalyzer
+from pdfminer.layout import LTChar
+from pdfminer.pdffont import PDFUnicodeNotDefined
 from pdfminer.layout import LTPage
 from pdfminer.layout import LAParams, LTTextBoxHorizontal
 from pdfminer.pdfdocument import PDFDocument
@@ -185,6 +187,11 @@ def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, Pdf]) -> Iterabl
       in_pdf = Pdf.open(in_file)
     return [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
 
+def get_existing_pdf_fields_with_context(in_file: Union[str, Path, BinaryIO]) -> Iterable:
+    in_pdf = Pdf.open(in_file)
+    text_in_pdf = get_textboxes_in_pdf(in_pdf)
+    fields = [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
+
 def swap_pdf_page(*, 
                     source_pdf: Union[str, Path, Pdf],
                     destination_pdf: Union[str, Path, Pdf],
@@ -216,7 +223,7 @@ def swap_pdf_page(*,
             destination_page['/Annots'] = destination_pdf.copy_foreign(annots)
     return destination_pdf
 
-class MyPDFPageAggregator(PDFLayoutAnalyzer):
+class BoxPDFPageAggregator(PDFLayoutAnalyzer):
     def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
         PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
         self.results:List[LTPage] = []
@@ -227,7 +234,44 @@ class MyPDFPageAggregator(PDFLayoutAnalyzer):
     def get_result(self) -> LTPage:
         return self.results
 
-def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=0.02) -> List:
+class BracketPDFLayoutAnalyzer(PDFLayoutAnalyzer):
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate):
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        if text != '[' and text != ']':
+            return textwidth * fontsize * scaling
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
+
+class BracketPDFPageAggregator(BracketPDFLayoutAnalyzer):
+    def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
+        BracketPDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
+        self.results:List[LTPage] = []
+    
+    def receive_layout(self, ltpage: LTPage) -> None:
+        self.results.append(ltpage)
+    
+    def get_result(self) -> LTPage:
+        return self.results
+
+def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=0.02, char_margin=2.0) -> List:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str):
         open_file = open(in_file, 'rb')
@@ -236,7 +280,7 @@ def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=
     parser = PDFParser(open_file)
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
-    device = MyPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=line_margin))
+    device = BoxPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=line_margin, char_margin=char_margin))
     interpreter = PDFPageInterpreter(rsrcmgr, device)
     page_count = 0
     for page in PDFPage.create_pages(doc):
@@ -246,6 +290,42 @@ def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=
         open_file.close() 
     return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, get_type) and obj.get_text().strip(' \n') != '']
             for i in range(page_count)]
+
+def get_bracket_chars_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=0.02, char_margin=0.0) -> List:
+    """Gets all of the bracket characters ('[' and ']') found by pdfminer in a PDF, as well as their bounding boxes
+    TODO: Will eventually be used to find [ ] as checkboxes, but right now we can't tell the difference between [ ] and [i].
+    This simply gets all of the brackets, and the characters of [hi] in a PDF and [ ] are the exact same distance apart.
+    Currently going with just "[hi]" doesn't happen, let's hope that assumption holds.
+
+    """
+    if isinstance(in_file, str):
+        open_file = open(in_file, 'rb')
+    else:
+        open_file = in_file
+    parser = PDFParser(open_file)
+    doc = PDFDocument(parser)
+    rsrcmgr = PDFResourceManager()
+    device = BracketPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=line_margin, char_margin=char_margin))
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    page_count = 0
+    for page in PDFPage.create_pages(doc):
+        page_count += 1
+        interpreter.process_page(page)
+    if isinstance(in_file, str):
+        open_file.close() 
+    to_return = []
+    for i in range(page_count):
+      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, get_type) and obj.get_text().strip(' \n') != '']
+      left_bracket = [item for item in in_page if item[0].get_text().strip() == '[']
+      right_bracket = [item for item in in_page if item[0].get_text().strip() == ']']
+      page_brackets = []
+      for lb in left_bracket:
+        for rb in right_bracket:
+          if intersect_bbox(lb[1], rb[1], horiz_dilation=12):
+            page_brackets.append((lb[1], None, None))
+            break
+      to_return.append(page_brackets)
+    return to_return
 
 ####### OpenCV related functions #########
 
@@ -276,18 +356,23 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
         file_obj.flush()
 
     text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
+    # chars_in_pdf = get_textboxes_in_pdf(in_pdf_file, char_margin=0.0)
+    all_text =  ' '.join([page[0][0].get_text() for page in text_in_pdf])
     text_bboxes_per_page = [get_possible_text_fields(tmp.name, page_text)
             for tmp, page_text in zip(tmp_files, text_in_pdf)]
     checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
     any_checkboxes_in_pdf = any([y is not None and len(y) for y in checkbox_bboxes_per_page])
-    if not any_checkboxes_in_pdf:
-      for idx in len(checkbox_bboxes_per_page):
-        checkbox_bboxes_per_page[idx] = get_possible_brackets(tmp_files[idx].name)
+    if not any_checkboxes_in_pdf or '[ ]' in all_text:
+      new_brackets = get_bracket_chars_in_pdf(in_pdf_file)
+      for idx in range(len(checkbox_bboxes_per_page)):
+        checkbox_bboxes_per_page[idx] = new_brackets[idx]
+      checkbox_pdf_bboxes = [[(bbox[0], bbox[1] + bbox[3], bbox[3], bbox[3]) for bbox, _, _, in bboxes_in_page] for bboxes_in_page in checkbox_bboxes_per_page]
+    else:
+      checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
+                             for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
 
     text_pdf_bboxes = [[(img2pdf_coords(bbox, images[i].height), font_size) for bbox, font_size in bboxes_in_page]
                        for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
-    checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
-                           for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
 
     fields = []
     i = 0
