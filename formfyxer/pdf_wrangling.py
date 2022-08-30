@@ -271,7 +271,7 @@ class BracketPDFPageAggregator(BracketPDFLayoutAnalyzer):
     def get_result(self) -> LTPage:
         return self.results
 
-def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=0.02, char_margin=2.0) -> List:
+def get_textboxes_in_pdf(in_file:str, line_margin=0.02, char_margin=2.0) -> List:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str):
         open_file = open(in_file, 'rb')
@@ -288,10 +288,10 @@ def get_textboxes_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=
         interpreter.process_page(page)
     if isinstance(in_file, str):
         open_file.close() 
-    return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, get_type) and obj.get_text().strip(' \n') != '']
+    return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if obj.get_text().strip(' \n') != '']
             for i in range(page_count)]
 
-def get_bracket_chars_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_margin=0.02, char_margin=0.0) -> List:
+def get_bracket_chars_in_pdf(in_file:str, line_margin=0.02, char_margin=0.0) -> List:
     """Gets all of the bracket characters ('[' and ']') found by pdfminer in a PDF, as well as their bounding boxes
     TODO: Will eventually be used to find [ ] as checkboxes, but right now we can't tell the difference between [ ] and [i].
     This simply gets all of the brackets, and the characters of [hi] in a PDF and [ ] are the exact same distance apart.
@@ -314,15 +314,15 @@ def get_bracket_chars_in_pdf(in_file:str, get_type=LTTextBoxHorizontal, line_mar
     if isinstance(in_file, str):
         open_file.close() 
     to_return = []
-    for i in range(page_count):
-      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, get_type) and obj.get_text().strip(' \n') != '']
-      left_bracket = [item for item in in_page if item[0].get_text().strip() == '[']
-      right_bracket = [item for item in in_page if item[0].get_text().strip() == ']']
+    for page_idx in range(page_count):
+      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[page_idx]._objs if obj.get_text().strip(' \n') != '']
+      left_bracket = [item[1] for item in in_page if item[0].get_text().strip() == '[']
+      right_bracket = [item[1] for item in in_page if item[0].get_text().strip() == ']']
       page_brackets = []
-      for lb in left_bracket:
-        for rb in right_bracket:
-          if intersect_bbox(lb[1], rb[1], horiz_dilation=12):
-            page_brackets.append((lb[1], None, None))
+      for l_box in left_bracket:
+        for r_box in right_bracket:
+          if intersect_bbox(l_box, r_box, horiz_dilation=12):
+            page_brackets.append((l_box[0], l_box[1] + l_box[3], l_box[3], l_box[3]))
             break
       to_return.append(page_brackets)
     return to_return
@@ -355,22 +355,22 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
         img.save(file_obj, 'JPEG')
         file_obj.flush()
 
+    checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
     text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
-    # chars_in_pdf = get_textboxes_in_pdf(in_pdf_file, char_margin=0.0)
-    all_text =  ' '.join([page[0][0].get_text() for page in text_in_pdf])
+    if not any([y is not None and len(y) for y in checkbox_bboxes_per_page]):
+        all_text =  ' '.join([' '.join([page_item[0].get_text() for page_item in page]) for page in text_in_pdf])
+        if '[ ]' in all_text:
+            checkbox_pdf_bboxes = get_bracket_chars_in_pdf(in_pdf_file)
+        else:
+            checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files]
+            checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
+                                   for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+    else: 
+        checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
+                               for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+
     text_bboxes_per_page = [get_possible_text_fields(tmp.name, page_text)
             for tmp, page_text in zip(tmp_files, text_in_pdf)]
-    checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
-    any_checkboxes_in_pdf = any([y is not None and len(y) for y in checkbox_bboxes_per_page])
-    if not any_checkboxes_in_pdf or '[ ]' in all_text:
-      new_brackets = get_bracket_chars_in_pdf(in_pdf_file)
-      for idx in range(len(checkbox_bboxes_per_page)):
-        checkbox_bboxes_per_page[idx] = new_brackets[idx]
-      checkbox_pdf_bboxes = [[(bbox[0], bbox[1] + bbox[3], bbox[3], bbox[3]) for bbox, _, _, in bboxes_in_page] for bboxes_in_page in checkbox_bboxes_per_page]
-    else:
-      checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
-                             for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
-
     text_pdf_bboxes = [[(img2pdf_coords(bbox, images[i].height), font_size) for bbox, font_size in bboxes_in_page]
                        for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
 
@@ -423,19 +423,19 @@ def intersect_bboxs(bbox_a, bboxes, vert_dilation=2, horiz_dilation=2) -> Iterab
     return [a_top > bbox[1] and a_bottom < (bbox[1] + bbox[3]) and a_right > bbox[0] and a_left < (bbox[0] + bbox[2])
             for bbox in bboxes]
 
-def contain_boxes(bbox_a, bbox_b):
+def contain_boxes(bbox_a, bbox_b) -> Iterable[float]:
     """Given two bounding boxes, return a single bounding box that contains both of them."""
     top, bottom = min(bbox_a[1] - bbox_a[3], bbox_b[1] - bbox_b[3]), max(bbox_a[1], bbox_b[1])
     left, right = min(bbox_a[0], bbox_b[0]), max(bbox_a[0] + bbox_a[2], bbox_b[0] + bbox_b[2])
     to_ret = [left, bottom, right - left, bottom - top]
     return to_ret
 
-def get_dist_sq(point_a, point_b):
+def get_dist_sq(point_a, point_b) -> float:
     """returns the distance squared between two points. Faster than the true euclidean dist"""
     return (point_a[0] - point_b[0])**2 + (point_a[1] - point_b[1])**2
 
 
-def get_dist(point_a, point_b):
+def get_dist(point_a, point_b) -> float:
     """euclidean (L^2 norm) distance between two points"""
     return math.sqrt((point_a[0] - point_b[0])**2 + (point_a[1] - point_b[1])**2)
 
@@ -488,36 +488,25 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
         return vert_dist + hori_dist, a_vert, b_vert
 
 
-def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
+def get_possible_checkboxes(img: Union[str, cv2.Mat], find_small=False) -> np.ndarray:
     """Uses boxdetect library to determine if there are checkboxes on an image of a PDF page.
     Assumes the checkbox is square.
+
+    find_small: if true, finds smaller checkboxes. Sometimes will "find" a checkbox in letters,
+        like O and D, if the font is too small
     """
     cfg = config.PipelinesConfig()
-    # Defaults from the README. TODO(brycew): adjust per state?
-    cfg.width_range = (20, 65)
-    cfg.height_range = (20, 40)
+    if find_small:
+        cfg.width_range = (20, 65)
+        cfg.height_range = (20, 40)
+    else:
+        cfg.width_range = (32, 65)
+        cfg.height_range = (25, 40)
     cfg.scaling_factors = [0.6]
     cfg.wh_ratio_range = (0.6, 2.2)
     cfg.group_size_range = (2, 100)
     cfg.dilation_iterations = 0
     cfg.morph_kernels_type = 'rectangles'
-    checkboxes = get_checkboxes(
-        img, cfg=cfg, px_threshold=0.1, plot=False, verbose=False)
-    return checkboxes
-
-def get_possible_brackets(img: Union[str, cv2.Mat]) -> np.ndarray:
-    """Uses a modified version of boxdetect to determine if there are brackets ([ ]) on an
-    image of a PDF page. Assumes a lot about the size (right now calibrated to Washington's
-    forms), and will often come up with false positives in general text."""
-    cfg = config.PipelinesConfig()
-    # Defaults from the README. TODO(brycew): adjust per state?
-    cfg.width_range = (14, 20)
-    cfg.height_range = (24, 30)
-    cfg.scaling_factors = [1.0]
-    cfg.wh_ratio_range = (0.5, 0.8)
-    cfg.group_size_range = (2, 100)
-    cfg.dilation_iterations = 0
-    cfg.morph_kernels_type = 'brackets'
     checkboxes = get_checkboxes(
         img, cfg=cfg, px_threshold=0.1, plot=False, verbose=False)
     return checkboxes
