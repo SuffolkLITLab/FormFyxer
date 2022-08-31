@@ -374,7 +374,6 @@ def img2pdf_coords(img, max_height):
         return (unit_convert(img[0]))
 
 def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormField]]:
-    dpi = 200
     images = convert_from_path(in_pdf_file, dpi=dpi)
 
     tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
@@ -394,10 +393,10 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
             if DEBUG:
                 print('finding small')
             checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files]
-            checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
+            checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
                                    for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
     else: 
-        checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
+        checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
                                for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
 
     text_bboxes_per_page = [get_possible_text_fields(tmp.name, page_text)
@@ -540,7 +539,7 @@ def get_possible_checkboxes(img: Union[str, cv2.Mat], find_small=False) -> np.nd
     cfg.morph_kernels_type = 'rectangles'
     checkboxes = get_checkboxes(
         img, cfg=cfg, px_threshold=0.1, plot=False, verbose=False)
-    return checkboxes
+    return [checkbox for checkbox, contains_pix, _ in checkboxes if not contains_pix]
 
 
 def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
