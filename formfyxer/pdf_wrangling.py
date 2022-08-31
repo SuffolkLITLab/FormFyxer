@@ -6,6 +6,7 @@ import tempfile
 from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO, Mapping
 from numbers import Number
 from pathlib import Path
+import random
 
 import cv2
 from boxdetect import config
@@ -113,10 +114,10 @@ def _create_only_fields(io_obj, fields_per_page: Iterable[Iterable[FormField]], 
                 c.setFont(font_name, field.font_size)
             if field.type == FieldType.TEXT:
                 form.textfield(name=field.name, tooltip=field.user_name,
-                               x=field.x, y=field.y, **field.configs)
+                               x=field.x, y=field.y, fontSize=field.font_size, **field.configs)
             elif field.type == FieldType.AREA:
                 form.textfield(name=field.name, tooltip=field.user_name,
-                               x=field.x, y=field.y, **field.configs)
+                               x=field.x, y=field.y, fontSize=field.font_size, **field.configs)
             elif field.type == FieldType.CHECK_BOX:
                 form.checkbox(name=field.name, tooltip=field.user_name,
                               x=field.x, y=field.y, **field.configs)
@@ -409,18 +410,26 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
 
     fields = []
     i = 0
+    used_field_names = set()
     for bboxes_in_page, checkboxes_in_page, text_in_page in zip(text_pdf_bboxes, checkbox_pdf_bboxes, text_in_pdf):
-        text_obj_bboxes = [text[1] for text in text_in_page]
+        # Get text boxes with more than one character (not including spaces, _, etc.)
+        text_obj_bboxes = [text[1] for text in text_in_page if len(text[0].get_text().strip(" \n\t_,.")) > 1]
         page_fields = []
         for j, field_info in enumerate(bboxes_in_page):
           field_bbox, font_size = field_info
           intersected = [obj for obj, intersect in zip(text_in_page, intersect_bboxs(field_bbox, text_obj_bboxes, horiz_dilation=50, vert_dilation=50)) if intersect]
           if intersected:
-              dists = [(bbox_distance(field_bbox, bbox)[0], obj) for obj, bbox, in intersected]
+              dists = [(bbox_distance(field_bbox, bbox)[0], obj, bbox) for obj, bbox, in intersected]
               min_obj = min(dists, key=lambda d: d[0])
+              # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
+              # text_obj_bboxes.remove(min_obj[2])
               # TODO(brycew): actual regex replacement of lots of underscores
-              label = re.sub('[\W]', '_', min_obj[1].get_text().lower().strip(' \n\t_,')) 
-              label = re.sub('_{3,}', '_', label)
+              label = re.sub('[\W]', '_', min_obj[1].get_text().lower().strip(' \n\t_,.')) 
+              label = re.sub('_{3,}', '_', label).strip('_')
+              if label in used_field_names:
+                if DEBUG:
+                    print(f'avoiding using label {label} more than once')
+                label = f'page_{i}_field_{j}'
           else:
               label = f'page_{i}_field_{j}'
           # By default the line size is 16.
@@ -428,6 +437,7 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
               page_fields.append(FormField(label, FieldType.AREA, field_bbox[0], field_bbox[1], font_size=font_size, configs={'width': field_bbox[2], 'height': field_bbox[3]}))
           else:
               page_fields.append(FormField(label, FieldType.TEXT, field_bbox[0], field_bbox[1], font_size=font_size, configs={'width': field_bbox[2], 'height': field_bbox[3]}))
+          used_field_names.add(label)
 
         page_fields += [FormField(f'page_{i}_check_{j}', FieldType.CHECK_BOX, bbox[0], bbox[1] - bbox[3], configs={'size': min(bbox[2], bbox[3])})
                         for j, bbox in enumerate(checkboxes_in_page)]
