@@ -360,10 +360,13 @@ BoundingBox = Tuple[Number, Number, Number, Number]
 XYPair = Tuple[Number, Number]
 
 pts_in_inch = 72
-dpi = 200
+dpi = 250
 def unit_convert(pix): return pix / dpi * pts_in_inch
 
 def img2pdf_coords(img, max_height):
+    if isinstance(img, int) or isinstance(img, float):
+        return unit_convert(img)
+
     # If bbox: X, Y, width, height, and whatever else you want (we won't return it)
     if len(img) >= 4:
         return (unit_convert(img[0]), unit_convert(max_height - img[1]), unit_convert(img[2]), unit_convert(img[3]))
@@ -511,7 +514,7 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
     a_hori, a_vert = get_connected_edges(min_pair[0], points_a)
     b_hori, b_vert = get_connected_edges(min_pair[1], points_b)
     hori_dist = min(get_dist(a_hori[0], b_hori[0]), get_dist(a_hori[1], b_hori[1]))
-    vert_dist = min(get_dist(a_vert[0], a_vert[0]), get_dist(a_vert[1], b_vert[1]))
+    vert_dist = min(get_dist(a_vert[0], b_vert[0]), get_dist(a_vert[1], b_vert[1]))
     if hori_dist < vert_dist:
         return hori_dist + vert_dist, a_hori, b_hori
     else:
@@ -596,25 +599,25 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat], text_lines, def
         img, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
     img_bin = 255 - img_bin
-    cv2.imwrite("Image_bin.png", img_bin)
 
     # Detect horizontal lines and vertical lines
-    kernel_length = np.array(img).shape[1]//40
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_length))
-    vertical_lines_img = cv2.dilate(
-        cv2.erode(img_bin, vert_kernel, iterations=3), vert_kernel, iterations=3)
-    cv2.imwrite("Img_vert.png", vertical_lines_img)
+    horiz_kernel_length, vert_kernel_length = width//65, height//40
+    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, vert_kernel_length))
+    vert_lines_img = cv2.dilate(
+        cv2.erode(img_bin, vert_kernel, iterations=2), vert_kernel, iterations=2)
     horiz_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (kernel_length, 1))
-    horizontal_lines_img = cv2.dilate(
-        cv2.erode(img_bin, horiz_kernel, iterations=3), horiz_kernel, iterations=3)
-    cv2.imwrite("Img_hori.png", horizontal_lines_img)
+        cv2.MORPH_RECT, (horiz_kernel_length, 1))
+    horiz_lines_img = cv2.dilate(
+        cv2.erode(img_bin, horiz_kernel, iterations=2), horiz_kernel, iterations=2)
 
-    alpha = 0.5
     img_final_bin = cv2.addWeighted(
-        vertical_lines_img, alpha, horizontal_lines_img, 1.0 - alpha, 0.0)
-    cv2.imwrite("Img_final_bin.png", img_final_bin)
+        vert_lines_img, 1.0, horiz_lines_img, 1.0, 0.0)
+
+    if DEBUG:
+        cv2.imwrite("Image_bin.png", img_bin)
+        cv2.imwrite("Img_vert.png", vert_lines_img)
+        cv2.imwrite("Img_hori.png", horiz_lines_img)
+        cv2.imwrite("Img_final_bin.png", img_final_bin)
 
     contours, _ = cv2.findContours(
         img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -637,7 +640,7 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat], text_lines, def
         return (cnts, boundingBoxes)
     (contours, boundingBoxes) = sort_contours(contours, method='top-to-bottom')
     vert_contours, _ = cv2.findContours(
-        vertical_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        vert_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if vert_contours:
         # Don't consider horizontal lines that meet up against vertical lines as text fields
         (vert_contours, vert_bounding_boxes) = sort_contours(
@@ -648,28 +651,36 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat], text_lines, def
                       for vbbox in vert_bounding_boxes]
             if not any(inters):
                 no_vert_coll.append(bbox)
+                
     else:
         no_vert_coll = boundingBoxes
 
     text_obj_bboxes = [text[1] for text in text_lines]
 
     to_return = []
-    for idx, bbox in enumerate(no_vert_coll):
+    for bbox in no_vert_coll:
         intersected = [obj for obj, intersect in zip(text_lines, intersect_bboxs(img2pdf_coords(bbox, max_height=height), text_obj_bboxes, horiz_dilation=50)) if intersect]
         if intersected:
             dists = [(bbox_distance(bbox, text_bbox)[0], obj) for obj, text_bbox, in intersected]
             min_obj = min(dists, key=lambda d: d[0])
-            line_height = int(min_obj[1].height * 200 / 72)
+            line_height = int(min_obj[1].height * dpi / pts_in_inch)
         else:
             line_height = int(default_line_height)
 
         # also consider checking that the PDF is really blank, ~ 1 line space above the horiz line
         bbox = (bbox[0], bbox[1], bbox[2], line_height) # change bbox height (likely 0 or 1) to the right height
-        # TODO(brycew): hardcoded space above
-        margin = 8
+        margin = int(0.04 * dpi)
+        line_bump = int(dpi * 0.025)  # vertical distance to not include the recogized line in the image
+        top_side, bottom_side = bbox[1] - bbox[3] + margin, bbox[1] - line_bump
         left_margin = bbox[2] // 5
-        sub_img = img_bin[bbox[1] - bbox[3] + margin:bbox[1] - 5, bbox[0] + left_margin:bbox[0]+bbox[2]- margin]
-        if sub_img.any():
+        left_side, right_side = bbox[0] + left_margin, bbox[0] + bbox[2] - margin
+        above_line_img = img_bin[top_side:bottom_side, left_side:right_side]
+        if above_line_img.any():
+            file_out = f'text_above_{int(random.random() * 1000)}.png'
+            if DEBUG:
+                print(f'avoiding text box because stuff above: {file_out}')
+                cv2.imwrite(file_out, above_line_img)
+                cv2.imwrite('bin_' + file_out, img_bin)
             continue
         
         if to_return:
@@ -680,12 +691,13 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat], text_lines, def
                 overlap_dist = right - left
                 # if the overlap of each is greater than 90% dist of both
                 if overlap_dist > 0.98 * bbox[2] and overlap_dist > 0.98 * last_bbox[2]:
-                    sub_img = img_bin[last_bbox[1] + margin:bbox[1] - 5, bbox[0] + margin:bbox[0]+bbox[2]- margin]
-                    left_img = img_bin[bbox[1] - bbox[3] + margin:bbox[1] - margin, bbox[0] - 40:bbox[0] - margin]
-                    if not left_img.any() and not sub_img.any():
+                    between_lines_img = img_bin[last_bbox[1] + margin:bbox[1] - line_bump, bbox[0] + margin:bbox[0]+bbox[2]- margin]
+                    left_padding = int(dpi * 0.2)
+                    left_img = img_bin[bbox[1] - bbox[3] + margin:bbox[1] - margin, bbox[0] - left_padding:bbox[0] - margin]
+                    if not left_img.any() and not between_lines_img.any():
                       to_return.pop()
                       bbox = contain_boxes(bbox, last_bbox)
-        to_return.append((bbox, line_height))
+        to_return.append((bbox, int(0.95 * img2pdf_coords(line_height, max_height=height))))
     return to_return
 
 
