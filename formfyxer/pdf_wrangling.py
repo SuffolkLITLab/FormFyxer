@@ -26,6 +26,9 @@ from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
 
+# Change this to true to output lots of images to help understand why a kernel didn't work
+DEBUG = False
+
 ######## PDF internals related funcitons ##########
 
 class FieldType(Enum):
@@ -359,9 +362,13 @@ def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormF
     text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
     if not any([y is not None and len(y) for y in checkbox_bboxes_per_page]):
         all_text =  ' '.join([' '.join([page_item[0].get_text() for page_item in page]) for page in text_in_pdf])
-        if '[ ]' in all_text:
+        if re.search(r'\[ {1,3}\]', all_text):
+            if DEBUG:
+                print('finding in text')
             checkbox_pdf_bboxes = get_bracket_chars_in_pdf(in_pdf_file)
         else:
+            if DEBUG:
+                print('finding small')
             checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files]
             checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
                                    for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
