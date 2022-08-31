@@ -230,6 +230,31 @@ class BoxPDFPageAggregator(PDFLayoutAnalyzer):
     def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
         PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
         self.results:List[LTPage] = []
+
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate):
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        if text == '_':
+            return textwidth * fontsize * scaling
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
     
     def receive_layout(self, ltpage: LTPage) -> None:
         self.results.append(ltpage)
@@ -237,7 +262,11 @@ class BoxPDFPageAggregator(PDFLayoutAnalyzer):
     def get_result(self) -> LTPage:
         return self.results
 
-class BracketPDFLayoutAnalyzer(PDFLayoutAnalyzer):
+class BracketPDFPageAggregator(PDFLayoutAnalyzer):
+    def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
+        PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
+        self.results:List[LTPage] = []
+    
     def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate):
         try:
             text = font.to_unichr(cid)
@@ -263,11 +292,6 @@ class BracketPDFLayoutAnalyzer(PDFLayoutAnalyzer):
         self.cur_item.add(item)
         return item.adv
 
-class BracketPDFPageAggregator(BracketPDFLayoutAnalyzer):
-    def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
-        BracketPDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
-        self.results:List[LTPage] = []
-    
     def receive_layout(self, ltpage: LTPage) -> None:
         self.results.append(ltpage)
     
@@ -291,7 +315,7 @@ def get_textboxes_in_pdf(in_file:str, line_margin=0.02, char_margin=2.0) -> List
         interpreter.process_page(page)
     if isinstance(in_file, str):
         open_file.close() 
-    return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if obj.get_text().strip(' \n') != '']
+    return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, LTTextBoxHorizontal) and obj.get_text().strip(' \n') != '']
             for i in range(page_count)]
 
 def get_bracket_chars_in_pdf(in_file:str, line_margin=0.02, char_margin=0.0) -> List:
@@ -318,7 +342,7 @@ def get_bracket_chars_in_pdf(in_file:str, line_margin=0.02, char_margin=0.0) -> 
         open_file.close() 
     to_return = []
     for page_idx in range(page_count):
-      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[page_idx]._objs if obj.get_text().strip(' \n') != '']
+      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[page_idx]._objs if isinstance(obj, LTTextBoxHorizontal) and obj.get_text().strip(' \n') != '']
       left_bracket = [item[1] for item in in_page if item[0].get_text().strip() == '[']
       right_bracket = [item[1] for item in in_page if item[0].get_text().strip() == ']']
       page_brackets = []
