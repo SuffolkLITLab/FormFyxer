@@ -6,7 +6,7 @@ import tempfile
 from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO, Mapping
 from numbers import Number
 from pathlib import Path
-from io import StringIO
+import random
 
 import cv2
 from boxdetect import config
@@ -18,6 +18,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
 from pdfminer.converter import PDFLayoutAnalyzer
+from pdfminer.layout import LTChar
+from pdfminer.pdffont import PDFUnicodeNotDefined
 from pdfminer.layout import LTPage
 from pdfminer.layout import LAParams, LTTextBoxHorizontal
 from pdfminer.pdfdocument import PDFDocument
@@ -25,10 +27,14 @@ from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
 
+# Change this to true to output lots of images to help understand why a kernel didn't work
+DEBUG = False
+
 ######## PDF internals related funcitons ##########
 
 class FieldType(Enum):
     TEXT = 'text'  # Text input Field
+    AREA = 'area'  # Text input Field, but an area
     CHECK_BOX = 'checkbox'
     LIST_BOX = 'listbox'  # allows multiple selection
     CHOICE = 'choice'  # allows only one selection
@@ -39,7 +45,7 @@ class FormField:
     """A data holding class, used to easily specify how a PDF form field should be created."""
 
     def __init__(self, program_name: str, type_name: Union[FieldType, str], x: int, y: int,
-                 user_name: str = '', configs: Dict[str, Any] = None):
+                 font_size:int = 20, user_name: str = '', configs: Dict[str, Any] = None):
         """
         Constructor
 
@@ -64,7 +70,8 @@ class FormField:
         self.x = x
         self.y = y
         self.user_name = user_name
-        # TODO(brycew): If we aren't given options, make our own depending on self.type
+        self.font_size = font_size
+        # If we aren't given options, make our own depending on self.type
         if self.type == FieldType.CHECK_BOX:
             self.configs = {
                 'buttonStyle': 'check',
@@ -76,6 +83,10 @@ class FormField:
         elif self.type == FieldType.TEXT:
             self.configs = {
                 'fieldFlags': 'doNotScroll'
+            }
+        elif self.type == FieldType.AREA:
+            self.configs = {
+                'fieldFlags': 'doNotScroll multiline',
             }
         else:
             self.configs = {}
@@ -99,9 +110,14 @@ def _create_only_fields(io_obj, fields_per_page: Iterable[Iterable[FormField]], 
     form = c.acroForm
     for fields in fields_per_page:
         for field in fields:
+            if hasattr(field, 'font_size'):
+                c.setFont(font_name, field.font_size)
             if field.type == FieldType.TEXT:
                 form.textfield(name=field.name, tooltip=field.user_name,
-                               x=field.x, y=field.y, **field.configs)
+                               x=field.x, y=field.y, fontSize=field.font_size, **field.configs)
+            elif field.type == FieldType.AREA:
+                form.textfield(name=field.name, tooltip=field.user_name,
+                               x=field.x, y=field.y, fontSize=field.font_size, **field.configs)
             elif field.type == FieldType.CHECK_BOX:
                 form.checkbox(name=field.name, tooltip=field.user_name,
                               x=field.x, y=field.y, **field.configs)
@@ -168,6 +184,17 @@ def rename_pdf_fields(in_file: str, out_file: str, mapping: Mapping[str, str]) -
 
     in_pdf.save(out_file)
 
+def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, Pdf]) -> Iterable:
+    if isinstance(in_file, Pdf):
+      in_pdf = in_file
+    else:
+      in_pdf = Pdf.open(in_file)
+    return [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
+
+def get_existing_pdf_fields_with_context(in_file: Union[str, Path, BinaryIO]) -> Iterable:
+    in_pdf = Pdf.open(in_file)
+    text_in_pdf = get_textboxes_in_pdf(in_pdf)
+    fields = [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
 
 def swap_pdf_page(*, 
                     source_pdf: Union[str, Path, Pdf],
@@ -195,15 +222,40 @@ def swap_pdf_page(*,
             continue  # no fields on this page, skip
         annots = source_pdf.make_indirect(source_page.Annots)
         if append_fields and hasattr(destination_page, 'Annots'):
-            destination_page.Annots.extend(destination_pdf.copy_foreign(annots))            
+            destination_page.Annots.extend(destination_pdf.copy_foreign(annots))
         else:
             destination_page['/Annots'] = destination_pdf.copy_foreign(annots)
     return destination_pdf
 
-class MyPDFPageAggregator(PDFLayoutAnalyzer):
+class BoxPDFPageAggregator(PDFLayoutAnalyzer):
     def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
         PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
         self.results:List[LTPage] = []
+
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate):
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        if text == '_':
+            return textwidth * fontsize * scaling
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
     
     def receive_layout(self, ltpage: LTPage) -> None:
         self.results.append(ltpage)
@@ -211,7 +263,43 @@ class MyPDFPageAggregator(PDFLayoutAnalyzer):
     def get_result(self) -> LTPage:
         return self.results
 
-def get_textboxes_in_pdf(in_file:str) -> List:
+class BracketPDFPageAggregator(PDFLayoutAnalyzer):
+    def __init__(self, rsrcmgr: PDFResourceManager, pageno:int = 1, laparams: Optional[LAParams]=None):
+        PDFLayoutAnalyzer.__init__(self, rsrcmgr, pageno=pageno, laparams=laparams)
+        self.results:List[LTPage] = []
+    
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate):
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        if text != '[' and text != ']':
+            return textwidth * fontsize * scaling
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
+
+    def receive_layout(self, ltpage: LTPage) -> None:
+        self.results.append(ltpage)
+    
+    def get_result(self) -> LTPage:
+        return self.results
+
+def get_textboxes_in_pdf(in_file:str, line_margin=0.02, char_margin=2.0) -> List:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str):
         open_file = open(in_file, 'rb')
@@ -220,7 +308,7 @@ def get_textboxes_in_pdf(in_file:str) -> List:
     parser = PDFParser(open_file)
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
-    device = MyPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=0.02)) 
+    device = BoxPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=line_margin, char_margin=char_margin))
     interpreter = PDFPageInterpreter(rsrcmgr, device)
     page_count = 0
     for page in PDFPage.create_pages(doc):
@@ -231,95 +319,166 @@ def get_textboxes_in_pdf(in_file:str) -> List:
     return [[(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[i]._objs if isinstance(obj, LTTextBoxHorizontal) and obj.get_text().strip(' \n') != '']
             for i in range(page_count)]
 
+def get_bracket_chars_in_pdf(in_file:str, line_margin=0.02, char_margin=0.0) -> List:
+    """Gets all of the bracket characters ('[' and ']') found by pdfminer in a PDF, as well as their bounding boxes
+    TODO: Will eventually be used to find [ ] as checkboxes, but right now we can't tell the difference between [ ] and [i].
+    This simply gets all of the brackets, and the characters of [hi] in a PDF and [ ] are the exact same distance apart.
+    Currently going with just "[hi]" doesn't happen, let's hope that assumption holds.
+
+    """
+    if isinstance(in_file, str):
+        open_file = open(in_file, 'rb')
+    else:
+        open_file = in_file
+    parser = PDFParser(open_file)
+    doc = PDFDocument(parser)
+    rsrcmgr = PDFResourceManager()
+    device = BracketPDFPageAggregator(rsrcmgr, laparams=LAParams(line_margin=line_margin, char_margin=char_margin))
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    page_count = 0
+    for page in PDFPage.create_pages(doc):
+        page_count += 1
+        interpreter.process_page(page)
+    if isinstance(in_file, str):
+        open_file.close() 
+    to_return = []
+    for page_idx in range(page_count):
+      in_page = [(obj, (obj.x0, obj.y0, obj.width, obj.height)) for obj in device.get_result()[page_idx]._objs if isinstance(obj, LTTextBoxHorizontal) and obj.get_text().strip(' \n') != '']
+      left_bracket = [item[1] for item in in_page if item[0].get_text().strip() == '[']
+      right_bracket = [item[1] for item in in_page if item[0].get_text().strip() == ']']
+      page_brackets = []
+      for l_box in left_bracket:
+        for r_box in right_bracket:
+          if intersect_bbox(l_box, r_box, horiz_dilation=12):
+            page_brackets.append((l_box[0], l_box[1] + l_box[3], l_box[3], l_box[3]))
+            break
+      to_return.append(page_brackets)
+    return to_return
+
 ####### OpenCV related functions #########
 
 BoundingBox = Tuple[Number, Number, Number, Number]
 XYPair = Tuple[Number, Number]
 
+pts_in_inch = 72
+dpi = 250
+def unit_convert(pix): return pix / dpi * pts_in_inch
+
+def img2pdf_coords(img, max_height):
+    if isinstance(img, int) or isinstance(img, float):
+        return unit_convert(img)
+
+    # If bbox: X, Y, width, height, and whatever else you want (we won't return it)
+    if len(img) >= 4:
+        return (unit_convert(img[0]), unit_convert(max_height - img[1]), unit_convert(img[2]), unit_convert(img[3]))
+    # If just X and Y
+    elif len(img) >= 2:
+        return (unit_convert(img[0]), unit_convert(max_height - img[1]))
+    else:
+        return (unit_convert(img[0]))
+
 def get_possible_fields(in_pdf_file: Union[str, Path, bytes]) -> List[List[FormField]]:
-    dpi = 200
     images = convert_from_path(in_pdf_file, dpi=dpi)
 
     tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
     for file_obj, img in zip(tmp_files, images):
         img.save(file_obj, 'JPEG')
         file_obj.flush()
-    text_bboxes_per_page = [get_possible_text_fields(
-        tmp_file.name) for tmp_file in tmp_files]
-    checkbox_bboxes_per_page = [get_possible_checkboxes(
-        tmp_file.name) for tmp_file in tmp_files]
 
-    pts_in_inch = 72
-    def unit_convert(pix): return pix / dpi * pts_in_inch
-
-    def img2pdf_coords(img, max_height):
-        # If bbox: X, Y, width, height, and whatever else you want (we won't return it)
-        if len(img) >= 4:
-            return (unit_convert(img[0]), unit_convert(max_height - img[1]), unit_convert(img[2]), unit_convert(img[3]))
-        # If just X and Y
-        elif len(img) >= 2:
-            return (unit_convert(img[0]), unit_convert(max_height - img[1]))
-        else:
-            return (unit_convert(img[0]))
-
-    text_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
-                       for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
-    checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox, _, _ in bboxes_in_page]
-                           for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+    checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
     text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
+    if not any([y is not None and len(y) for y in checkbox_bboxes_per_page]):
+        all_text =  ' '.join([' '.join([page_item[0].get_text() for page_item in page]) for page in text_in_pdf])
+        if re.search(r'\[ {1,3}\]', all_text):
+            if DEBUG:
+                print('finding in text')
+            checkbox_pdf_bboxes = get_bracket_chars_in_pdf(in_pdf_file)
+        else:
+            if DEBUG:
+                print('finding small')
+            checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files]
+            checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+                                   for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+    else: 
+        checkbox_pdf_bboxes = [[img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+                               for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)]
+
+    text_bboxes_per_page = [get_possible_text_fields(tmp.name, page_text)
+            for tmp, page_text in zip(tmp_files, text_in_pdf)]
+    text_pdf_bboxes = [[(img2pdf_coords(bbox, images[i].height), font_size) for bbox, font_size in bboxes_in_page]
+                       for i, bboxes_in_page in enumerate(text_bboxes_per_page)]
 
     fields = []
     i = 0
+    used_field_names = set()
     for bboxes_in_page, checkboxes_in_page, text_in_page in zip(text_pdf_bboxes, checkbox_pdf_bboxes, text_in_pdf):
-        text_obj_bboxes = [text[1] for text in text_in_page]
+        # Get text boxes with more than one character (not including spaces, _, etc.)
+        text_obj_bboxes = [text[1] for text in text_in_page if len(text[0].get_text().strip(" \n\t_,.")) > 1]
         page_fields = []
-        for j, field_bbox in enumerate(bboxes_in_page):
-          intersected = [obj for obj, intersect in zip(text_in_page, intersect_bboxs(field_bbox, text_obj_bboxes, dilation=50)) if intersect]
+        for j, field_info in enumerate(bboxes_in_page):
+          field_bbox, font_size = field_info
+          intersected = [obj for obj, intersect in zip(text_in_page, intersect_bboxs(field_bbox, text_obj_bboxes, horiz_dilation=50, vert_dilation=50)) if intersect]
           if intersected:
-              dists = [(bbox_distance(field_bbox, bbox)[0], obj) for obj, bbox, in intersected]
-              print(f'Choices: {[(dist, obj.get_text()) for dist, obj in dists]}')
+              dists = [(bbox_distance(field_bbox, bbox)[0], obj, bbox) for obj, bbox, in intersected]
               min_obj = min(dists, key=lambda d: d[0])
+              # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
+              # text_obj_bboxes.remove(min_obj[2])
               # TODO(brycew): actual regex replacement of lots of underscores
-              label = re.sub('[\W]', '_', min_obj[1].get_text().lower().strip(' \n\t_,')) 
-              label = re.sub('_{3,}', '_', label)
+              label = re.sub('[\W]', '_', min_obj[1].get_text().lower().strip(' \n\t_,.')) 
+              label = re.sub('_{3,}', '_', label).strip('_')
+              if label in used_field_names:
+                if DEBUG:
+                    print(f'avoiding using label {label} more than once')
+                label = f'page_{i}_field_{j}'
           else:
               label = f'page_{i}_field_{j}'
-          page_fields.append(FormField(label, FieldType.TEXT, field_bbox[0], field_bbox[1], configs={'width': field_bbox[2], 'height': 16}))
+          # By default the line size is 16.
+          if field_bbox[3] > 24:
+              page_fields.append(FormField(label, FieldType.AREA, field_bbox[0], field_bbox[1], font_size=font_size, configs={'width': field_bbox[2], 'height': field_bbox[3]}))
+          else:
+              page_fields.append(FormField(label, FieldType.TEXT, field_bbox[0], field_bbox[1], font_size=font_size, configs={'width': field_bbox[2], 'height': field_bbox[3]}))
+          used_field_names.add(label)
 
-        page_fields += [FormField(f'page_{i}_check_{j}', FieldType.CHECK_BOX, bbox[0] + bbox[2]/4, bbox[1] - bbox[3], configs={'size': min(bbox[2], bbox[3])})
+        page_fields += [FormField(f'page_{i}_check_{j}', FieldType.CHECK_BOX, bbox[0], bbox[1] - bbox[3], configs={'size': min(bbox[2], bbox[3])})
                         for j, bbox in enumerate(checkboxes_in_page)]
         i += 1
         fields.append(page_fields)
 
     return fields
 
-def intersect_bbox(bbox_a, bbox_b, dilation=2) -> bool:
-    a_bottom, a_top = bbox_a[1] - dilation, bbox_a[1] + bbox_a[3] + dilation
+def intersect_bbox(bbox_a, bbox_b, vert_dilation=2, horiz_dilation=2) -> bool:
+    """bboxes are [left edge, bottom edge, horizontal length, vertical length]"""
+    a_bottom, a_top = bbox_a[1] - vert_dilation, bbox_a[1] + bbox_a[3] + vert_dilation
     b_bottom, b_top = bbox_b[1], bbox_b[1] + bbox_b[3]
     if a_bottom > b_top or a_top < b_bottom:
         return False
 
-    a_left, a_right = bbox_a[0] - dilation, bbox_a[0] + bbox_a[2] + dilation
+    a_left, a_right = bbox_a[0] - horiz_dilation, bbox_a[0] + bbox_a[2] + horiz_dilation
     b_left, b_right = bbox_b[0], bbox_b[0] + bbox_b[2]
     if a_left > b_right or a_right < b_left:
         return False
     return True
 
-
-def intersect_bboxs(bbox_a, bboxes, dilation=2) -> Iterable[bool]:
+def intersect_bboxs(bbox_a, bboxes, vert_dilation=2, horiz_dilation=2) -> Iterable[bool]:
     """Returns an iterable of booleans, one of each of the input bboxes, true if it collides with bbox_a"""
-    a_left, a_right = bbox_a[0] - dilation, bbox_a[0] + bbox_a[2] + dilation
-    a_bottom, a_top = bbox_a[1] - dilation, bbox_a[1] + bbox_a[3] + dilation
+    a_left, a_right = bbox_a[0] - horiz_dilation, bbox_a[0] + bbox_a[2] + horiz_dilation
+    a_bottom, a_top = bbox_a[1] - vert_dilation, bbox_a[1] + bbox_a[3] + vert_dilation
     return [a_top > bbox[1] and a_bottom < (bbox[1] + bbox[3]) and a_right > bbox[0] and a_left < (bbox[0] + bbox[2])
             for bbox in bboxes]
 
+def contain_boxes(bbox_a, bbox_b) -> Iterable[float]:
+    """Given two bounding boxes, return a single bounding box that contains both of them."""
+    top, bottom = min(bbox_a[1] - bbox_a[3], bbox_b[1] - bbox_b[3]), max(bbox_a[1], bbox_b[1])
+    left, right = min(bbox_a[0], bbox_b[0]), max(bbox_a[0] + bbox_a[2], bbox_b[0] + bbox_b[2])
+    to_ret = [left, bottom, right - left, bottom - top]
+    return to_ret
 
-def get_dist_sq(point_a, point_b):
+def get_dist_sq(point_a, point_b) -> float:
     """returns the distance squared between two points. Faster than the true euclidean dist"""
     return (point_a[0] - point_b[0])**2 + (point_a[1] - point_b[1])**2
 
 
-def get_dist(point_a, point_b):
+def get_dist(point_a, point_b) -> float:
     """euclidean (L^2 norm) distance between two points"""
     return math.sqrt((point_a[0] - point_b[0])**2 + (point_a[1] - point_b[1])**2)
 
@@ -365,47 +524,75 @@ def bbox_distance(bbox_a, bbox_b) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[X
     a_hori, a_vert = get_connected_edges(min_pair[0], points_a)
     b_hori, b_vert = get_connected_edges(min_pair[1], points_b)
     hori_dist = min(get_dist(a_hori[0], b_hori[0]), get_dist(a_hori[1], b_hori[1]))
-    vert_dist = min(get_dist(a_vert[0], a_vert[0]), get_dist(a_vert[1], b_vert[1]))
+    vert_dist = min(get_dist(a_vert[0], b_vert[0]), get_dist(a_vert[1], b_vert[1]))
     if hori_dist < vert_dist:
         return hori_dist + vert_dist, a_hori, b_hori
     else:
         return vert_dist + hori_dist, a_vert, b_vert
 
 
-def get_possible_checkboxes(img: Union[str, cv2.Mat]) -> np.ndarray:
-    """Uses boxdetect library to determine if there are checkboxes on an image of a PDF page"""
+def get_possible_checkboxes(img: Union[str, cv2.Mat], find_small=False) -> np.ndarray:
+    """Uses boxdetect library to determine if there are checkboxes on an image of a PDF page.
+    Assumes the checkbox is square.
+
+    find_small: if true, finds smaller checkboxes. Sometimes will "find" a checkbox in letters,
+        like O and D, if the font is too small
+    """
     cfg = config.PipelinesConfig()
-    # Defaults from the README. TODO(brycew): adjust per state?
-    cfg.width_range = (32, 65)
-    cfg.height_range = (25, 40)
+    if find_small:
+        cfg.width_range = (20, 65)
+        cfg.height_range = (20, 40)
+    else:
+        cfg.width_range = (32, 65)
+        cfg.height_range = (25, 40)
     cfg.scaling_factors = [0.6]
     cfg.wh_ratio_range = (0.6, 2.2)
     cfg.group_size_range = (2, 100)
     cfg.dilation_iterations = 0
+    cfg.morph_kernels_type = 'rectangles'
     checkboxes = get_checkboxes(
         img, cfg=cfg, px_threshold=0.1, plot=False, verbose=False)
-    print(checkboxes)
-    return checkboxes
+    return [checkbox for checkbox, contains_pix, _ in checkboxes if not contains_pix]
 
 
 def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
-    """NOT implemented placeholder for now.
-    Need to figure out how to the semantic difference between checkboxes and radio buttons"""
+    """Even though it's called "radios", it just gets things shaped like circles, not
+    doing any semantic analysis yet."""
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
         img = cv2.imread(img, 0)
     if isinstance(img, BinaryIO):
         img = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
-
+    
+    rows = img.shape[0]
+    # TODO(brycew): https://docs.opencv.org/3.4/d4/d70/tutorial_hough_circle.html
+    circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, rows/8,
+            param1=100, param2=30, minRadius=5, maxRadius=50)
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
+        for i in circles[0, :]:
+            center = (i[0], i[1])
+            # circle center
+            cv2.circle(img, center, 1, (0, 100, 100), 3)
+            # circle outline
+            radius = i[2]
+            cv2.circle(img, center, radius, (255, 0, 255), 3)
+    
+    return []
+    #cv2.imshow("detected circles", img)
+    #cv2.waitKey(0)
+    
     # TODO(brycew): need to support radio buttons further down the Weaver pipeline as well
     pass
 
 
-def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[BoundingBox]]:
+def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat], text_lines, default_line_height:int=44) -> List[List[BoundingBox]]:
     """Uses openCV to attempt to find places where a PDF could expect an input text field.
 
     Caveats so far: only considers straight, normal horizonal lines that don't touch any vertical lines as fields
     Won't find field inputs as boxes
+
+    default_line_height: the default height (16 pt), in pixels (at 200 dpi), which is 45
     """
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
@@ -413,6 +600,7 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
     if isinstance(img, BinaryIO):
         img = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
 
+    height, width = img.shape
     # fixed level thresholding, turning a gray scale / multichannel img to a black and white one.
     # OTSU = optimum global thresholding: minimizes the variance of each Thresh "class"
     # for each possible thresh value between 128 and 255, split up pixels, get the within-class variance,
@@ -421,25 +609,25 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
         img, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
     img_bin = 255 - img_bin
-    cv2.imwrite("Image_bin.png", img_bin)
 
     # Detect horizontal lines and vertical lines
-    kernel_length = np.array(img).shape[1]//40
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_length))
-    vertical_lines_img = cv2.dilate(
-        cv2.erode(img_bin, vert_kernel, iterations=3), vert_kernel, iterations=3)
-    cv2.imwrite("Img_vert.png", vertical_lines_img)
+    horiz_kernel_length, vert_kernel_length = width//65, height//40
+    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, vert_kernel_length))
+    vert_lines_img = cv2.dilate(
+        cv2.erode(img_bin, vert_kernel, iterations=2), vert_kernel, iterations=2)
     horiz_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT, (kernel_length, 1))
-    horizontal_lines_img = cv2.dilate(
-        cv2.erode(img_bin, horiz_kernel, iterations=3), horiz_kernel, iterations=3)
-    cv2.imwrite("Img_hori.png", vertical_lines_img)
+        cv2.MORPH_RECT, (horiz_kernel_length, 1))
+    horiz_lines_img = cv2.dilate(
+        cv2.erode(img_bin, horiz_kernel, iterations=2), horiz_kernel, iterations=2)
 
-    alpha = 0.5
     img_final_bin = cv2.addWeighted(
-        vertical_lines_img, alpha, horizontal_lines_img, 1.0 - alpha, 0.0)
-    cv2.imwrite("Img_final_bin.png", img_final_bin)
+        vert_lines_img, 1.0, horiz_lines_img, 1.0, 0.0)
+
+    if DEBUG:
+        cv2.imwrite("Image_bin.png", img_bin)
+        cv2.imwrite("Img_vert.png", vert_lines_img)
+        cv2.imwrite("Img_hori.png", horiz_lines_img)
+        cv2.imwrite("Img_final_bin.png", img_final_bin)
 
     contours, _ = cv2.findContours(
         img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -454,27 +642,73 @@ def get_possible_text_fields(img: Union[str, BinaryIO, cv2.Mat]) -> List[List[Bo
             coord = 1
         # construct list of bounding boxes and sort them top to bottom
         boundingBoxes = [cv2.boundingRect(c) for c in cnts]
+        if not boundingBoxes:
+          return [[], []]
         (cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),
                                             key=lambda b: b[1][coord], reverse=reverse))
         # return the list of sorted contours and bounding boxes
         return (cnts, boundingBoxes)
     (contours, boundingBoxes) = sort_contours(contours, method='top-to-bottom')
     vert_contours, _ = cv2.findContours(
-        vertical_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # TODO(brycew): also consider checking that the PDF is really blank ~ 1 line space above the horiz line
+        vert_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if vert_contours:
         # Don't consider horizontal lines that meet up against vertical lines as text fields
         (vert_contours, vert_bounding_boxes) = sort_contours(
             vert_contours, method='top-to-bottom')
-        to_return = []
+        no_vert_coll = []
         for bbox in boundingBoxes:
-            inters = [intersect_bbox(vbbox, bbox)
+            inters = [intersect_bbox(vbbox, bbox, vert_dilation=5)
                       for vbbox in vert_bounding_boxes]
             if not any(inters):
-                to_return.append(bbox)
-        return to_return
+                no_vert_coll.append(bbox)
+                
     else:
-        return boundingBoxes
+        no_vert_coll = boundingBoxes
+
+    text_obj_bboxes = [text[1] for text in text_lines]
+
+    to_return = []
+    for bbox in no_vert_coll:
+        intersected = [obj for obj, intersect in zip(text_lines, intersect_bboxs(img2pdf_coords(bbox, max_height=height), text_obj_bboxes, horiz_dilation=50)) if intersect]
+        if intersected:
+            dists = [(bbox_distance(bbox, text_bbox)[0], obj) for obj, text_bbox, in intersected]
+            min_obj = min(dists, key=lambda d: d[0])
+            line_height = int(min_obj[1].height * dpi / pts_in_inch)
+        else:
+            line_height = int(default_line_height)
+
+        # also consider checking that the PDF is really blank, ~ 1 line space above the horiz line
+        bbox = (bbox[0], bbox[1], bbox[2], line_height) # change bbox height (likely 0 or 1) to the right height
+        margin = int(0.04 * dpi)
+        line_bump = int(dpi * 0.025)  # vertical distance to not include the recogized line in the image
+        top_side, bottom_side = bbox[1] - bbox[3] + margin, bbox[1] - line_bump
+        left_margin = bbox[2] // 5
+        left_side, right_side = bbox[0] + left_margin, bbox[0] + bbox[2] - margin
+        above_line_img = img_bin[top_side:bottom_side, left_side:right_side]
+        if above_line_img.any():
+            file_out = f'text_above_{int(random.random() * 1000)}.png'
+            if DEBUG:
+                print(f'avoiding text box because stuff above: {file_out}')
+                cv2.imwrite(file_out, above_line_img)
+                cv2.imwrite('bin_' + file_out, img_bin)
+            continue
+        
+        if to_return:
+            last_bbox = to_return[-1][0]
+            # if they are at least 60 px above / below each other
+            if intersect_bbox(bbox, last_bbox, vert_dilation=30):
+                left, right = max(bbox[0], last_bbox[0]), min(bbox[0] + bbox[2], last_bbox[0] + last_bbox[2])
+                overlap_dist = right - left
+                # if the overlap of each is greater than 90% dist of both
+                if overlap_dist > 0.98 * bbox[2] and overlap_dist > 0.98 * last_bbox[2]:
+                    between_lines_img = img_bin[last_bbox[1] + margin:bbox[1] - line_bump, bbox[0] + margin:bbox[0]+bbox[2]- margin]
+                    left_padding = int(dpi * 0.2)
+                    left_img = img_bin[bbox[1] - bbox[3] + margin:bbox[1] - margin, bbox[0] - left_padding:bbox[0] - margin]
+                    if not left_img.any() and not between_lines_img.any():
+                      to_return.pop()
+                      bbox = contain_boxes(bbox, last_bbox)
+        to_return.append((bbox, int(0.95 * img2pdf_coords(line_height, max_height=height))))
+    return to_return
 
 
 def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
@@ -482,3 +716,4 @@ def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path
     to an input PDF."""
     fields = get_possible_fields(in_pdf_file)
     set_fields(in_pdf_file, out_pdf_file, fields, overwrite=True)
+
