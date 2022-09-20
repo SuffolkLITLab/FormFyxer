@@ -3,7 +3,7 @@
 import os
 import re
 import spacy
-import PyPDF2
+from pdfminer.high_level import extract_text
 import pikepdf
 import textstat
 import requests
@@ -28,6 +28,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
+from typing import Union, Path, BinaryIO, Iterable
 
 stop_words = set(stopwords.words('english'))
 
@@ -52,8 +53,8 @@ included_fields = load(os.path.join(os.path.dirname(__file__), 'data', 'included
 jurisdictions = load(os.path.join(os.path.dirname(__file__), 'data', 'jurisdictions.joblib'))
 groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
 clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
-with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as file:
-    spot_token = file.read().rstrip()
+with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as in_file:
+    spot_token = in_file.read().rstrip()
 
 
 # This creates a timeout exception that can be triggered when something hangs too long. 
@@ -165,7 +166,7 @@ def regex_norm_field(text):
 
         # Court info
         ["^(Court\s)?Case\s?(No|Number)?\s?A?$","docket_number"],
-        ["^File\s?(No|Number)?\s?A?$","docket_number"],
+        ["^file\s?(No|Number)?\s?A?$","docket_number"],
 
         # Form info
         ["^(Signature|Sign( here)?)\s?\d*$","users1_signature"],
@@ -347,90 +348,87 @@ def cluster_screens(fields=[],damping=0.7):
 
     return screens
 
-# Get the text content of a pdf.
+def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]) -> Iterable:
+    if isinstance(in_file, pikepdf.Pdf):
+      in_pdf = in_file
+    else:
+      in_pdf = pikepdf.Pdf.open(in_file)
+    return [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
 
-def read_pdf (file):
-    try:
-        pdfFile = PyPDF2.PdfFileReader(open(file, "rb"))
-        if pdfFile.isEncrypted:
-            try:
-                pdfFile.decrypt('')
-                #print ('File Decrypted (PyPDF2)')
-            except:
-                #
-                # This didn't go so well on my Windows box so I just ran this in the pdf folder's cmd:
-                # for %f in (*.*) do copy %f temp.pdf /Y && "C:\Program Files (x86)\qpdf-8.0.2\bin\qpdf.exe" --password="" --decrypt temp.pdf %f
-                #
-                
-                command="cp "+file+" tmp/temp.pdf; qpdf --password='' --decrypt tmp/temp.pdf "+file
-                os.system(command)
-                #print ('File Decrypted (qpdf)')
-                #re-open the decrypted file
-                pdfFile = PyPDF2.PdfFileReader(open(file, "rb"))
-        text = ""
-        for page in pdfFile.pages:
-            text = text + " " + page.extractText()
-        text = reCase(text)
-        text = re.sub("(\.|,|;|:|!|\?|\n|\]|\))","\\1 ",text)
-        text = re.sub("(\(|\[)"," \\1",text)
-        text = re.sub(" +"," ",text)
-        return text
-    except:
-        return ""
 
-# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the file with the new fields (if `rewrite=1`). 
+def unlock_pdf_in_place(in_file:str):
+    pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
+    if pdf_file.is_encrypted:
+        pdf_file.save(in_file)
 
-def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0, rewrite=0):
-    f = PyPDF2.PdfFileReader(fileloc)
+def cleanup_text(text:str)->str:
+    """
+    Apply cleanup routines to text to provide more accurate readability statistics.
+    """
+    # Replace \n with .
+    text = re.sub(r"(\n|\r)+", ". ", text)
+    # Replace non-punctuation characters with " "
+    text = re.sub(r"[^\w.,;!?@'\"“”‘’'″‶ ]", " ", text)
+    # _ is considered a word character, remove it
+    text = re.sub(r"_+", " ", text)
+    # Turn : into . (so fields are treated as one sentence)
+    text = re.sub(r":", ".", text)
+    # Condense repeated " "
+    text = re.sub(r" +", " ", text)
+    # Remove any sentences that are just composed of a space
+    text = re.sub(r"\. +\.", ". ", text)
+    # Remove any repeated .
+    text = re.sub(r"\.+", ".", text)
+    # Remove space before final period
+    text = re.sub(r" \.", ".", text)
+    return text
 
-    if f.isEncrypted:
-        pdf = pikepdf.open(fileloc, allow_overwriting_input=True)
-        pdf.save(fileloc)
-        f = PyPDF2.PdfFileReader(fileloc)
+# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`). 
+
+def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normalize:bool=True, use_spot:bool=False, rewrite:bool=False):
+    unlock_pdf_in_place(in_file)
+    f = pikepdf.open(in_file)
         
-    npages = f.getNumPages()
+    npages = len(f.pages)
   
     # When reading some pdfs, this can hang due to their crazy field structure
     try:
         with time_limit(15):
-            ff = f.getFields()
+            ff = get_existing_pdf_fields(f)
     except TimeoutException as e:
         print("Timed out!")
-        ff = None   
+        ff = None
     
     if ff:
-        fields = list(ff.keys())
+        fields = [
+            field["var_name"] for field in ff
+        ]
     else:
         fields = []
     f_per_page = len(fields)/npages
-    text = read_pdf(fileloc)
-    
+
     if title is None:
         matches = re.search("(.*)\n",text)
         if matches:
             title = reCase(matches.group(1).strip())
         else:
-            title = "(Untitled)"        
+            title = "(Untitled)"
 
+    text = cleanup_text(extract_text(in_file))
     try:
-        #readbility = int(Readability(text).flesch_kincaid().grade_level)
-        text = re.sub("_"," ",text)
-        text = re.sub("\n",". ",text)
-        text = re.sub(" +"," ",text)
-        if text!= "":
-            consensus = textstat.text_standard(text)
-            readbility = eval(re.sub("^(\d+)[^0-9]+(\d+)\w*.*","(\\1+\\2)/2",consensus))
+        if text != "":
+            readability = textstat.text_standard(text, float_output=True)
         else:
-            readbility = None
+            readability = -1
     except:
-        readbility = None
+        readability = -1
 
-    if use_spot==1:
+    if use_spot:
         nmsi = spot(title + ". " +text)      
     else:
         nmsi = []
         
-    if normalize == 1:
+    if normalize:
         i = 0 
         length = len(fields)
         last = "null"
@@ -452,7 +450,7 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
             "title":title,
             "category":cat,
             "pages":npages,
-            "reading grade level": readbility,
+            "reading grade level": readability,
             "list":nmsi,
             "avg fields per page": f_per_page,
             "fields":new_fields,
@@ -461,9 +459,9 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
             "text":text
             }    
     
-    if rewrite == 1:
+    if rewrite:
         try:
-            my_pdf = pikepdf.Pdf.open(fileloc, allow_overwriting_input=True)
+            my_pdf = pikepdf.Pdf.open(in_file, allow_overwriting_input=True)
             fields_too = my_pdf.Root.AcroForm.Fields #[0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
             #print(repr(fields_too))
 
@@ -472,9 +470,9 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
                 fields_too[k].T = re.sub("^\*","",field)
 
             #f2.T = 'new_hospital_name'
-            #filename = re.search("\/(\w*\.pdf)$",fileloc).groups()[0]
+            #filename = re.search("\/(\w*\.pdf)$",in_file).groups()[0]
             #my_pdf.save('/%s'%(filename))
-            my_pdf.save(fileloc)
+            my_pdf.save(in_file)
         except:
             error = "could not change form fields"
     
