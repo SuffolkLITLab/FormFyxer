@@ -129,12 +129,15 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
 
 # A function to pull words out of snake_case, camelCase and the like.
 
-def reCase(text):
-    output = re.sub("(\w|\d)(_|-)(\w|\d)","\\1 \\3",text.strip())
-    output = re.sub("([a-z])([A-Z]|\d)","\\1 \\2",output)
-    output = re.sub("(\d)([A-Z]|[a-z])","\\1 \\2",output)
-    output = re.sub("([A-Z]|[a-z])(\d)","\\1 \\2",output)
-    return output
+def re_case(text:str)->str:
+    """
+    Capture PascalCase, snake_case and kebab-case terms and replace with spaces
+    """
+    re_outer = re.compile(r"([^A-Z ])([A-Z])")
+    re_inner = re.compile(r"(?<!^)([A-Z])([^A-Z])")
+    text = re_outer.sub(r"\1 \2", re_inner.sub(r" \1\2", text))
+
+    return text.replace("_", " ").replace("-", " ")
 
 # Takes text from an auto-generated field name and uses regex to convert it into an Assembly Line standard field.
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
@@ -255,17 +258,17 @@ def vectorize(text, normalize=True):
         return output
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
-# 1. It will `reCase` the variable text
+# 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`  
 
 def normalize_name(jur, group, n, per, last_field, this_field):
     """Add hard coded conversions maybe by calling a function
-    if returns 0 then fail over to ML or otherway around poor prob -> check hard-coded"""
+    if returns 0 then fail over to ML or other way around poor prob -> check hard-coded"""
 
     if this_field not in included_fields:
-        this_field = reCase(this_field)
+        this_field = re_case(this_field)
 
         out_put = regex_norm_field(this_field)
         conf = 1.0
@@ -324,7 +327,7 @@ def cluster_screens(fields=[],damping=0.7):
 
     vec_mat = np.zeros([len(fields),300])
     for i in range(len(fields)):
-        vec_mat[i] = [nlp(reCase(fields[i])).vector][0]
+        vec_mat[i] = [nlp(re_case(fields[i])).vector][0]
 
     # create model
     model = AffinityPropagation(damping=damping)
@@ -410,7 +413,7 @@ def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normaliz
     if title is None:
         matches = re.search("(.*)\n",text)
         if matches:
-            title = reCase(matches.group(1).strip())
+            title = re_case(matches.group(1).strip())
         else:
             title = "(Untitled)"
 
