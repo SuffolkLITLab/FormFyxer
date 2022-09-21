@@ -60,7 +60,7 @@ with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r'
 
 class TimeoutException(Exception): pass
 @contextmanager
-def time_limit(seconds):
+def time_limit(seconds:int):
     timer = threading.Timer(seconds, lambda: _thread.interrupt_main())
     timer.start()
     try:
@@ -70,18 +70,12 @@ def time_limit(seconds):
     finally:
         # if the action ends in specified time, timer is canceled
         timer.cancel()
-#    def signal_handler(signum, frame):
-#        raise TimeoutException("Timed out!")
-#    signal.signal(signal.SIGALRM, signal_handler)
-#    signal.alarm(seconds)
-#    try:
-#        yield
-#    finally:
-#        signal.alarm(0)
 
-# Pull ID values out of the LIST/NSMI results from Spot.
 
-def recursive_get_id(values_to_unpack, tmpl=None):
+def recursive_get_id(values_to_unpack:Union[dict, list], tmpl:set=None):
+    """
+    Pull ID values out of the LIST/NSMI results from Spot.
+    """
     # h/t to Quinten and Bryce for this code ;)
     if not tmpl:
         tmpl = set()
@@ -97,10 +91,11 @@ def recursive_get_id(values_to_unpack, tmpl=None):
     else:
         return set()
 
-# Call the Spot API, but return only the IDs of issues found in the text.
-
-def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
-
+def spot(text:str,lower:float=0.25,pred:float=0.5,upper:float=0.6,verbose:float=0):
+    """
+    Call the Spot API (https://spot.suffolklitlab.org) to classify the text of a PDF using 
+    the NSMIv2/LIST taxonomy (https://taxonomy.legal/), but returns only the IDs of issues found in the text.
+    """
     headers = { "Authorization": "Bearer " + spot_token, "Content-Type":"application/json" }
 
     body = {
@@ -116,7 +111,7 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
     
     try:
         output_["build"]
-        if verbose!=1:
+        if verbose !=1:
             try:
                 return list(recursive_get_id(output_["labels"]))
             except:
@@ -130,7 +125,7 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
 
 def re_case(text:str)->str:
     """
-    Capture PascalCase, snake_case and kebab-case terms and replace with spaces
+    Capture PascalCase, snake_case and kebab-case terms and add spaces to separate the joined words
     """
     re_outer = re.compile(r"([^A-Z ])([A-Z])")
     re_inner = re.compile(r"(?<!^)([A-Z])([^A-Z])")
@@ -141,8 +136,11 @@ def re_case(text:str)->str:
 # Takes text from an auto-generated field name and uses regex to convert it into an Assembly Line standard field.
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
 
-def regex_norm_field(text):
-    
+def regex_norm_field(text:str):
+    """
+    Apply some heuristics to a field name to see if we can get it to match AssemblyLine conventions.
+    See: https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/document_variables
+    """
     regex_list = [
 
         # Personal info
@@ -179,9 +177,14 @@ def regex_norm_field(text):
         text = re.sub(regex[0],regex[1],text, flags=re.IGNORECASE)
     return text
 
-# Transforms a string of text into a snake_case variable close in length to `max_length` name by summarizing the string and stitching the summary together in snake_case. h/t h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
 
-def reformat_field(text, max_length=30):
+def reformat_field(text:str, max_length:int=30):
+    """
+    Transforms a string of text into a snake_case variable close in length to `max_length` name by 
+    summarizing the string and stitching the summary together in snake_case. 
+
+    h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
+    """
     orig_title = text.lower()
     orig_title = re.sub("[^a-zA-Z]+"," ",orig_title)
     orig_title_words = orig_title.split()
@@ -235,9 +238,9 @@ def reformat_field(text, max_length=30):
         else:
             return re.sub("\s+","_",text.lower())
 
-# Normalize a word vector.
 
 def norm(row):
+    """Normalize a word vector."""
     try:
         matrix = row.reshape(1,-1).astype(np.float64)
         return normalize(matrix, axis=1, norm='l1')[0]
@@ -247,9 +250,8 @@ def norm(row):
         print("===================")
         return np.NaN
 
-# Vectorize a string of text. 
-
-def vectorize(text, normalize=True):
+def vectorize(text:str, normalize:bool=True):
+    """Vectorize a string of text."""
     output = nlp(str(text)).vector
     if normalize:
         return norm(output)
@@ -262,7 +264,7 @@ def vectorize(text, normalize=True):
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`  
 
-def normalize_name(jur, group, n, per, last_field, this_field):
+def normalize_name(jur:str, group:str, n:int, per, last_field:str, this_field:str):
     """Add hard coded conversions maybe by calling a function
     if returns 0 then fail over to ML or other way around poor prob -> check hard-coded"""
 
@@ -320,7 +322,7 @@ def normalize_name(jur, group, n, per, last_field, this_field):
 # 3. It then turns these ngrams/"sentences" into vectors using word2vec. 
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
 
-def cluster_screens(fields=[],damping=0.7):
+def cluster_screens(fields:List[str]=[],damping:float=0.7):
     """Takes in a list (fields) and returns a suggested screen grouping
     Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
 
@@ -351,6 +353,9 @@ def cluster_screens(fields=[],damping=0.7):
     return screens
 
 def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]) -> Iterable:
+    """
+    Use PikePDF to get fields from the PDF
+    """
     if isinstance(in_file, pikepdf.Pdf):
       in_pdf = in_file
     else:
@@ -359,6 +364,11 @@ def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]) ->
 
 
 def unlock_pdf_in_place(in_file:str):
+    """
+    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
+    """
+    if not isinstance(in_file, str):
+        return
     pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
@@ -385,15 +395,16 @@ def cleanup_text(text:str)->str:
     text = re.sub(r" \.", ".", text)
     return text
 
-# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`). 
 
 def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normalize:bool=True, use_spot:bool=False, rewrite:bool=False):
+    """
+    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`).
+    """
     unlock_pdf_in_place(in_file)
     f = pikepdf.open(in_file)
         
     npages = len(f.pages)
   
-    # When reading some pdfs, this can hang due to their crazy field structure
     try:
         with time_limit(15):
             ff = get_existing_pdf_fields(f)
@@ -472,9 +483,6 @@ def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normaliz
                 #print(k,field)
                 fields_too[k].T = re.sub("^\*","",field)
 
-            #f2.T = 'new_hospital_name'
-            #filename = re.search("\/(\w*\.pdf)$",in_file).groups()[0]
-            #my_pdf.save('/%s'%(filename))
             my_pdf.save(in_file)
         except:
             error = "could not change form fields"
