@@ -60,7 +60,7 @@ with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r'
 
 class TimeoutException(Exception): pass
 @contextmanager
-def time_limit(seconds:int):
+def time_limit(seconds:float):
     timer = threading.Timer(seconds, lambda: _thread.interrupt_main())
     timer.start()
     try:
