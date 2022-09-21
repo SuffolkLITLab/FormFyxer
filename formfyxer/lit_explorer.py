@@ -1,5 +1,3 @@
-# Updated on 2022-03-21
-
 import os
 import re
 import spacy
@@ -28,7 +26,8 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, Path, BinaryIO, Iterable
+from typing import Union, BinaryIO, Iterable
+from pathlib import Path
 
 stop_words = set(stopwords.words('english'))
 
@@ -159,7 +158,7 @@ def regex_norm_field(text):
         ["^Zip( Code)?$","users1_address_zip"],
         ## Contact
         ["^(Phone|Telephone)$","users1_phone_number"],
-        ["^Email( Adress)$","users1_email"],
+        ["^Email( Address)$","users1_email"],
 
         # Parties
         ["^plaintiff\(?s?\)?$","plaintiff1_name"],
@@ -180,7 +179,7 @@ def regex_norm_field(text):
         text = re.sub(regex[0],regex[1],text, flags=re.IGNORECASE)
     return text
 
-# Tranforms a string of text into a snake_case variable close in length to `max_length` name by summarizing the string and stiching the summary together in snake_case. h/t h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
+# Transforms a string of text into a snake_case variable close in length to `max_length` name by summarizing the string and stitching the summary together in snake_case. h/t h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
 
 def reformat_field(text, max_length=30):
     orig_title = text.lower()
@@ -331,7 +330,7 @@ def cluster_screens(fields=[],damping=0.7):
 
     # create model
     model = AffinityPropagation(damping=damping)
-    #model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consitent results. note will have to requier newer version
+    #model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
     # fit the model
     model.fit(vec_mat)
     # assign a cluster to each example
@@ -356,7 +355,7 @@ def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]) ->
       in_pdf = in_file
     else:
       in_pdf = pikepdf.Pdf.open(in_file)
-    return [{'type': field.FT, 'var_name': field.T, 'all': field} for field in in_pdf.Root.AcroForm.Fields]
+    return [{'type': field.FT, 'var_name': str(field.T), 'all': field} for field in in_pdf.Root.AcroForm.Fields]
 
 
 def unlock_pdf_in_place(in_file:str):
@@ -409,6 +408,7 @@ def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normaliz
     else:
         fields = []
     f_per_page = len(fields)/npages
+    text = cleanup_text(extract_text(in_file))
 
     if title is None:
         matches = re.search("(.*)\n",text)
@@ -417,7 +417,7 @@ def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normaliz
         else:
             title = "(Untitled)"
 
-    text = cleanup_text(extract_text(in_file))
+    
     try:
         if text != "":
             readability = textstat.text_standard(text, float_output=True)
@@ -483,7 +483,7 @@ def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normaliz
 
 def form_complexity(text,fields,reading_lv):
     
-    # check for fields that requier user to look up info, when found add to complexity
+    # check for fields that require user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
     
