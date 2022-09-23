@@ -26,7 +26,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, BinaryIO, Iterable
+from typing import Union, BinaryIO, Iterable, List
 from pathlib import Path
 
 stop_words = set(stopwords.words('english'))
@@ -373,7 +373,7 @@ def unlock_pdf_in_place(in_file:str):
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
 
-def cleanup_text(text:str)->str:
+def cleanup_text(text:str, fields_to_sentences:bool = False)->str:
     """
     Apply cleanup routines to text to provide more accurate readability statistics.
     """
@@ -383,8 +383,9 @@ def cleanup_text(text:str)->str:
     text = re.sub(r"[^\w.,;!?@'\"“”‘’'″‶ ]", " ", text)
     # _ is considered a word character, remove it
     text = re.sub(r"_+", " ", text)
-    # Turn : into . (so fields are treated as one sentence)
-    text = re.sub(r":", ".", text)
+    if fields_to_sentences:
+        # Turn : into . (so fields are treated as one sentence)
+        text = re.sub(r":", ".", text)
     # Condense repeated " "
     text = re.sub(r" +", " ", text)
     # Remove any sentences that are just composed of a space
