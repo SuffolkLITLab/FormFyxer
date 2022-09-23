@@ -1,9 +1,7 @@
-# Updated on 2022-03-21
-
 import os
 import re
 import spacy
-import PyPDF2
+from pdfminer.high_level import extract_text
 import pikepdf
 import textstat
 import requests
@@ -28,6 +26,8 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
+from typing import Union, BinaryIO, Iterable, List
+from pathlib import Path
 
 stop_words = set(stopwords.words('english'))
 
@@ -52,15 +52,15 @@ included_fields = load(os.path.join(os.path.dirname(__file__), 'data', 'included
 jurisdictions = load(os.path.join(os.path.dirname(__file__), 'data', 'jurisdictions.joblib'))
 groups = load(os.path.join(os.path.dirname(__file__), 'data', 'groups.joblib'))
 clf_field_names = load(os.path.join(os.path.dirname(__file__), 'data', 'clf_field_names.joblib'))
-with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as file:
-    spot_token = file.read().rstrip()
+with open(os.path.join(os.path.dirname(__file__), 'keys', 'spot_token.txt'), 'r') as in_file:
+    spot_token = in_file.read().rstrip()
 
 
 # This creates a timeout exception that can be triggered when something hangs too long. 
 
 class TimeoutException(Exception): pass
 @contextmanager
-def time_limit(seconds):
+def time_limit(seconds:float):
     timer = threading.Timer(seconds, lambda: _thread.interrupt_main())
     timer.start()
     try:
@@ -70,18 +70,12 @@ def time_limit(seconds):
     finally:
         # if the action ends in specified time, timer is canceled
         timer.cancel()
-#    def signal_handler(signum, frame):
-#        raise TimeoutException("Timed out!")
-#    signal.signal(signal.SIGALRM, signal_handler)
-#    signal.alarm(seconds)
-#    try:
-#        yield
-#    finally:
-#        signal.alarm(0)
 
-# Pull ID values out of the LIST/NSMI results from Spot.
 
-def recursive_get_id(values_to_unpack, tmpl=None):
+def recursive_get_id(values_to_unpack:Union[dict, list], tmpl:set=None):
+    """
+    Pull ID values out of the LIST/NSMI results from Spot.
+    """
     # h/t to Quinten and Bryce for this code ;)
     if not tmpl:
         tmpl = set()
@@ -97,10 +91,11 @@ def recursive_get_id(values_to_unpack, tmpl=None):
     else:
         return set()
 
-# Call the Spot API, but return only the IDs of issues found in the text.
-
-def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
-
+def spot(text:str,lower:float=0.25,pred:float=0.5,upper:float=0.6,verbose:float=0):
+    """
+    Call the Spot API (https://spot.suffolklitlab.org) to classify the text of a PDF using 
+    the NSMIv2/LIST taxonomy (https://taxonomy.legal/), but returns only the IDs of issues found in the text.
+    """
     headers = { "Authorization": "Bearer " + spot_token, "Content-Type":"application/json" }
 
     body = {
@@ -116,7 +111,7 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
     
     try:
         output_["build"]
-        if verbose!=1:
+        if verbose !=1:
             try:
                 return list(recursive_get_id(output_["labels"]))
             except:
@@ -128,18 +123,24 @@ def spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0):
 
 # A function to pull words out of snake_case, camelCase and the like.
 
-def reCase(text):
-    output = re.sub("(\w|\d)(_|-)(\w|\d)","\\1 \\3",text.strip())
-    output = re.sub("([a-z])([A-Z]|\d)","\\1 \\2",output)
-    output = re.sub("(\d)([A-Z]|[a-z])","\\1 \\2",output)
-    output = re.sub("([A-Z]|[a-z])(\d)","\\1 \\2",output)
-    return output
+def re_case(text:str)->str:
+    """
+    Capture PascalCase, snake_case and kebab-case terms and add spaces to separate the joined words
+    """
+    re_outer = re.compile(r"([^A-Z ])([A-Z])")
+    re_inner = re.compile(r"(?<!^)([A-Z])([^A-Z])")
+    text = re_outer.sub(r"\1 \2", re_inner.sub(r" \1\2", text))
+
+    return text.replace("_", " ").replace("-", " ")
 
 # Takes text from an auto-generated field name and uses regex to convert it into an Assembly Line standard field.
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
 
-def regex_norm_field(text):
-    
+def regex_norm_field(text:str):
+    """
+    Apply some heuristics to a field name to see if we can get it to match AssemblyLine conventions.
+    See: https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/document_variables
+    """
     regex_list = [
 
         # Personal info
@@ -155,7 +156,7 @@ def regex_norm_field(text):
         ["^Zip( Code)?$","users1_address_zip"],
         ## Contact
         ["^(Phone|Telephone)$","users1_phone_number"],
-        ["^Email( Adress)$","users1_email"],
+        ["^Email( Address)$","users1_email"],
 
         # Parties
         ["^plaintiff\(?s?\)?$","plaintiff1_name"],
@@ -165,7 +166,7 @@ def regex_norm_field(text):
 
         # Court info
         ["^(Court\s)?Case\s?(No|Number)?\s?A?$","docket_number"],
-        ["^File\s?(No|Number)?\s?A?$","docket_number"],
+        ["^file\s?(No|Number)?\s?A?$","docket_number"],
 
         # Form info
         ["^(Signature|Sign( here)?)\s?\d*$","users1_signature"],
@@ -176,9 +177,14 @@ def regex_norm_field(text):
         text = re.sub(regex[0],regex[1],text, flags=re.IGNORECASE)
     return text
 
-# Tranforms a string of text into a snake_case variable close in length to `max_length` name by summarizing the string and stiching the summary together in snake_case. h/t h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
 
-def reformat_field(text, max_length=30):
+def reformat_field(text:str, max_length:int=30):
+    """
+    Transforms a string of text into a snake_case variable close in length to `max_length` name by 
+    summarizing the string and stitching the summary together in snake_case. 
+
+    h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
+    """
     orig_title = text.lower()
     orig_title = re.sub("[^a-zA-Z]+"," ",orig_title)
     orig_title_words = orig_title.split()
@@ -232,9 +238,9 @@ def reformat_field(text, max_length=30):
         else:
             return re.sub("\s+","_",text.lower())
 
-# Normalize a word vector.
 
 def norm(row):
+    """Normalize a word vector."""
     try:
         matrix = row.reshape(1,-1).astype(np.float64)
         return normalize(matrix, axis=1, norm='l1')[0]
@@ -244,9 +250,8 @@ def norm(row):
         print("===================")
         return np.NaN
 
-# Vectorize a string of text. 
-
-def vectorize(text, normalize=True):
+def vectorize(text:str, normalize:bool=True):
+    """Vectorize a string of text."""
     output = nlp(str(text)).vector
     if normalize:
         return norm(output)
@@ -254,17 +259,17 @@ def vectorize(text, normalize=True):
         return output
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
-# 1. It will `reCase` the variable text
+# 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`  
 
-def normalize_name(jur, group, n, per, last_field, this_field):
+def normalize_name(jur:str, group:str, n:int, per, last_field:str, this_field:str):
     """Add hard coded conversions maybe by calling a function
-    if returns 0 then fail over to ML or otherway around poor prob -> check hard-coded"""
+    if returns 0 then fail over to ML or other way around poor prob -> check hard-coded"""
 
     if this_field not in included_fields:
-        this_field = reCase(this_field)
+        this_field = re_case(this_field)
 
         out_put = regex_norm_field(this_field)
         conf = 1.0
@@ -317,17 +322,17 @@ def normalize_name(jur, group, n, per, last_field, this_field):
 # 3. It then turns these ngrams/"sentences" into vectors using word2vec. 
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
 
-def cluster_screens(fields=[],damping=0.7):
+def cluster_screens(fields:List[str]=[],damping:float=0.7):
     """Takes in a list (fields) and returns a suggested screen grouping
     Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
 
     vec_mat = np.zeros([len(fields),300])
     for i in range(len(fields)):
-        vec_mat[i] = [nlp(reCase(fields[i])).vector][0]
+        vec_mat[i] = [nlp(re_case(fields[i])).vector][0]
 
     # create model
     model = AffinityPropagation(damping=damping)
-    #model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consitent results. note will have to requier newer version
+    #model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
     # fit the model
     model.fit(vec_mat)
     # assign a cluster to each example
@@ -347,90 +352,98 @@ def cluster_screens(fields=[],damping=0.7):
 
     return screens
 
-# Get the text content of a pdf.
+def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]) -> Iterable:
+    """
+    Use PikePDF to get fields from the PDF
+    """
+    if isinstance(in_file, pikepdf.Pdf):
+      in_pdf = in_file
+    else:
+      in_pdf = pikepdf.Pdf.open(in_file)
+    return [{'type': field.FT, 'var_name': str(field.T), 'all': field} for field in in_pdf.Root.AcroForm.Fields]
 
-def read_pdf (file):
-    try:
-        pdfFile = PyPDF2.PdfFileReader(open(file, "rb"))
-        if pdfFile.isEncrypted:
-            try:
-                pdfFile.decrypt('')
-                #print ('File Decrypted (PyPDF2)')
-            except:
-                #
-                # This didn't go so well on my Windows box so I just ran this in the pdf folder's cmd:
-                # for %f in (*.*) do copy %f temp.pdf /Y && "C:\Program Files (x86)\qpdf-8.0.2\bin\qpdf.exe" --password="" --decrypt temp.pdf %f
-                #
-                
-                command="cp "+file+" tmp/temp.pdf; qpdf --password='' --decrypt tmp/temp.pdf "+file
-                os.system(command)
-                #print ('File Decrypted (qpdf)')
-                #re-open the decrypted file
-                pdfFile = PyPDF2.PdfFileReader(open(file, "rb"))
-        text = ""
-        for page in pdfFile.pages:
-            text = text + " " + page.extractText()
-        text = reCase(text)
-        text = re.sub("(\.|,|;|:|!|\?|\n|\]|\))","\\1 ",text)
-        text = re.sub("(\(|\[)"," \\1",text)
-        text = re.sub(" +"," ",text)
-        return text
-    except:
-        return ""
 
-# Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the file with the new fields (if `rewrite=1`). 
+def unlock_pdf_in_place(in_file:str):
+    """
+    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
+    """
+    if not isinstance(in_file, str):
+        return
+    pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
+    if pdf_file.is_encrypted:
+        pdf_file.save(in_file)
 
-def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0, rewrite=0):
-    f = PyPDF2.PdfFileReader(fileloc)
+def cleanup_text(text:str, fields_to_sentences:bool = False)->str:
+    """
+    Apply cleanup routines to text to provide more accurate readability statistics.
+    """
+    # Replace \n with .
+    text = re.sub(r"(\n|\r)+", ". ", text)
+    # Replace non-punctuation characters with " "
+    text = re.sub(r"[^\w.,;!?@'\"“”‘’'″‶ ]", " ", text)
+    # _ is considered a word character, remove it
+    text = re.sub(r"_+", " ", text)
+    if fields_to_sentences:
+        # Turn : into . (so fields are treated as one sentence)
+        text = re.sub(r":", ".", text)
+    # Condense repeated " "
+    text = re.sub(r" +", " ", text)
+    # Remove any sentences that are just composed of a space
+    text = re.sub(r"\. +\.", ". ", text)
+    # Remove any repeated .
+    text = re.sub(r"\.+", ".", text)
+    # Remove space before final period
+    text = re.sub(r" \.", ".", text)
+    return text
 
-    if f.isEncrypted:
-        pdf = pikepdf.open(fileloc, allow_overwriting_input=True)
-        pdf.save(fileloc)
-        f = PyPDF2.PdfFileReader(fileloc)
+
+def parse_form(in_file:str, title:str=None, jur:str=None, cat:str=None, normalize:bool=True, use_spot:bool=False, rewrite:bool=False):
+    """
+    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`).
+    """
+    unlock_pdf_in_place(in_file)
+    f = pikepdf.open(in_file)
         
-    npages = f.getNumPages()
+    npages = len(f.pages)
   
-    # When reading some pdfs, this can hang due to their crazy field structure
     try:
         with time_limit(15):
-            ff = f.getFields()
+            ff = get_existing_pdf_fields(f)
     except TimeoutException as e:
         print("Timed out!")
-        ff = None   
+        ff = None
     
     if ff:
-        fields = list(ff.keys())
+        fields = [
+            field["var_name"] for field in ff
+        ]
     else:
         fields = []
     f_per_page = len(fields)/npages
-    text = read_pdf(fileloc)
-    
+    text = cleanup_text(extract_text(in_file))
+
     if title is None:
         matches = re.search("(.*)\n",text)
         if matches:
-            title = reCase(matches.group(1).strip())
+            title = re_case(matches.group(1).strip())
         else:
-            title = "(Untitled)"        
+            title = "(Untitled)"
 
+    
     try:
-        #readbility = int(Readability(text).flesch_kincaid().grade_level)
-        text = re.sub("_"," ",text)
-        text = re.sub("\n",". ",text)
-        text = re.sub(" +"," ",text)
-        if text!= "":
-            consensus = textstat.text_standard(text)
-            readbility = eval(re.sub("^(\d+)[^0-9]+(\d+)\w*.*","(\\1+\\2)/2",consensus))
+        if text != "":
+            readability = textstat.text_standard(text, float_output=True)
         else:
-            readbility = None
+            readability = -1
     except:
-        readbility = None
+        readability = -1
 
-    if use_spot==1:
+    if use_spot:
         nmsi = spot(title + ". " +text)      
     else:
         nmsi = []
         
-    if normalize == 1:
+    if normalize:
         i = 0 
         length = len(fields)
         last = "null"
@@ -452,7 +465,7 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
             "title":title,
             "category":cat,
             "pages":npages,
-            "reading grade level": readbility,
+            "reading grade level": readability,
             "list":nmsi,
             "avg fields per page": f_per_page,
             "fields":new_fields,
@@ -461,9 +474,9 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
             "text":text
             }    
     
-    if rewrite == 1:
+    if rewrite:
         try:
-            my_pdf = pikepdf.Pdf.open(fileloc, allow_overwriting_input=True)
+            my_pdf = pikepdf.Pdf.open(in_file, allow_overwriting_input=True)
             fields_too = my_pdf.Root.AcroForm.Fields #[0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
             #print(repr(fields_too))
 
@@ -471,10 +484,7 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
                 #print(k,field)
                 fields_too[k].T = re.sub("^\*","",field)
 
-            #f2.T = 'new_hospital_name'
-            #filename = re.search("\/(\w*\.pdf)$",fileloc).groups()[0]
-            #my_pdf.save('/%s'%(filename))
-            my_pdf.save(fileloc)
+            my_pdf.save(in_file)
         except:
             error = "could not change form fields"
     
@@ -482,7 +492,7 @@ def parse_form(fileloc, title=None, jur=None, cat=None, normalize=1, use_spot=0,
 
 def form_complexity(text,fields,reading_lv):
     
-    # check for fields that requier user to look up info, when found add to complexity
+    # check for fields that require user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
     

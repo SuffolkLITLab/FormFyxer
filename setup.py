@@ -26,7 +26,7 @@ setuptools.setup(
     },
     license='MIT',
     packages=['formfyxer'],
-    install_requires=['spacy',  'PyPDF2',  'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 'networkx',
+    install_requires=['spacy', 'pdfminer.six', 'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 'networkx',
         'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python',
         'typer>=0.4.1,<0.5.0' # typer pre 0.4.1 was broken by click 8.1.0: https://github.com/explosion/spaCy/issues/10564
     ],
