@@ -379,7 +379,11 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 
-def get_textboxes_in_pdf(in_file: Union[str, Path, Pdf, bytes, io.BufferedReader], line_margin=0.02, char_margin=2.0) -> List:
+def get_textboxes_in_pdf(
+    in_file: Union[str, Path, Pdf, bytes, io.BufferedReader],
+    line_margin=0.02,
+    char_margin=2.0,
+) -> List:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str):
         open_file = open(in_file, "rb")
@@ -409,7 +413,11 @@ def get_textboxes_in_pdf(in_file: Union[str, Path, Pdf, bytes, io.BufferedReader
     ]
 
 
-def get_bracket_chars_in_pdf(in_file: Union[str, Path, Pdf, bytes, io.BufferedReader], line_margin=0.02, char_margin=0.0) -> List:
+def get_bracket_chars_in_pdf(
+    in_file: Union[str, Path, Pdf, bytes, io.BufferedReader],
+    line_margin=0.02,
+    char_margin=0.0,
+) -> List:
     """Gets all of the bracket characters ('[' and ']') found by pdfminer in a PDF, as well as their bounding boxes
     TODO: Will eventually be used to find [ ] as checkboxes, but right now we can't tell the difference between [ ] and [i].
     This simply gets all of the brackets, and the characters of [hi] in a PDF and [ ] are the exact same distance apart.
@@ -491,7 +499,9 @@ def img2pdf_coords(img, max_height):
         return unit_convert(img[0])
 
 
-def get_possible_fields(in_pdf_file: Union[str, Path, bytes, io.BufferedReader]) -> List[List[FormField]]:
+def get_possible_fields(
+    in_pdf_file: Union[str, Path, bytes, io.BufferedReader]
+) -> List[List[FormField]]:
     images = convert_from_path(in_pdf_file, dpi=dpi)
 
     tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
@@ -734,7 +744,9 @@ def bbox_distance(
         return vert_dist + hori_dist, a_vert, b_vert
 
 
-def get_possible_checkboxes(img: Union[str, cv2.Mat], find_small=False) -> Union[np.ndarray, List]:
+def get_possible_checkboxes(
+    img: Union[str, cv2.Mat], find_small=False
+) -> Union[np.ndarray, List]:
     """Uses boxdetect library to determine if there are checkboxes on an image of a PDF page.
     Assumes the checkbox is square.
 
@@ -848,7 +860,7 @@ def get_possible_text_fields(
         img_final_bin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
 
-    def sort_contours(cnts, method:str="left-to-right"):
+    def sort_contours(cnts, method: str = "left-to-right"):
         reverse = False
         coord = 0
         if method == "right-to-left" or method == "bottom-to-top":
@@ -891,7 +903,7 @@ def get_possible_text_fields(
 
     text_obj_bboxes = [text[1] for text in text_lines]
 
-    to_return:List = []
+    to_return: List = []
     for bbox in no_vert_coll:
         intersected = [
             obj

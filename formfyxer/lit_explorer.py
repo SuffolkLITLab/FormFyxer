@@ -99,7 +99,7 @@ def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
     if isinstance(values_to_unpack, dict):
         tmpl.add(values_to_unpack.get("id"))
         if values_to_unpack.get("children"):
-            tmpl.update(recursive_get_id(values_to_unpack.get("children",[]), tmpl))
+            tmpl.update(recursive_get_id(values_to_unpack.get("children", []), tmpl))
         return tmpl
     elif isinstance(values_to_unpack, list):
         for item in values_to_unpack:
@@ -512,7 +512,9 @@ def parse_form(
         new_fields_conf = []
         for field in fields:
             # print(jur,cat,i,i/length,last,field)
-            this_field, this_conf = normalize_name(jur or "", cat or "", i, i / length, last, field)
+            this_field, this_conf = normalize_name(
+                jur or "", cat or "", i, i / length, last, field
+            )
             new_fields.append(this_field)
             new_fields_conf.append(this_conf)
             last = field
