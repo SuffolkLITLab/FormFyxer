@@ -8,6 +8,7 @@ import requests
 import json
 import networkx as nx
 import numpy as np
+import pandas as pd
 from numpy import unique
 from numpy import where
 from sklearn.cluster import AffinityPropagation
@@ -15,6 +16,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from joblib import load
 import nltk
+from nltk.tokenize import sent_tokenize
+from PassivePySrc import PassivePy
+import eyecite
 
 try:
     from nltk.corpus import stopwords
@@ -24,6 +28,11 @@ except:
     print("Downloading stopwords")
     nltk.download("stopwords")
     from nltk.corpus import stopwords
+try:
+    nltk.data.find('tokenizers/punkt')
+except:
+    nltk.download("punkt")
+
 import math
 from contextlib import contextmanager
 import threading
@@ -49,6 +58,8 @@ except:
     import en_core_web_lg
 
     nlp = en_core_web_lg.load()
+
+passivepy = PassivePy.PassivePyAnalyzer("en_core_web_lg")
 
 
 # Load local variables, models, and API key(s).
@@ -482,7 +493,8 @@ def parse_form(
     else:
         fields = []
     f_per_page = len(fields) / npages
-    text = cleanup_text(extract_text(in_file))
+    original_text = extract_text(in_file)
+    text = cleanup_text(original_text)
 
     if title is None:
         matches = re.search("(.*)\n", text)
@@ -529,6 +541,15 @@ def parse_form(
         new_fields = fields
         new_fields_conf = []
 
+    sentences = sent_tokenize(text)
+
+    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3). PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
+    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences),0)
+
+    passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+
+    citations = eyecite.get_citations(eyecite.clean_text(original_text, ["all_whitespace","underscores"]))
+
     stats = {
         "title": title,
         "category": cat,
@@ -540,6 +561,10 @@ def parse_form(
         "fields_conf": new_fields_conf,
         "fields_old": fields,
         "text": text,
+        "original_text": original_text,
+        "number of sentences": len(sentences),
+        "number of passive voice sentences": passive_sentences,
+        "citations": [cite.matched_text() for cite in citations]
     }
 
     if rewrite:
