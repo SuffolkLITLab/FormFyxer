@@ -1,0 +1,7 @@
+boxdetect
+mypy
+pdfminer
+pdf2image
+pikepdf
+reportlab
+spacy
