@@ -4,4 +4,6 @@ pdfminer
 pdf2image
 pikepdf
 reportlab
+requests
 spacy
+types-requests
