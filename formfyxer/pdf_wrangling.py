@@ -248,7 +248,7 @@ def get_existing_pdf_fields_with_context(
     in_file: Union[str, Path, BinaryIO]
 ) -> Iterable:
     in_pdf = Pdf.open(in_file)
-    text_in_pdf = get_textboxes_in_pdf(in_pdf)
+    text_in_pdf = get_textboxes_in_pdf(in_file)
     fields = [
         {"type": field.FT, "var_name": field.T, "all": field}
         for field in iter(in_pdf.Root.AcroForm.Fields)
@@ -378,18 +378,18 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
     def get_result(self) -> List[LTPage]:
         return self.results
 
-
 def get_textboxes_in_pdf(
-    in_file: Union[str, Path, Pdf, bytes, io.BufferedReader],
+    in_file: Union[str, Path, BinaryIO],
     line_margin=0.02,
     char_margin=2.0,
-) -> List:
+) -> List[List[Tuple[LTTextBoxHorizontal, Tuple[float, float, float, float]]]]:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
-    if isinstance(in_file, str):
+    if isinstance(in_file, str) or isinstance(in_file, Path):
         open_file = open(in_file, "rb")
-    elif isinstance(in_file, (Path, Pdf, bytes, io.BufferedReader)):
-        open_file = in_file
-    parser = PDFParser(open_file)
+        parser = PDFParser(open_file)
+    else: # if isinstance(in_file, (Path, Pdf, bytes, io.BufferedReader)):
+        open_file = None
+        parser = PDFParser(in_file)
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
     device = BoxPDFPageAggregator(
@@ -400,7 +400,7 @@ def get_textboxes_in_pdf(
     for page in PDFPage.create_pages(doc):
         page_count += 1
         interpreter.process_page(page)
-    if isinstance(open_file, io.BufferedReader):
+    if open_file and isinstance(open_file, io.BufferedReader):
         open_file.close()
     return [
         [
@@ -414,7 +414,7 @@ def get_textboxes_in_pdf(
 
 
 def get_bracket_chars_in_pdf(
-    in_file: Union[str, Path, Pdf, bytes, io.BufferedReader],
+    in_file: Union[str, Path, BinaryIO],
     line_margin=0.02,
     char_margin=0.0,
 ) -> List:
@@ -424,11 +424,12 @@ def get_bracket_chars_in_pdf(
     Currently going with just "[hi]" doesn't happen, let's hope that assumption holds.
 
     """
-    if isinstance(in_file, str):
+    if isinstance(in_file, str) or isinstance(in_file, Path):
         open_file = open(in_file, "rb")
+        parser = PDFParser(open_file)
     else:
-        open_file = in_file
-    parser = PDFParser(open_file)
+        open_file = None
+        parser = PDFParser(in_file)
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
     device = BracketPDFPageAggregator(
@@ -439,7 +440,7 @@ def get_bracket_chars_in_pdf(
     for page in PDFPage.create_pages(doc):
         page_count += 1
         interpreter.process_page(page)
-    if isinstance(in_file, str):
+    if open_file and isinstance(in_file, str):
         open_file.close()
     to_return = []
     for page_idx in range(page_count):
@@ -469,7 +470,7 @@ def get_bracket_chars_in_pdf(
 
 ####### OpenCV related functions #########
 
-BoundingBox = Tuple[Number, Number, Number, Number]
+BoundingBox = Tuple[int, int, int, int]
 XYPair = Tuple[Number, Number]
 
 pts_in_inch = 72
@@ -500,7 +501,7 @@ def img2pdf_coords(img, max_height):
 
 
 def get_possible_fields(
-    in_pdf_file: Union[str, Path, bytes, io.BufferedReader]
+    in_pdf_file: Union[str, Path, BinaryIO],
 ) -> List[List[FormField]]:
     images = convert_from_path(in_pdf_file, dpi=dpi)
 
@@ -812,7 +813,7 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
 
 def get_possible_text_fields(
     img: Union[str, BinaryIO, cv2.Mat], text_lines, default_line_height: int = 44
-) -> List[List[BoundingBox]]:
+) -> List[Tuple[BoundingBox, int]]:
     """Uses openCV to attempt to find places where a PDF could expect an input text field.
 
     Caveats so far: only considers straight, normal horizonal lines that don't touch any vertical lines as fields
@@ -903,7 +904,7 @@ def get_possible_text_fields(
 
     text_obj_bboxes = [text[1] for text in text_lines]
 
-    to_return: List = []
+    to_return: List[Tuple[BoundingBox, int]] = []
     for bbox in no_vert_coll:
         intersected = [
             obj
