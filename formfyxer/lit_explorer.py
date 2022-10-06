@@ -59,7 +59,7 @@ except:
 
     nlp = en_core_web_lg.load()
 
-passivepy = PassivePy.PassivePyAnalyzer("en_core_web_lg")
+passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
 
 # Load local variables, models, and API key(s).
@@ -422,9 +422,25 @@ def get_existing_pdf_fields(
     else:
         in_pdf = pikepdf.Pdf.open(in_file)
     return [
-        {"type": field.FT, "var_name": str(field.T), "all": field}
+        {"type": str(field.FT), "var_name": str(field.T), "all": field}
         for field in iter(in_pdf.Root.AcroForm.Fields)
     ]
+
+
+def field_type_and_size(fields:Iterable) -> Iterable:
+    """
+    Transform the fields provided by get_existing_pdf_fields into a summary format.
+
+    Result will look like:
+    [
+        {
+            "var_name": var_name,
+            "type": "text" | 
+        }
+    ]
+    listing the field type in human name, .
+    """
+    # "coordinates": list(field.Rect), 
 
 
 def unlock_pdf_in_place(in_file: str):
@@ -461,6 +477,12 @@ def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     text = re.sub(r" \.", ".", text)
     return text
 
+
+def all_caps_words(text: str) -> int:
+    results = re.findall(r"([A-Z][A-Z]+)", text)
+    if results:
+        return len(results)
+    return 0
 
 def parse_form(
     in_file: str,
@@ -564,6 +586,7 @@ def parse_form(
         "original_text": original_text,
         "number of sentences": len(sentences),
         "number of passive voice sentences": passive_sentences,
+        "number of all caps words": all_caps_words(text),
         "citations": [cite.matched_text() for cite in citations]
     }
 
