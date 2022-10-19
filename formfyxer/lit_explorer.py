@@ -37,7 +37,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, BinaryIO, Iterable, List
+from typing import Union, BinaryIO, Iterable, List, Dict
 from pathlib import Path
 
 stop_words = set(stopwords.words("english"))
@@ -427,20 +427,47 @@ def get_existing_pdf_fields(
     ]
 
 
-def field_type_and_size(fields:Iterable) -> Iterable:
+def get_character_count(field:pikepdf.PikePDF.Object, char_width:float=6, row_height:float=12) -> int:
+    if not hasattr(field["all"], "Rect"):
+        return 1
+
+    height = field["all"].Rect[3] - field["all"].Rect[1]
+    width = field["all"].Rect[2] - field["all"].Rect[0]
+    num_rows = int(height / row_height) if height > row_height else 1
+    num_cols = int(width / char_width)
+
+    max_chars = num_rows * num_cols
+    return max_chars
+
+def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12) -> Iterable:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
 
     Result will look like:
     [
-        {
+        {   
             "var_name": var_name,
-            "type": "text" | 
+            "type": "text | checkbox | signature",
+            "max_length": n
         }
     ]
-    listing the field type in human name, .
     """
-    # "coordinates": list(field.Rect), 
+    processed_fields:List[Dict[str, str]] = []
+    for field in fields:
+        item = {"var_name": field["var_name"],
+                "max_length": get_character_count(field, char_width=char_width, row_height=row_height),
+        }
+        if field["type"] == "/Tx":
+            item["type"] = "text"
+        elif field["type"] == "/Btn":
+            item["type"] = "checkbox"
+        elif field["type"] == "/Sig":
+            item["type"] = "signature"
+        else:
+            item["type"] = field["type"]
+        processed_fields.append(item)
+
+    return processed_fields
 
 
 def unlock_pdf_in_place(in_file: str):
@@ -452,6 +479,24 @@ def unlock_pdf_in_place(in_file: str):
     pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
+        
+
+def time_to_answer(processed_fields, normalized_fields) -> int:
+    """
+    Provide an estimate of how long it would take an average user to respond to the questions
+    on the provided form.
+
+    We use signals such as the field type, name, and space provided for the response to come up with a
+    rough estimate, based on whether the field is:
+
+    1. fill in the blank: 30 seconds?
+    2. gathered - e.g., an id number, case number, etc. (4 minutes)
+    3. third party: need to actually ask someone the information ( 7 minutes ) - e.g., income of not the user, anything else?
+    4. created:
+        a. short created (3 lines or so?) (7)
+        b. long created (anything over 3 lines) (15-30 minutes)
+    """
+    pass
 
 
 def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
