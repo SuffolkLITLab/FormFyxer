@@ -1,3 +1,4 @@
+import enum
 import os
 import re
 import spacy
@@ -19,6 +20,7 @@ import nltk
 from nltk.tokenize import sent_tokenize
 from PassivePySrc import PassivePy
 import eyecite
+from enum import Enum
 
 try:
     from nltk.corpus import stopwords
@@ -37,7 +39,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, BinaryIO, Iterable, List, Dict
+from typing import Union, BinaryIO, Iterable, List, Dict, Tuple
 from pathlib import Path
 
 stop_words = set(stopwords.words("english"))
@@ -439,6 +441,7 @@ def get_character_count(field:pikepdf.PikePDF.Object, char_width:float=6, row_he
     max_chars = num_rows * num_cols
     return max_chars
 
+
 def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12) -> Iterable:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
@@ -452,7 +455,7 @@ def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12
         }
     ]
     """
-    processed_fields:List[Dict[str, str]] = []
+    processed_fields:List[Dict[str, Union[str,int]]] = []
     for field in fields:
         item = {"var_name": field["var_name"],
                 "max_length": get_character_count(field, char_width=char_width, row_height=row_height),
@@ -470,18 +473,59 @@ def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12
     return processed_fields
 
 
-def unlock_pdf_in_place(in_file: str):
-    """
-    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
-    """
-    if not isinstance(in_file, str):
-        return
-    pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
-    if pdf_file.is_encrypted:
-        pdf_file.save(in_file)
-        
+class AnswerType(enum):
+    SLOT_IN = "slot in"
+    GATHERED = "gathered"
+    THIRD_PARTY = "third party"
+    CREATED = "created"
+    AFFIDAVIT = "affidavit"
 
-def time_to_answer(processed_fields, normalized_fields) -> int:
+
+def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:int=40) -> Tuple[float, float]:
+    """
+    Apply a heuristic for the time it takes to answer the given field, in minutes.
+    It is hand-written for now.
+
+    It will factor in the input type, the answer type (slot in, gathered, third party or created), and the
+    amount of input text allowed in the field.
+
+    The return value is a tuple of our estimate and our confidence in the estimate.
+    """
+    # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
+
+    # Add appropriate amount of time for gathering or creating the answer itself (if any) + confidence
+    TIME_TO_MAKE_ANSWER = {
+        AnswerType.SLOT_IN: (.25, 1),
+        AnswerType.GATHERED: (5, 0.75),
+        AnswerType.THIRD_PARTY: (5, 0.5),
+        AnswerType.CREATED: (5, 0.25),
+        AnswerType.AFFIDAVIT: (8, 0.25),
+    }
+
+    if field["type"] == "signature" or "signature" in field["var_name"]:
+        return 0.5, 1
+    if field["type"] == "checkbox":
+        return TIME_TO_MAKE_ANSWER[kind]
+    else:
+        # We chunk answers into three different lengths rather than directly using the character count,
+        # as forms can give very different spaces for the same data without regard to the room the 
+        # user actually needs. But small, medium, and full page is still helpful information.
+
+        ONE_WORD = 4.7 # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
+        ONE_LINE = 80 # Standard line is ~ 80 characters wide
+        SHORT_ANSWER = ONE_LINE * 3 # Anything over 1 line but less than 3 probably needs about the same time to answer
+        LONG_ANSWER = ONE_LINE * 20 # Anything over 3 lines probably needs a full page but form author skimped on space
+
+        if field["max_length"] < ONE_LINE:
+            time_to_write_answer = ONE_WORD * 2 / cpm
+        elif field["max_length"] < SHORT_ANSWER:
+            time_to_write_answer = SHORT_ANSWER / cpm
+        else:
+            time_to_write_answer = LONG_ANSWER / cpm
+
+        return time_to_write_answer + TIME_TO_MAKE_ANSWER[kind][0], TIME_TO_MAKE_ANSWER[kind][1]
+
+def time_to_answer_form(processed_fields, normalized_fields) -> int:
     """
     Provide an estimate of how long it would take an average user to respond to the questions
     on the provided form.
@@ -497,6 +541,17 @@ def time_to_answer(processed_fields, normalized_fields) -> int:
         b. long created (anything over 3 lines) (15-30 minutes)
     """
     pass
+
+
+def unlock_pdf_in_place(in_file: str):
+    """
+    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
+    """
+    if not isinstance(in_file, str):
+        return
+    pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
+    if pdf_file.is_encrypted:
+        pdf_file.save(in_file)
 
 
 def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
