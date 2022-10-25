@@ -489,21 +489,23 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
     It will factor in the input type, the answer type (slot in, gathered, third party or created), and the
     amount of input text allowed in the field.
 
-    The return value is a tuple of our estimate and our confidence in the estimate.
+    The return value is a tuple of our estimate and a constructed standard deviation
     """
     # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
 
-    # Add appropriate amount of time for gathering or creating the answer itself (if any) + confidence
+    # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation
     TIME_TO_MAKE_ANSWER = {
-        AnswerType.SLOT_IN: (.25, 1),
-        AnswerType.GATHERED: (5, 0.75),
-        AnswerType.THIRD_PARTY: (5, 0.5),
-        AnswerType.CREATED: (5, 0.25),
-        AnswerType.AFFIDAVIT: (8, 0.25),
+        AnswerType.SLOT_IN: (.25, .1),
+        AnswerType.GATHERED: (5, 2),
+        AnswerType.THIRD_PARTY: (5, 2),
+        AnswerType.CREATED: (7, 5),
+        AnswerType.AFFIDAVIT: (10, 7),
     }
 
+    STD_DEV_OF_WRITING_SPEED = 17 # We know it's not normal, but assuming it is for now
+
     if field["type"] == "signature" or "signature" in field["var_name"]:
-        return 0.5, 1
+        return 0.5, .1
     if field["type"] == "checkbox":
         return TIME_TO_MAKE_ANSWER[kind]
     else:
@@ -523,6 +525,7 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
         else:
             time_to_write_answer = LONG_ANSWER / cpm
 
+        # np.random.normal(loc=time_to_write_answer, time_to_write_answer / STD_DEV_OF_WRITING_SPEED, )
         return time_to_write_answer + TIME_TO_MAKE_ANSWER[kind][0], TIME_TO_MAKE_ANSWER[kind][1]
 
 def time_to_answer_form(processed_fields, normalized_fields) -> int:
@@ -540,7 +543,29 @@ def time_to_answer_form(processed_fields, normalized_fields) -> int:
         a. short created (3 lines or so?) (7)
         b. long created (anything over 3 lines) (15-30 minutes)
     """
-    pass
+    SLOT_IN_FIELDS = [
+        "users1_name",
+        "users1_name",
+        "users1_birthdate",
+        "users1_address_line_one",
+        "users1_address_line_two",
+        "users1_address_city",
+        "users1_address_state",
+        "users1_address_zip",
+        "users1_phone_number",
+        "users1_email",
+        "plaintiff1_name",
+        "defendant1_name",
+        "petitioners1_name",
+        "respondents1_name",
+        "users1_signature",
+        "signature_date",
+    ]
+    time_to_answer = 0
+    for index, field in enumerate(processed_fields):
+        if field["var_name"] in SLOT_IN_FIELDS or normalized_fields[index] in SLOT_IN_FIELDS:
+            return 
+        if field["var_name"] != normalized_fields[index]:
 
 
 def unlock_pdf_in_place(in_file: str):
