@@ -1,3 +1,4 @@
+from ctypes.wintypes import SHORT
 import enum
 import os
 import re
@@ -39,7 +40,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, BinaryIO, Iterable, List, Dict, Tuple
+from typing import Union, BinaryIO, Iterable, List, Dict, Tuple, Callable
 from pathlib import Path
 
 stop_words = set(stopwords.words("english"))
@@ -481,7 +482,7 @@ class AnswerType(enum):
     AFFIDAVIT = "affidavit"
 
 
-def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:int=40) -> Tuple[float, float]:
+def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:int=40, cpm_std_dev:int=17) -> Callable:
     """
     Apply a heuristic for the time it takes to answer the given field, in minutes.
     It is hand-written for now.
@@ -492,6 +493,7 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
     The return value is a tuple of our estimate and a constructed standard deviation
     """
     # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
+    # Standard deviation is about 17 characters/minute
 
     # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation
     TIME_TO_MAKE_ANSWER = {
@@ -501,8 +503,6 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
         AnswerType.CREATED: (7, 5),
         AnswerType.AFFIDAVIT: (10, 7),
     }
-
-    STD_DEV_OF_WRITING_SPEED = 17 # We know it's not normal, but assuming it is for now
 
     if field["type"] == "signature" or "signature" in field["var_name"]:
         return 0.5, .1
@@ -520,15 +520,17 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
 
         if field["max_length"] < ONE_LINE:
             time_to_write_answer = ONE_WORD * 2 / cpm
+            time_to_write_std_dev = ONE_WORD * 2 / cpm_std_dev
         elif field["max_length"] < SHORT_ANSWER:
             time_to_write_answer = SHORT_ANSWER / cpm
+            time_to_write_std_dev = SHORT_ANSWER / cpm_std_dev
         else:
             time_to_write_answer = LONG_ANSWER / cpm
+            time_to_write_std_dev = LONG_ANSWER / cpm_std_dev
 
-        # np.random.normal(loc=time_to_write_answer, time_to_write_answer / STD_DEV_OF_WRITING_SPEED, )
-        return time_to_write_answer + TIME_TO_MAKE_ANSWER[kind][0], TIME_TO_MAKE_ANSWER[kind][1]
+        return lambda: np.random.normal(loc=time_to_write_answer, scale=time_to_write_std_dev ) + np.random.normal(loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1] )
 
-def time_to_answer_form(processed_fields, normalized_fields) -> int:
+def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, float]:
     """
     Provide an estimate of how long it would take an average user to respond to the questions
     on the provided form.
@@ -536,14 +538,14 @@ def time_to_answer_form(processed_fields, normalized_fields) -> int:
     We use signals such as the field type, name, and space provided for the response to come up with a
     rough estimate, based on whether the field is:
 
-    1. fill in the blank: 30 seconds?
-    2. gathered - e.g., an id number, case number, etc. (4 minutes)
-    3. third party: need to actually ask someone the information ( 7 minutes ) - e.g., income of not the user, anything else?
+    1. fill in the blank
+    2. gathered - e.g., an id number, case number, etc.
+    3. third party: need to actually ask someone the information - e.g., income of not the user, anything else?
     4. created:
-        a. short created (3 lines or so?) (7)
-        b. long created (anything over 3 lines) (15-30 minutes)
+        a. short created (3 lines or so?)
+        b. long created (anything over 3 lines)
     """
-    SLOT_IN_FIELDS = [
+    SLOT_IN_FIELDS = {
         "users1_name",
         "users1_name",
         "users1_birthdate",
@@ -560,13 +562,59 @@ def time_to_answer_form(processed_fields, normalized_fields) -> int:
         "respondents1_name",
         "users1_signature",
         "signature_date",
-    ]
-    time_to_answer = 0
+    }
+
+    SLOT_IN_KEYWORDS = {
+        "name",
+        "birthdate",
+        "phone",
+    }
+
+    GATHERED_KEYWORDS = {
+        "number",
+        "value",
+        "amount",
+        "id number",
+        "social security",
+        "benefit id",
+        "docket",
+        "case",
+        "employer",
+    }
+
+    CREATED_KEYWORDS = {
+        "choose",
+        "choice",
+        "why",
+        "fact",
+    }
+
+    AFFIDAVIT_KEYWORDS = {
+        "affidavit",
+    }
+
+    times_to_answer:List[Callable] = []
+
     for index, field in enumerate(processed_fields):
         if field["var_name"] in SLOT_IN_FIELDS or normalized_fields[index] in SLOT_IN_FIELDS:
-            return 
+            times_to_answer.append(time_to_answer_field(field, AnswerType.SLOT_IN))
+        if field["var_name"]:
+            pass
         if field["var_name"] != normalized_fields[index]:
+            pass
+    
+    samples = []
+    # We're going to run a monte carlo simulation to get a time to answer and standard deviation
+    for index in range(0,100):
+        samples.append(sum(
+            [
+            item() for item in times_to_answer
+            ]
+        )
+        )
 
+    np_array = np.array(samples)
+    return np_array.mean(), np_array.std()
 
 def unlock_pdf_in_place(in_file: str):
     """
