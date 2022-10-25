@@ -22,6 +22,7 @@ from nltk.tokenize import sent_tokenize
 from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
+import sigfig
 
 try:
     from nltk.corpus import stopwords
@@ -32,7 +33,7 @@ except:
     nltk.download("stopwords")
     from nltk.corpus import stopwords
 try:
-    nltk.data.find('tokenizers/punkt')
+    nltk.data.find("tokenizers/punkt")
 except:
     nltk.download("punkt")
 
@@ -430,7 +431,9 @@ def get_existing_pdf_fields(
     ]
 
 
-def get_character_count(field:pikepdf.Object, char_width:float=6, row_height:float=12) -> int:
+def get_character_count(
+    field: pikepdf.Object, char_width: float = 6, row_height: float = 12
+) -> int:
     if not hasattr(field["all"], "Rect"):
         return 1
 
@@ -443,23 +446,28 @@ def get_character_count(field:pikepdf.Object, char_width:float=6, row_height:flo
     return max_chars
 
 
-def field_types_and_sizes(fields:Iterable, char_width:float=6, row_height:float=12) -> Iterable:
+def field_types_and_sizes(
+    fields: Iterable, char_width: float = 6, row_height: float = 12
+) -> Iterable:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
 
     Result will look like:
     [
-        {   
+        {
             "var_name": var_name,
             "type": "text | checkbox | signature",
             "max_length": n
         }
     ]
     """
-    processed_fields:List[Dict[str, Union[str,int]]] = []
+    processed_fields: List[Dict[str, Union[str, int]]] = []
     for field in fields:
-        item = {"var_name": field["var_name"],
-                "max_length": get_character_count(field, char_width=char_width, row_height=row_height),
+        item = {
+            "var_name": field["var_name"],
+            "max_length": get_character_count(
+                field, char_width=char_width, row_height=row_height
+            ),
         }
         if field["type"] == "/Tx":
             item["type"] = "text"
@@ -482,7 +490,12 @@ class AnswerType(Enum):
     AFFIDAVIT = "affidavit"
 
 
-def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:int=40, cpm_std_dev:int=17) -> Callable:
+def time_to_answer_field(
+    field: Dict[str, Union[str, int]],
+    kind: AnswerType,
+    cpm: int = 40,
+    cpm_std_dev: int = 17,
+) -> Callable:
     """
     Apply a heuristic for the time it takes to answer the given field, in minutes.
     It is hand-written for now.
@@ -497,7 +510,7 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
 
     # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation
     TIME_TO_MAKE_ANSWER = {
-        AnswerType.SLOT_IN: (.25, .1),
+        AnswerType.SLOT_IN: (0.25, 0.1),
         AnswerType.GATHERED: (5, 2),
         AnswerType.THIRD_PARTY: (5, 2),
         AnswerType.CREATED: (7, 5),
@@ -507,28 +520,43 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
     if field["type"] == "signature" or "signature" in field["var_name"]:
         return lambda: np.random.normal(loc=0.5, scale=0.1)
     if field["type"] == "checkbox":
-        return lambda: np.random.normal(loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1])
+        return lambda: np.random.normal(
+            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1]
+        )
     else:
         # We chunk answers into three different lengths rather than directly using the character count,
-        # as forms can give very different spaces for the same data without regard to the room the 
+        # as forms can give very different spaces for the same data without regard to the room the
         # user actually needs. But small, medium, and full page is still helpful information.
 
-        ONE_WORD = 4.7 # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
-        ONE_LINE = 80 # Standard line is ~ 80 characters wide
-        SHORT_ANSWER = ONE_LINE * 3 # Anything over 1 line but less than 3 probably needs about the same time to answer
-        LONG_ANSWER = ONE_LINE * 20 # Anything over 3 lines probably needs a full page but form author skimped on space
+        ONE_WORD = 4.7  # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
+        ONE_LINE = 80  # Standard line is ~ 80 characters wide
+        SHORT_ANSWER = (
+            ONE_LINE * 3
+        )  # Anything over 1 line but less than 3 probably needs about the same time to answer
+        MEDIUM_ANSWER = ONE_LINE * 10
+        LONG_ANSWER = (
+            ONE_LINE * 20
+        )  # Anything over 10 lines probably needs a full page but form author skimped on space
 
-        if field["max_length"] < ONE_LINE:
+        if field["max_length"] <= ONE_LINE:
             time_to_write_answer = ONE_WORD * 2 / cpm
             time_to_write_std_dev = ONE_WORD * 2 / cpm_std_dev
-        elif field["max_length"] < SHORT_ANSWER:
+        elif field["max_length"] <= SHORT_ANSWER:
             time_to_write_answer = SHORT_ANSWER / cpm
             time_to_write_std_dev = SHORT_ANSWER / cpm_std_dev
+        elif field["max_length"] <= MEDIUM_ANSWER:
+            time_to_write_answer = MEDIUM_ANSWER / cpm
+            time_to_write_std_dev = MEDIUM_ANSWER / cpm_std_dev
         else:
             time_to_write_answer = LONG_ANSWER / cpm
             time_to_write_std_dev = LONG_ANSWER / cpm_std_dev
 
-        return lambda: np.random.normal(loc=time_to_write_answer, scale=time_to_write_std_dev ) + np.random.normal(loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1] )
+        return lambda: np.random.normal(
+            loc=time_to_write_answer, scale=time_to_write_std_dev
+        ) + np.random.normal(
+            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1]
+        )
+
 
 def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, float]:
     """
@@ -581,6 +609,7 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         "docket",
         "case",
         "employer",
+        "date",
     }
 
     CREATED_KEYWORDS = {
@@ -594,17 +623,21 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         "affidavit",
     }
 
-    times_to_answer:List[Callable] = []
+    times_to_answer: List[Callable] = []
 
     for index, field in enumerate(processed_fields):
         var_name = field["var_name"].lower()
-        if var_name in SLOT_IN_FIELDS or normalized_fields[index] in SLOT_IN_FIELDS or any(keyword in var_name for keyword in SLOT_IN_KEYWORDS):
+        if (
+            var_name in SLOT_IN_FIELDS
+            or normalized_fields[index] in SLOT_IN_FIELDS
+            or any(keyword in var_name for keyword in SLOT_IN_KEYWORDS)
+        ):
             times_to_answer.append(time_to_answer_field(field, AnswerType.SLOT_IN))
         elif any(keyword in var_name for keyword in GATHERED_KEYWORDS):
             times_to_answer.append(time_to_answer_field(field, AnswerType.GATHERED))
         elif set(var_name.split()).intersection(CREATED_KEYWORDS):
             times_to_answer.append(time_to_answer_field(field, AnswerType.CREATED))
-        elif field["type"] == "text": 
+        elif field["type"] == "text":
             if field["max_length"] <= 100:
                 times_to_answer.append(time_to_answer_field(field, AnswerType.SLOT_IN))
             else:
@@ -612,18 +645,14 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         else:
             times_to_answer.append(time_to_answer_field(field, AnswerType.CREATED))
 
-    # Run a monte carlo simulation to get a time to answer and standard deviation    
+    # Run a monte carlo simulation to get a time to answer and standard deviation
     samples = []
-    for _ in range(0,100):
-        samples.append(sum(
-            [
-            item() for item in times_to_answer
-            ]
-        )
-        )
+    for _ in range(0, 20000):
+        samples.append(sum([item() for item in times_to_answer]))
 
     np_array = np.array(samples)
-    return np_array.mean(), np_array.std()
+    return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
+
 
 def unlock_pdf_in_place(in_file: str):
     """
@@ -665,6 +694,7 @@ def all_caps_words(text: str) -> int:
     if results:
         return len(results)
     return 0
+
 
 def parse_form(
     in_file: str,
@@ -748,11 +778,13 @@ def parse_form(
     sentences = sent_tokenize(text)
 
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3). PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences),0)
+    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
 
     passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
 
-    citations = eyecite.get_citations(eyecite.clean_text(original_text, ["all_whitespace","underscores"]))
+    citations = eyecite.get_citations(
+        eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
+    )
 
     stats = {
         "title": title,
@@ -770,7 +802,7 @@ def parse_form(
         "number of sentences": len(sentences),
         "number of passive voice sentences": passive_sentences,
         "number of all caps words": all_caps_words(text),
-        "citations": [cite.matched_text() for cite in citations]
+        "citations": [cite.matched_text() for cite in citations],
     }
 
     if rewrite:
