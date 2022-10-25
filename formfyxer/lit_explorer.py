@@ -430,7 +430,7 @@ def get_existing_pdf_fields(
     ]
 
 
-def get_character_count(field:pikepdf.PikePDF.Object, char_width:float=6, row_height:float=12) -> int:
+def get_character_count(field:pikepdf.Object, char_width:float=6, row_height:float=12) -> int:
     if not hasattr(field["all"], "Rect"):
         return 1
 
@@ -443,7 +443,7 @@ def get_character_count(field:pikepdf.PikePDF.Object, char_width:float=6, row_he
     return max_chars
 
 
-def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12) -> Iterable:
+def field_types_and_sizes(fields:Iterable, char_width:float=6, row_height:float=12) -> Iterable:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
 
@@ -474,7 +474,7 @@ def field_type_and_size(fields:Iterable, char_width:float=6, row_height:float=12
     return processed_fields
 
 
-class AnswerType(enum):
+class AnswerType(Enum):
     SLOT_IN = "slot in"
     GATHERED = "gathered"
     THIRD_PARTY = "third party"
@@ -505,9 +505,9 @@ def time_to_answer_field(field:Dict[str, Union[str,int]], kind:AnswerType, cpm:i
     }
 
     if field["type"] == "signature" or "signature" in field["var_name"]:
-        return 0.5, .1
+        return lambda: np.random.normal(loc=0.5, scale=0.1)
     if field["type"] == "checkbox":
-        return TIME_TO_MAKE_ANSWER[kind]
+        return lambda: np.random.normal(loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1])
     else:
         # We chunk answers into three different lengths rather than directly using the character count,
         # as forms can give very different spaces for the same data without regard to the room the 
@@ -566,6 +566,7 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
 
     SLOT_IN_KEYWORDS = {
         "name",
+        "birth date",
         "birthdate",
         "phone",
     }
@@ -596,16 +597,24 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
     times_to_answer:List[Callable] = []
 
     for index, field in enumerate(processed_fields):
-        if field["var_name"] in SLOT_IN_FIELDS or normalized_fields[index] in SLOT_IN_FIELDS:
+        var_name = field["var_name"].lower()
+        if var_name in SLOT_IN_FIELDS or normalized_fields[index] in SLOT_IN_FIELDS or any(keyword in var_name for keyword in SLOT_IN_KEYWORDS):
             times_to_answer.append(time_to_answer_field(field, AnswerType.SLOT_IN))
-        if field["var_name"]:
-            pass
-        if field["var_name"] != normalized_fields[index]:
-            pass
-    
+        elif any(keyword in var_name for keyword in GATHERED_KEYWORDS):
+            times_to_answer.append(time_to_answer_field(field, AnswerType.GATHERED))
+        elif set(var_name.split()).intersection(CREATED_KEYWORDS):
+            times_to_answer.append(time_to_answer_field(field, AnswerType.CREATED))
+        elif field["type"] == "text": 
+            if field["max_length"] <= 100:
+                times_to_answer.append(time_to_answer_field(field, AnswerType.SLOT_IN))
+            else:
+                times_to_answer.append(time_to_answer_field(field, AnswerType.CREATED))
+        else:
+            times_to_answer.append(time_to_answer_field(field, AnswerType.CREATED))
+
+    # Run a monte carlo simulation to get a time to answer and standard deviation    
     samples = []
-    # We're going to run a monte carlo simulation to get a time to answer and standard deviation
-    for index in range(0,100):
+    for _ in range(0,100):
         samples.append(sum(
             [
             item() for item in times_to_answer
@@ -750,6 +759,7 @@ def parse_form(
         "category": cat,
         "pages": npages,
         "reading grade level": readability,
+        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_fields),
         "list": nmsi,
         "avg fields per page": f_per_page,
         "fields": new_fields,
