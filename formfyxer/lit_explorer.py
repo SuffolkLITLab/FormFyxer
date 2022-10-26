@@ -441,12 +441,12 @@ def get_character_count(
 
     # https://pikepdf.readthedocs.io/en/latest/api/main.html#pikepdf.Rectangle
     # Rectangle with llx,lly,urx,ury
-    height = field["all"].Rect[3] - field["all"].Rect[1] # type: ignore
-    width = field["all"].Rect[2] - field["all"].Rect[0] # type: ignore
+    height = field["all"].Rect[3] - field["all"].Rect[1]  # type: ignore
+    width = field["all"].Rect[2] - field["all"].Rect[0]  # type: ignore
     # height = field["all"].Rect.height
     # width = field["all"].Rect.width
-    num_rows = int(height / row_height) if height > row_height else 1 # type: ignore
-    num_cols = int(width / char_width) # type: ignore
+    num_rows = int(height / row_height) if height > row_height else 1  # type: ignore
+    num_cols = int(width / char_width)  # type: ignore
 
     max_chars = num_rows * num_cols
     return max_chars
@@ -457,6 +457,7 @@ class InputType(Enum):
     Input type maps onto the type of input the PDF author chose for the field. We only
     handle text, checkbox, and signature fields.
     """
+
     TEXT = "text"
     CHECKBOX = "checkbox"
     SIGNATURE = "signature"
@@ -469,7 +470,7 @@ class FieldInfo(TypedDict):
 
 
 def field_types_and_sizes(
-    fields: Iterable, 
+    fields: Iterable,
 ) -> List[FieldInfo]:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
@@ -485,7 +486,7 @@ def field_types_and_sizes(
     """
     processed_fields: List[FieldInfo] = []
     for field in fields:
-        item:FieldInfo = {
+        item: FieldInfo = {
             "var_name": field["var_name"],
             "max_length": get_character_count(
                 field,
@@ -513,15 +514,16 @@ class AnswerType(Enum):
 
     "Gathered" answers require looking around one's desk, for e.g., a health insurance number.
 
-    "Third party" answers require picking up the phone to call someone else who is the keeper 
+    "Third party" answers require picking up the phone to call someone else who is the keeper
     of the information.
 
     "Created" answers don't exist before the user is presented with the question. They may include
     a choice, creating a narrative, or even applying legal reasoning. "Affidavits" are a special
     form of created answers.
-    
+
     See Jarret and Gaffney, Forms That Work (2008)
     """
+
     SLOT_IN = "slot in"
     GATHERED = "gathered"
     THIRD_PARTY = "third party"
@@ -529,7 +531,7 @@ class AnswerType(Enum):
     AFFIDAVIT = "affidavit"
 
 
-def classify_field(field: FieldInfo, new_name:str) -> AnswerType:
+def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     """
     Apply heuristics to the field's original and "normalized" name to classify
     it as either a "slot-in", "gathered", "third party" or "created" field type.
@@ -597,7 +599,7 @@ def classify_field(field: FieldInfo, new_name:str) -> AnswerType:
         return AnswerType.CREATED
     elif field["type"] == InputType.TEXT:
         if field["max_length"] <= 100:
-            return  AnswerType.SLOT_IN
+            return AnswerType.SLOT_IN
         else:
             return AnswerType.CREATED
     return AnswerType.GATHERED
@@ -608,7 +610,7 @@ def time_to_answer_field(
     new_name: str,
     cpm: int = 40,
     cpm_std_dev: int = 17,
-) -> Callable[[],float]:
+) -> Callable[[], float]:
     """
     Apply a heuristic for the time it takes to answer the given field, in minutes.
     It is hand-written for now.
@@ -653,7 +655,9 @@ def time_to_answer_field(
             ONE_LINE * 10
         )  # Anything over 10 lines probably needs a full page but form author skimped on space
 
-        if field["max_length"] <= ONE_LINE or ( field["max_length"] <= ONE_LINE * 2 and kind == AnswerType.SLOT_IN):
+        if field["max_length"] <= ONE_LINE or (
+            field["max_length"] <= ONE_LINE * 2 and kind == AnswerType.SLOT_IN
+        ):
             time_to_write_answer = ONE_WORD * 2 / cpm
             time_to_write_std_dev = ONE_WORD * 2 / cpm_std_dev
         elif field["max_length"] <= SHORT_ANSWER:
@@ -841,7 +845,9 @@ def parse_form(
         "category": cat,
         "pages": npages,
         "reading grade level": readability,
-        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_fields) if ff else -1,
+        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_fields)
+        if ff
+        else -1,
         "list": nmsi,
         "avg fields per page": f_per_page,
         "fields": new_fields,
@@ -857,13 +863,17 @@ def parse_form(
     if debug and ff:
         debug_fields = []
         for index, field in enumerate(field_types_and_sizes(ff)):
-            debug_fields.append({
-                "name": field["var_name"],
-                "input type": str(field["type"]),
-                "max length": field["max_length"],
-                "inferred answer type": str(classify_field(field, new_fields[index])),
-                "time to answer": time_to_answer_field(field, new_fields[index])()
-            })
+            debug_fields.append(
+                {
+                    "name": field["var_name"],
+                    "input type": str(field["type"]),
+                    "max length": field["max_length"],
+                    "inferred answer type": str(
+                        classify_field(field, new_fields[index])
+                    ),
+                    "time to answer": time_to_answer_field(field, new_fields[index])(),
+                }
+            )
         stats["debug fields"] = debug_fields
 
     if rewrite:

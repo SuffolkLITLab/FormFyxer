@@ -7,3 +7,4 @@ reportlab
 requests
 spacy
 types-requests
+pandas-stubs

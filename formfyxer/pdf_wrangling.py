@@ -378,6 +378,7 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
     def get_result(self) -> List[LTPage]:
         return self.results
 
+
 def get_textboxes_in_pdf(
     in_file: Union[str, Path, BinaryIO],
     line_margin=0.02,
@@ -387,7 +388,7 @@ def get_textboxes_in_pdf(
     if isinstance(in_file, str) or isinstance(in_file, Path):
         open_file = open(in_file, "rb")
         parser = PDFParser(open_file)
-    else: # if isinstance(in_file, (Path, Pdf, bytes, io.BufferedReader)):
+    else:  # if isinstance(in_file, (Path, Pdf, bytes, io.BufferedReader)):
         open_file = None
         parser = PDFParser(in_file)
     doc = PDFDocument(parser)
