@@ -704,7 +704,7 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
     for field_simulator in field_answer_time_simulators:
         np_array += field_simulator(num_samples)
 
-    return sigfig.round(np_array.mean(), 2), sigfig.round(np.array.std(), 2)
+    return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
 
 
 def unlock_pdf_in_place(in_file: str):
