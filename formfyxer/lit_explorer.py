@@ -618,7 +618,7 @@ def time_to_answer_field(
     It will factor in the input type, the answer type (slot in, gathered, third party or created), and the
     amount of input text allowed in the field.
 
-    The return value is a tuple of our estimate and a constructed standard deviation
+    The return value is a function that can return N samples of how long it will take to answer the field
     """
     # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
     # Standard deviation is about 17 characters/minute
@@ -635,10 +635,10 @@ def time_to_answer_field(
     kind = classify_field(field, new_name)
 
     if field["type"] == InputType.SIGNATURE or "signature" in field["var_name"]:
-        return lambda: np.random.normal(loc=0.5, scale=0.1)
+        return lambda number_samples: np.random.normal(loc=0.5, scale=0.1, size=number_samples)
     if field["type"] == InputType.CHECKBOX:
-        return lambda: np.random.normal(
-            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1]
+        return lambda number_samples: np.random.normal(
+            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1], size=number_samples
         )
     else:
         # We chunk answers into three different lengths rather than directly using the character count,
@@ -670,10 +670,10 @@ def time_to_answer_field(
             time_to_write_answer = LONG_ANSWER / cpm
             time_to_write_std_dev = LONG_ANSWER / cpm_std_dev
 
-        return lambda: np.random.normal(
-            loc=time_to_write_answer, scale=time_to_write_std_dev
+        return lambda number_samples: np.random.normal(
+            loc=time_to_write_answer, scale=time_to_write_std_dev, size=number_samples
         ) + np.random.normal(
-            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1]
+            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1], size=number_samples
         )
 
 
@@ -699,11 +699,11 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         times_to_answer.append(time_to_answer_field(field, normalized_fields[index]))
 
     # Run a monte carlo simulation to get a time to answer and standard deviation
-    samples = []
-    for _ in range(0, 20000):
-        samples.append(sum([item() for item in times_to_answer]))
+    num_samples = 20000
+    np_array = np.zeros(num_samples)
+    for item in times_to_answer:
+        np_array += item(num_samples)
 
-    np_array = np.array(samples)
     return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
 
 
