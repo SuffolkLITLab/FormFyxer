@@ -1,3 +1,6 @@
 [build-system]
 requires = ["setuptools>=40.0.0", "pip", "spacy"]
 build-backend = "setuptools.build_meta"
+
+[tool.black]
+extend-exclude = '(__init__.py|setup.py)'

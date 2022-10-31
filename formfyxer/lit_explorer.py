@@ -635,10 +635,14 @@ def time_to_answer_field(
     kind = classify_field(field, new_name)
 
     if field["type"] == InputType.SIGNATURE or "signature" in field["var_name"]:
-        return lambda number_samples: np.random.normal(loc=0.5, scale=0.1, size=number_samples)
+        return lambda number_samples: np.random.normal(
+            loc=0.5, scale=0.1, size=number_samples
+        )
     if field["type"] == InputType.CHECKBOX:
         return lambda number_samples: np.random.normal(
-            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1], size=number_samples
+            loc=TIME_TO_MAKE_ANSWER[kind][0],
+            scale=TIME_TO_MAKE_ANSWER[kind][1],
+            size=number_samples,
         )
     else:
         # We chunk answers into three different lengths rather than directly using the character count,
@@ -673,7 +677,9 @@ def time_to_answer_field(
         return lambda number_samples: np.random.normal(
             loc=time_to_write_answer, scale=time_to_write_std_dev, size=number_samples
         ) + np.random.normal(
-            loc=TIME_TO_MAKE_ANSWER[kind][0], scale=TIME_TO_MAKE_ANSWER[kind][1], size=number_samples
+            loc=TIME_TO_MAKE_ANSWER[kind][0],
+            scale=TIME_TO_MAKE_ANSWER[kind][1],
+            size=number_samples,
         )
 
 
@@ -696,9 +702,11 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
     field_answer_time_simulators: List[Callable[[int], np.ndarray]] = []
 
     for index, field in enumerate(processed_fields):
-        field_answer_time_simulators.append(time_to_answer_field(field, normalized_fields[index]))
+        field_answer_time_simulators.append(
+            time_to_answer_field(field, normalized_fields[index])
+        )
 
-    # Run a monte carlo simulation to get a time to answer and standard deviation
+    # Run a monte carlo simulation to get times to answer and standard deviation
     num_samples = 20000
     np_array = np.zeros(num_samples)
     for field_simulator in field_answer_time_simulators:
