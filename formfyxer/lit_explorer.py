@@ -610,7 +610,7 @@ def time_to_answer_field(
     new_name: str,
     cpm: int = 40,
     cpm_std_dev: int = 17,
-) -> Callable[[], float]:
+) -> Callable[[int], np.ndarray]:
     """
     Apply a heuristic for the time it takes to answer the given field, in minutes.
     It is hand-written for now.
@@ -693,18 +693,18 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         b. long created (anything over 3 lines)
     """
 
-    times_to_answer: List[Callable] = []
+    field_answer_time_simulators: List[Callable[[int], np.ndarray]] = []
 
     for index, field in enumerate(processed_fields):
-        times_to_answer.append(time_to_answer_field(field, normalized_fields[index]))
+        field_answer_time_simulators.append(time_to_answer_field(field, normalized_fields[index]))
 
     # Run a monte carlo simulation to get a time to answer and standard deviation
     num_samples = 20000
     np_array = np.zeros(num_samples)
-    for item in times_to_answer:
-        np_array += item(num_samples)
+    for field_simulator in field_answer_time_simulators:
+        np_array += field_simulator(num_samples)
 
-    return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
+    return sigfig.round(np_array.mean(), 2), sigfig.round(np.array.std(), 2)
 
 
 def unlock_pdf_in_place(in_file: str):
@@ -871,7 +871,7 @@ def parse_form(
                     "inferred answer type": str(
                         classify_field(field, new_fields[index])
                     ),
-                    "time to answer": time_to_answer_field(field, new_fields[index])(),
+                    "time to answer": time_to_answer_field(field, new_fields[index])(1),
                 }
             )
         stats["debug fields"] = debug_fields
@@ -890,7 +890,7 @@ def parse_form(
 
             my_pdf.save(in_file)
         except:
-            error = "could not change form fields"
+            stats["error"] = "could not change form fields"
 
     return stats
 
