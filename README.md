@@ -24,6 +24,7 @@ If you are on Anaconda, simply run `conda install poppler`. Otherwise, follow th
 - [spot](#formfyxerspottextlower025pred05upper06verbose0)
 - [guess_form_name](#formfyxerguess_form_nametext)
 - [plain_lang](#formfyxerplain_langtext)
+- [describe_form](#formfyxerdescribe_formtext)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
 - [set_fields](#formfyxerset_fields)
@@ -286,6 +287,26 @@ A string with a proposed plain language rewrite.
 >>> import formfyxer
 >>> formfyxer.guess_form_name("""When the process of freeing a vehicle that has been stuck results in ruts or holes, the operator will fill the rut or hole created by such activity before removing the vehicle from the immediate area.""")
 'If you try to free a car that is stuck and it makes a rut or hole, you need to fill it in before you move the car away.'
+```
+[back to top](#formfyxer)
+
+
+
+
+### formfyxer.describe_form(text)
+An OpenAI-enabled tool that will write a draft plain language description for a form. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+
+Given a string conataining the full text of a court form, this function will return its a draft description of the form written in plain language. 
+
+#### Parameters:
+* **text : str** text.
+#### Returns: 
+A string with a proposed plain language rewrite.
+#### Example:
+```python
+>>> import formfyxer
+>>> formfyxer.guess_form_name("""Approved, SCAO. STATE OF MICHIGAN. JUDICIAL CIRCUIT. COUNTY. Original Court. 1st copy Moving party. 2nd copy Objecting party. 3rd copy Friend of the court. 4th copy Proof of service. 5th copy Proof of service. A. CASE NO. OBJECTION TO PROPOSED ORDER. Court address. Court telephone no. Plaintiff's name, address, and telephone no. moving party. Defendant's name, address, and telephone no. moving party. v. Third party's name, address, and telephone no. moving party. I received a notice to enter a proposed order without a hearing dated. I object to the entry of the proposed order and request a hearing by the court. My objection is based on the following reason s. C. Moving party's signature. Name type or print. CERTIFICATE OF MAILING. Signature of objecting party. I certify that on this date I served a copy of this objection on the parties or their attorneys by first class mail addressed to their. last known addresses as defined in MCR 3.203. FOC 78 3 11 OBJECTION TO PROPOSED ORDER. MCR 2.602 B. B. D. E. Date. F. Date.""")
+'This form is used to object to a proposed court order. It allows someone to explain why they disagree with the proposed order and request a hearing by the court.'
 ```
 [back to top](#formfyxer)
 
