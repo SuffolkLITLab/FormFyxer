@@ -704,7 +704,7 @@ def plain_lang(text):
 
 def guess_form_name(text):
     tokens = 20
-    prompt = text + "\nThe text above is from a court form. Write the form's name?"
+    prompt = text + "\nThe text above is from a court form. Write the form's name."
     output = TextComplete(prompt,max_tokens=tokens)
     return output
 
