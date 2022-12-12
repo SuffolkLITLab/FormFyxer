@@ -16,12 +16,14 @@ If you are on Anaconda, simply run `conda install poppler`. Otherwise, follow th
 
 ## Functions
 
-- [reCase](#formfyxerrecasetext)
+- [re_case](#formfyxerre_casetext)
 - [regex_norm_field](#formfyxerregex_norm_fieldtext)
 - [reformat_field](#formfyxerreformat_fieldtextmax_length30)
 - [normalize_name](#formfyxernormalize_namejurgroupnperlast_fieldthis_field)
-- [vectorize](#formfyxerspottextnormalize0)
+- [vectorize](#formfyxervectorizetextnormalize0)
 - [spot](#formfyxerspottextlower025pred05upper06verbose0)
+- [guess_form_name](#formfyxerguess_form_nametext)
+- [plain_lang](#formfyxerplain_langtext)
 - [parse_form](#formfyxerparse_formfileloctitlenonejurnonecatnonenormalize1use_spot0rewrite0)
 - [cluster_screens](#formfyxercluster_screensfieldsdamping07)
 - [set_fields](#formfyxerset_fields)
@@ -31,7 +33,7 @@ If you are on Anaconda, simply run `conda install poppler`. Otherwise, follow th
 - [auto_add_fields](#formfyxerauto_add_fields)
 
 
-### formfyxer.reCase(text)
+### formfyxer.re_case(text)
 Reformats snake_case, camelCase, and similarly-formatted text into individual words.
 #### Parameters:
 * **text : str**
@@ -101,7 +103,7 @@ object
 
 
 
-### formfyxer.spot(text,normalize=0)
+### formfyxer.vectorize(text,normalize=0)
 A simple wrapper for Spacy's word2vec vectorization of a string. 
 
 #### Parameters:
@@ -247,6 +249,43 @@ A list of LIST entities/issues found in the text.
        'lower': 0.4048013980740931,
        'pred': 0.5571460102525152,
        'upper': 0.6989976788434928}]}]}]}
+```
+[back to top](#formfyxer)
+
+
+
+### formfyxer.guess_form_name(text)
+An OpenAI-enabled tool that will guess the name of a court form given the full text of the form. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+
+Given a string conataining the full text of a court form, this function will return its best guess for the name of the form. 
+
+#### Parameters:
+* **text : str** Full text of a form.
+#### Returns: 
+A string with a proposed name for a court form.
+#### Example:
+```python
+>>> import formfyxer
+>>> formfyxer.guess_form_name("""Approved, SCAO. STATE OF MICHIGAN. JUDICIAL CIRCUIT. COUNTY. Original Court. 1st copy Moving party. 2nd copy Objecting party. 3rd copy Friend of the court. 4th copy Proof of service. 5th copy Proof of service. A. CASE NO. OBJECTION TO PROPOSED ORDER. Court address. Court telephone no. Plaintiff's name, address, and telephone no. moving party. Defendant's name, address, and telephone no. moving party. v. Third party's name, address, and telephone no. moving party. I received a notice to enter a proposed order without a hearing dated. I object to the entry of the proposed order and request a hearing by the court. My objection is based on the following reason s. C. B. D. E. Date. Moving party's signature. Name type or print. CERTIFICATE OF MAILING. I certify that on this date I served a copy of this objection on the parties or their attorneys by first class mail addressed to their. last known addresses as defined in MCR 3.203. F. Date. Signature of objecting party. FOC 78 3 11 OBJECTION TO PROPOSED ORDER. MCR 2.602 B.""")
+'Objection to Proposed Order'
+```
+[back to top](#formfyxer)
+
+
+### formfyxer.plain_lang(text)
+An OpenAI-enabled tool that will rewrite a text into a plain language draft. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+
+Given a string, this function will return its attempt at rewriting the srting in plain language. 
+
+#### Parameters:
+* **text : str** text.
+#### Returns: 
+A string with a proposed plain language rewrite.
+#### Example:
+```python
+>>> import formfyxer
+>>> formfyxer.guess_form_name("""When the process of freeing a vehicle that has been stuck results in ruts or holes, the operator will fill the rut or hole created by such activity before removing the vehicle from the immediate area.""")
+'If you try to free a car that is stuck and it makes a rut or hole, you need to fill it in before you move the car away.'
 ```
 [back to top](#formfyxer)
 
