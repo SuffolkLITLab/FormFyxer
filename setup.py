@@ -14,7 +14,7 @@ class InstallSpacyModelCommand(install):
 
 setuptools.setup(
     name='formfyxer',
-    version='0.0.10.1',
+    version='0.0.10.2',
     author='Suffolk LIT Lab',
     author_email='litlab@suffolk.edu',
     description='A tool for learning about and pre-processing pdf forms.',
@@ -28,11 +28,10 @@ setuptools.setup(
     packages=['formfyxer'],
     install_requires=['spacy', 'pdfminer.six', 'pikepdf',  'textstat',  'requests',  'numpy',  'sklearn', 'networkx',
         'joblib',  'nltk', 'boxdetect', 'pdf2image', 'reportlab', 'pdfminer.six', 'opencv-python', 'eyecite', 'passivepy>=0.2.16',
-        'sigfig', 'typer>=0.4.1,<0.5.0' # typer pre 0.4.1 was broken by click 8.1.0: https://github.com/explosion/spaCy/issues/10564
+        'sigfig', 'typer>=0.4.1,<0.5.0', 'openai', 'transformers' # typer pre 0.4.1 was broken by click 8.1.0: https://github.com/explosion/spaCy/issues/10564
     ],
     cmdclass={
       'install': InstallSpacyModelCommand,
     },
     include_package_data = True
 )
-

@@ -1,3 +1,5 @@
+# Updated on 2022-12-11
+
 from ctypes.wintypes import SHORT
 from dataclasses import Field
 import enum
@@ -6,6 +8,7 @@ import re
 from sklearn.metrics import classification_report
 import spacy
 from pdfminer.high_level import extract_text
+#import PyPDF2
 import pikepdf
 import textstat
 import requests
@@ -28,7 +31,6 @@ import sigfig
 
 try:
     from nltk.corpus import stopwords
-
     stopwords.words
 except:
     print("Downloading stopwords")
@@ -46,25 +48,26 @@ import _thread
 from typing import Union, BinaryIO, Iterable, List, Dict, Tuple, Callable, TypedDict
 from pathlib import Path
 
+import openai
+from transformers import GPT2TokenizerFast
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+
 stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
     import en_core_web_lg
-
     nlp = en_core_web_lg.load()
 except:
     print("Downloading word2vec model en_core_web_lg")
     import subprocess
-
     bashCommand = "python -m spacy download en_core_web_lg"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
     import en_core_web_lg
-
     nlp = en_core_web_lg.load()
-
+    
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
 
@@ -84,14 +87,19 @@ with open(
     os.path.join(os.path.dirname(__file__), "keys", "spot_token.txt"), "r"
 ) as in_file:
     spot_token = in_file.read().rstrip()
-
+with open(
+    os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
+) as in_file:
+    openai.organization = in_file.read().rstrip()
+with open(
+    os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
+) as in_file:
+    openai.api_key = in_file.read().rstrip()
 
 # This creates a timeout exception that can be triggered when something hangs too long.
 
-
 class TimeoutException(Exception):
     pass
-
 
 @contextmanager
 def time_limit(seconds: float):
@@ -104,7 +112,6 @@ def time_limit(seconds: float):
     finally:
         # if the action ends in specified time, timer is canceled
         timer.cancel()
-
 
 def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
     """
@@ -125,7 +132,6 @@ def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
     else:
         return set()
 
-
 def spot(
     text: str,
     lower: float = 0.25,
@@ -141,7 +147,7 @@ def spot(
         "Authorization": "Bearer " + spot_token,
         "Content-Type": "application/json",
     }
-
+    
     body = {
         "text": text,
         "save-text": 0,
@@ -149,14 +155,12 @@ def spot(
         "cutoff-pred": pred,
         "cutoff-upper": upper,
     }
-
     r = requests.post(
         "https://spot.suffolklitlab.org/v0/entities-nested/",
         headers=headers,
         data=json.dumps(body),
     )
     output_ = r.json()
-
     try:
         output_["build"]
         if verbose != 1:
@@ -169,9 +173,7 @@ def spot(
     except:
         return output_
 
-
 # A function to pull words out of snake_case, camelCase and the like.
-
 
 def re_case(text: str) -> str:
     """
@@ -180,13 +182,10 @@ def re_case(text: str) -> str:
     re_outer = re.compile(r"([^A-Z ])([A-Z])")
     re_inner = re.compile(r"(?<!^)([A-Z])([^A-Z])")
     text = re_outer.sub(r"\1 \2", re_inner.sub(r" \1\2", text))
-
     return text.replace("_", " ").replace("-", " ")
-
 
 # Takes text from an auto-generated field name and uses regex to convert it into an Assembly Line standard field.
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
-
 
 def regex_norm_field(text: str):
     """
@@ -220,42 +219,32 @@ def regex_norm_field(text: str):
         ["^(Signature|Sign( here)?)\s?\d*$", "users1_signature"],
         ["^Date\s?\d*$", "signature_date"],
     ]
-
     for regex in regex_list:
         text = re.sub(regex[0], regex[1], text, flags=re.IGNORECASE)
     return text
-
 
 def reformat_field(text: str, max_length: int = 30):
     """
     Transforms a string of text into a snake_case variable close in length to `max_length` name by
     summarizing the string and stitching the summary together in snake_case.
-
     h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
     """
     orig_title = text.lower()
     orig_title = re.sub("[^a-zA-Z]+", " ", orig_title)
     orig_title_words = orig_title.split()
-
     deduped_sentence = []
     for word in orig_title_words:
         if word not in deduped_sentence:
             deduped_sentence.append(word)
-
     filtered_sentence = [w for w in deduped_sentence if not w.lower() in stop_words]
-
     filtered_title_words = filtered_sentence
-
     characters = len(" ".join(filtered_title_words))
-
     if characters > 0:
-
         words = len(filtered_title_words)
         av_word_len = math.ceil(
             len(" ".join(filtered_title_words)) / len(filtered_title_words)
         )
         x_words = math.floor((max_length) / av_word_len)
-
         sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
         # for each word compared to other
         for i in range(len(filtered_title_words)):
@@ -265,17 +254,14 @@ def reformat_field(text: str, max_length: int = 30):
                         nlp(filtered_title_words[i]).vector.reshape(1, 300),
                         nlp(filtered_title_words[j]).vector.reshape(1, 300),
                     )[0, 0]
-
         try:
             nx_graph = nx.from_numpy_array(sim_mat)
             scores = nx.pagerank(nx_graph)
             sorted_scores = sorted(
                 scores.items(), key=lambda item: item[1], reverse=True
             )
-
             if x_words > len(scores):
                 x_words = len(scores)
-
             i = 0
             new_title = ""
             for x in filtered_title_words:
@@ -284,7 +270,6 @@ def reformat_field(text: str, max_length: int = 30):
                         new_title += "_"
                     new_title += x
                 i += 1
-
             return new_title
         except:
             return "_".join(filtered_title_words)
@@ -293,7 +278,6 @@ def reformat_field(text: str, max_length: int = 30):
             return "unknown"
         else:
             return re.sub("\s+", "_", text.lower())
-
 
 def norm(row):
     """Normalize a word vector."""
@@ -306,7 +290,6 @@ def norm(row):
         print("===================")
         return np.NaN
 
-
 def vectorize(text: str, normalize: bool = True):
     """Vectorize a string of text."""
     output = nlp(str(text)).vector
@@ -315,24 +298,19 @@ def vectorize(text: str, normalize: bool = True):
     else:
         return output
 
-
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`
 
-
 def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_field: str):
     """Add hard coded conversions maybe by calling a function
     if returns 0 then fail over to ML or other way around poor prob -> check hard-coded"""
-
     if this_field not in included_fields:
         this_field = re_case(this_field)
-
         out_put = regex_norm_field(this_field)
         conf = 1.0
-
         if out_put == this_field:
             params = []
             for item in jurisdictions:
@@ -349,23 +327,18 @@ def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_fiel
             params.append(per)
             for vec in vectorize(this_field):
                 params.append(vec)
-
             for item in included_fields:
                 if last_field == item:
                     params.append(1)
                 else:
                     params.append(0)
-
             pred = clf_field_names.predict([params])
             prob = clf_field_names.predict_proba([params])
-
             conf = prob[0].tolist()[prob[0].tolist().index(max(prob[0].tolist()))]
             out_put = pred[0]
-
     else:
         out_put = this_field
         conf = 1
-
     if out_put in included_fields:
         if conf >= 0:
             return (
@@ -377,25 +350,21 @@ def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_fiel
     else:
         return reformat_field(this_field), conf
 
-
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
-#
+# 
 # 1. It reads in a list of fields (e.g., `["user_name","user_address"]`)
 # 2. Splits each field into words (e.g., turning `user_name` into `user name`)
-# 3. It then turns these ngrams/"sentences" into vectors using word2vec.
+# 3. It then turns these ngrams/"sentences" into vectors using word2vec. 
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
-
 
 def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     """Takes in a list (fields) and returns a suggested screen grouping
     Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
-
     vec_mat = np.zeros([len(fields), 300])
     for i in range(len(fields)):
         vec_mat[i] = [nlp(re_case(fields[i])).vector][0]
-
     # create model
-    model = AffinityPropagation(damping=damping)
+    model = AffinityPropagation(damping=damping,random_state=None)
     # model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
     # fit the model
     model.fit(vec_mat)
@@ -403,7 +372,6 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     yhat = model.predict(vec_mat)
     # retrieve unique clusters
     clusters = unique(yhat)
-
     screens = {}
     # sim = np.zeros([5,300])
     for i, cluster in enumerate(clusters):
@@ -413,9 +381,7 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
             # sim[screen]=vec_mat[screen] # use this spot to add up vectors for compare to list
             vars.append(fields[screen])
         screens["screen_%s" % i] = vars
-
     return screens
-
 
 def get_existing_pdf_fields(
     in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]
@@ -432,13 +398,11 @@ def get_existing_pdf_fields(
         for field in iter(in_pdf.Root.AcroForm.Fields)
     ]
 
-
 def get_character_count(
     field: pikepdf.Object, char_width: float = 6, row_height: float = 16
 ) -> int:
     if not hasattr(field["all"], "Rect"):
         return 1
-
     # https://pikepdf.readthedocs.io/en/latest/api/main.html#pikepdf.Rectangle
     # Rectangle with llx,lly,urx,ury
     height = field["all"].Rect[3] - field["all"].Rect[1]  # type: ignore
@@ -447,34 +411,28 @@ def get_character_count(
     # width = field["all"].Rect.width
     num_rows = int(height / row_height) if height > row_height else 1  # type: ignore
     num_cols = int(width / char_width)  # type: ignore
-
     max_chars = num_rows * num_cols
     return max_chars
-
 
 class InputType(Enum):
     """
     Input type maps onto the type of input the PDF author chose for the field. We only
     handle text, checkbox, and signature fields.
     """
-
     TEXT = "text"
     CHECKBOX = "checkbox"
     SIGNATURE = "signature"
-
 
 class FieldInfo(TypedDict):
     var_name: str
     max_length: int
     type: Union[InputType, str]
 
-
 def field_types_and_sizes(
     fields: Iterable,
 ) -> List[FieldInfo]:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
-
     Result will look like:
     [
         {
@@ -502,34 +460,25 @@ def field_types_and_sizes(
         else:
             item["type"] = str(field["type"])
         processed_fields.append(item)
-
     return processed_fields
-
 
 class AnswerType(Enum):
     """
     Answer type describes the effort the user answering the form will require.
-
     "Slot-in" answers are a matter of almost instantaneous recall, e.g., name, address, etc.
-
     "Gathered" answers require looking around one's desk, for e.g., a health insurance number.
-
     "Third party" answers require picking up the phone to call someone else who is the keeper
     of the information.
-
     "Created" answers don't exist before the user is presented with the question. They may include
     a choice, creating a narrative, or even applying legal reasoning. "Affidavits" are a special
     form of created answers.
-
     See Jarret and Gaffney, Forms That Work (2008)
     """
-
     SLOT_IN = "slot in"
     GATHERED = "gathered"
     THIRD_PARTY = "third party"
     CREATED = "created"
     AFFIDAVIT = "affidavit"
-
 
 def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     """
@@ -554,14 +503,12 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
         "users1_signature",
         "signature_date",
     }
-
     SLOT_IN_KEYWORDS = {
         "name",
         "birth date",
         "birthdate",
         "phone",
     }
-
     GATHERED_KEYWORDS = {
         "number",
         "value",
@@ -574,18 +521,15 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
         "employer",
         "date",
     }
-
     CREATED_KEYWORDS = {
         "choose",
         "choice",
         "why",
         "fact",
     }
-
     AFFIDAVIT_KEYWORDS = {
         "affidavit",
     }
-
     var_name = field["var_name"].lower()
     if (
         var_name in SLOT_IN_FIELDS
@@ -604,7 +548,6 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
             return AnswerType.CREATED
     return AnswerType.GATHERED
 
-
 def time_to_answer_field(
     field: FieldInfo,
     new_name: str,
@@ -614,15 +557,12 @@ def time_to_answer_field(
     """
     Apply a heuristic for the time it takes to answer the given field, in minutes.
     It is hand-written for now.
-
     It will factor in the input type, the answer type (slot in, gathered, third party or created), and the
     amount of input text allowed in the field.
-
     The return value is a function that can return N samples of how long it will take to answer the field
     """
     # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
     # Standard deviation is about 17 characters/minute
-
     # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation
     TIME_TO_MAKE_ANSWER = {
         AnswerType.SLOT_IN: (0.25, 0.1),
@@ -631,9 +571,7 @@ def time_to_answer_field(
         AnswerType.CREATED: (5, 4),
         AnswerType.AFFIDAVIT: (5, 4),
     }
-
     kind = classify_field(field, new_name)
-
     if field["type"] == InputType.SIGNATURE or "signature" in field["var_name"]:
         return lambda number_samples: np.random.normal(
             loc=0.5, scale=0.1, size=number_samples
@@ -648,7 +586,6 @@ def time_to_answer_field(
         # We chunk answers into three different lengths rather than directly using the character count,
         # as forms can give very different spaces for the same data without regard to the room the
         # user actually needs. But small, medium, and full page is still helpful information.
-
         ONE_WORD = 4.7  # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
         ONE_LINE = 115  # Standard line is ~ 115 characters wide at 12 point font
         SHORT_ANSWER = (
@@ -658,7 +595,6 @@ def time_to_answer_field(
         LONG_ANSWER = (
             ONE_LINE * 10
         )  # Anything over 10 lines probably needs a full page but form author skimped on space
-
         if field["max_length"] <= ONE_LINE or (
             field["max_length"] <= ONE_LINE * 2 and kind == AnswerType.SLOT_IN
         ):
@@ -673,7 +609,6 @@ def time_to_answer_field(
         else:
             time_to_write_answer = LONG_ANSWER / cpm
             time_to_write_std_dev = LONG_ANSWER / cpm_std_dev
-
         return lambda number_samples: np.random.normal(
             loc=time_to_write_answer, scale=time_to_write_std_dev, size=number_samples
         ) + np.random.normal(
@@ -682,15 +617,12 @@ def time_to_answer_field(
             size=number_samples,
         )
 
-
 def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, float]:
     """
     Provide an estimate of how long it would take an average user to respond to the questions
     on the provided form.
-
     We use signals such as the field type, name, and space provided for the response to come up with a
     rough estimate, based on whether the field is:
-
     1. fill in the blank
     2. gathered - e.g., an id number, case number, etc.
     3. third party: need to actually ask someone the information - e.g., income of not the user, anything else?
@@ -698,22 +630,17 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         a. short created (3 lines or so?)
         b. long created (anything over 3 lines)
     """
-
     field_answer_time_simulators: List[Callable[[int], np.ndarray]] = []
-
     for index, field in enumerate(processed_fields):
         field_answer_time_simulators.append(
             time_to_answer_field(field, normalized_fields[index])
         )
-
     # Run a monte carlo simulation to get times to answer and standard deviation
     num_samples = 20000
     np_array = np.zeros(num_samples)
     for field_simulator in field_answer_time_simulators:
         np_array += field_simulator(num_samples)
-
     return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
-
 
 def unlock_pdf_in_place(in_file: str):
     """
@@ -724,7 +651,6 @@ def unlock_pdf_in_place(in_file: str):
     pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
-
 
 def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     """
@@ -749,13 +675,38 @@ def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     text = re.sub(r" \.", ".", text)
     return text
 
-
 def all_caps_words(text: str) -> int:
     results = re.findall(r"([A-Z][A-Z]+)", text)
     if results:
         return len(results)
     return 0
 
+def TextComplete(prompt,max_tokens=500):
+    try:
+        response = openai.Completion.create(
+          model="text-davinci-003",
+          prompt=prompt,
+          temperature=0,
+          max_tokens=max_tokens,
+          top_p=1.0,
+          frequency_penalty=0.0,
+          presence_penalty=0.0
+        )
+        return str(response["choices"][0]["text"].strip())
+    except:
+        return "Error"
+
+def plain_lang(text):
+    tokens = len(tokenizer(text)["input_ids"])
+    prompt = text + "\nRewrite the above at a sixth grade reading level."
+    output = TextComplete(prompt,max_tokens=tokens)
+    return output
+
+def guess_form_name(text):
+    tokens = 20
+    prompt = text + "\nThe text above is from a court form. Write the form's name?"
+    output = TextComplete(prompt,max_tokens=tokens)
+    return output
 
 def parse_form(
     in_file: str,
@@ -772,9 +723,8 @@ def parse_form(
     """
     unlock_pdf_in_place(in_file)
     f = pikepdf.open(in_file)
-
     npages = len(f.pages)
-
+    
     try:
         with time_limit(15):
             ff = get_existing_pdf_fields(f)
@@ -783,7 +733,6 @@ def parse_form(
         ff = None
     except AttributeError:
         ff = None
-
     if ff:
         fields = [field["var_name"] for field in ff]
     else:
@@ -791,14 +740,14 @@ def parse_form(
     f_per_page = len(fields) / npages
     original_text = extract_text(in_file)
     text = cleanup_text(original_text)
-
     if title is None:
-        matches = re.search("(.*)\n", text)
-        if matches:
-            title = re_case(matches.group(1).strip())
-        else:
-            title = "(Untitled)"
-
+        title = guess_form_name(text)
+        if title == "Error":
+            matches = re.search("(.*)\n", text)
+            if matches:
+                title = re_case(matches.group(1).strip())
+            else:
+                title = "(Untitled)"
     try:
         if text != "":
             readability = textstat.text_standard(text, float_output=True)
@@ -806,12 +755,10 @@ def parse_form(
             readability = -1
     except:
         readability = -1
-
     if use_spot:
         nmsi = spot(title + ". " + text)
     else:
         nmsi = []
-
     if normalize:
         i = 0
         length = len(fields)
@@ -826,7 +773,6 @@ def parse_form(
             new_fields.append(this_field)
             new_fields_conf.append(this_conf)
             last = field
-
         new_fields = [
             v + "__" + str(new_fields[:i].count(v) + 1)
             if new_fields.count(v) > 1
@@ -836,18 +782,13 @@ def parse_form(
     else:
         new_fields = fields
         new_fields_conf = []
-
     sentences = sent_tokenize(text)
-
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3). PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
     passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-
     passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
-
     citations = eyecite.get_citations(
         eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
     )
-
     stats = {
         "title": title,
         "category": cat,
@@ -883,7 +824,6 @@ def parse_form(
                 }
             )
         stats["debug fields"] = debug_fields
-
     if rewrite:
         try:
             my_pdf = pikepdf.Pdf.open(in_file, allow_overwriting_input=True)
@@ -891,22 +831,17 @@ def parse_form(
                 my_pdf.Root.AcroForm.Fields
             )  # [0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
             # print(repr(fields_too))
-
             for k, field in enumerate(new_fields):
                 # print(k,field)
                 fields_too[k].T = re.sub("^\*", "", field)
-
             my_pdf.save(in_file)
         except:
             stats["error"] = "could not change form fields"
-
     return stats
 
-
 def form_complexity(text, fields, reading_lv):
-
     # check for fields that require user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
-
     return 0
+

@@ -8,3 +8,5 @@ requests
 spacy
 types-requests
 pandas-stubs
+openai
+transformers
