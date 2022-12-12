@@ -1,4 +1,4 @@
-# Updated on 2022-12-11
+# Updated on 2022-12-12
 
 from ctypes.wintypes import SHORT
 from dataclasses import Field
@@ -705,6 +705,12 @@ def plain_lang(text):
 def guess_form_name(text):
     tokens = 20
     prompt = text + "\nThe text above is from a court form. Write the form's name."
+    output = TextComplete(prompt,max_tokens=tokens)
+    return output
+
+def describe_form(text):
+    tokens = 250
+    prompt = text + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
     output = TextComplete(prompt,max_tokens=tokens)
     return output
 
