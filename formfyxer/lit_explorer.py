@@ -47,7 +47,17 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Optional, Union, BinaryIO, Iterable, List, Dict, Tuple, Callable, TypedDict
+from typing import (
+    Optional,
+    Union,
+    BinaryIO,
+    Iterable,
+    List,
+    Dict,
+    Tuple,
+    Callable,
+    TypedDict,
+)
 from pathlib import Path
 
 import openai

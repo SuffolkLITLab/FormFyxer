@@ -11,7 +11,7 @@ pdfminer.six
 pikepdf
 reportlab
 requests
-sklearn
+scikit-learn
 spacy
 textstat
 transformers
