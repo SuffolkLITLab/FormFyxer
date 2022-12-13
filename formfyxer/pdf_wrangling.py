@@ -53,7 +53,7 @@ class FormField:
         y: int,
         font_size: int = 20,
         user_name: str = "",
-        configs: Dict[str, Any] = None,
+        configs: Optional[Dict[str, Any]] = None,
     ):
         """
         Constructor
