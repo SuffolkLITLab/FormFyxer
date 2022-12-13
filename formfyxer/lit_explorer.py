@@ -8,7 +8,8 @@ import re
 from sklearn.metrics import classification_report
 import spacy
 from pdfminer.high_level import extract_text
-#import PyPDF2
+
+# import PyPDF2
 import pikepdf
 import textstat
 import requests
@@ -31,6 +32,7 @@ import sigfig
 
 try:
     from nltk.corpus import stopwords
+
     stopwords.words
 except:
     print("Downloading stopwords")
@@ -50,6 +52,7 @@ from pathlib import Path
 
 import openai
 from transformers import GPT2TokenizerFast
+
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
 stop_words = set(stopwords.words("english"))
@@ -57,17 +60,20 @@ stop_words = set(stopwords.words("english"))
 try:
     # this takes a while to load
     import en_core_web_lg
+
     nlp = en_core_web_lg.load()
 except:
     print("Downloading word2vec model en_core_web_lg")
     import subprocess
+
     bashCommand = "python -m spacy download en_core_web_lg"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
     import en_core_web_lg
+
     nlp = en_core_web_lg.load()
-    
+
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
 
@@ -98,8 +104,10 @@ with open(
 
 # This creates a timeout exception that can be triggered when something hangs too long.
 
+
 class TimeoutException(Exception):
     pass
+
 
 @contextmanager
 def time_limit(seconds: float):
@@ -112,6 +120,7 @@ def time_limit(seconds: float):
     finally:
         # if the action ends in specified time, timer is canceled
         timer.cancel()
+
 
 def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
     """
@@ -132,6 +141,7 @@ def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
     else:
         return set()
 
+
 def spot(
     text: str,
     lower: float = 0.25,
@@ -147,7 +157,7 @@ def spot(
         "Authorization": "Bearer " + spot_token,
         "Content-Type": "application/json",
     }
-    
+
     body = {
         "text": text,
         "save-text": 0,
@@ -173,7 +183,9 @@ def spot(
     except:
         return output_
 
+
 # A function to pull words out of snake_case, camelCase and the like.
+
 
 def re_case(text: str) -> str:
     """
@@ -184,8 +196,10 @@ def re_case(text: str) -> str:
     text = re_outer.sub(r"\1 \2", re_inner.sub(r" \1\2", text))
     return text.replace("_", " ").replace("-", " ")
 
+
 # Takes text from an auto-generated field name and uses regex to convert it into an Assembly Line standard field.
 # See https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/
+
 
 def regex_norm_field(text: str):
     """
@@ -222,6 +236,7 @@ def regex_norm_field(text: str):
     for regex in regex_list:
         text = re.sub(regex[0], regex[1], text, flags=re.IGNORECASE)
     return text
+
 
 def reformat_field(text: str, max_length: int = 30):
     """
@@ -279,6 +294,7 @@ def reformat_field(text: str, max_length: int = 30):
         else:
             return re.sub("\s+", "_", text.lower())
 
+
 def norm(row):
     """Normalize a word vector."""
     try:
@@ -290,6 +306,7 @@ def norm(row):
         print("===================")
         return np.NaN
 
+
 def vectorize(text: str, normalize: bool = True):
     """Vectorize a string of text."""
     output = nlp(str(text)).vector
@@ -298,11 +315,13 @@ def vectorize(text: str, normalize: bool = True):
     else:
         return output
 
+
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`
+
 
 def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_field: str):
     """Add hard coded conversions maybe by calling a function
@@ -350,12 +369,14 @@ def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_fiel
     else:
         return reformat_field(this_field), conf
 
+
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
-# 
+#
 # 1. It reads in a list of fields (e.g., `["user_name","user_address"]`)
 # 2. Splits each field into words (e.g., turning `user_name` into `user name`)
-# 3. It then turns these ngrams/"sentences" into vectors using word2vec. 
+# 3. It then turns these ngrams/"sentences" into vectors using word2vec.
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
+
 
 def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     """Takes in a list (fields) and returns a suggested screen grouping
@@ -364,7 +385,7 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     for i in range(len(fields)):
         vec_mat[i] = [nlp(re_case(fields[i])).vector][0]
     # create model
-    model = AffinityPropagation(damping=damping,random_state=None)
+    model = AffinityPropagation(damping=damping, random_state=None)
     # model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
     # fit the model
     model.fit(vec_mat)
@@ -383,6 +404,7 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
         screens["screen_%s" % i] = vars
     return screens
 
+
 def get_existing_pdf_fields(
     in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]
 ) -> Iterable:
@@ -397,6 +419,7 @@ def get_existing_pdf_fields(
         {"type": str(field.FT), "var_name": str(field.T), "all": field}
         for field in iter(in_pdf.Root.AcroForm.Fields)
     ]
+
 
 def get_character_count(
     field: pikepdf.Object, char_width: float = 6, row_height: float = 16
@@ -414,19 +437,23 @@ def get_character_count(
     max_chars = num_rows * num_cols
     return max_chars
 
+
 class InputType(Enum):
     """
     Input type maps onto the type of input the PDF author chose for the field. We only
     handle text, checkbox, and signature fields.
     """
+
     TEXT = "text"
     CHECKBOX = "checkbox"
     SIGNATURE = "signature"
+
 
 class FieldInfo(TypedDict):
     var_name: str
     max_length: int
     type: Union[InputType, str]
+
 
 def field_types_and_sizes(
     fields: Iterable,
@@ -462,6 +489,7 @@ def field_types_and_sizes(
         processed_fields.append(item)
     return processed_fields
 
+
 class AnswerType(Enum):
     """
     Answer type describes the effort the user answering the form will require.
@@ -474,11 +502,13 @@ class AnswerType(Enum):
     form of created answers.
     See Jarret and Gaffney, Forms That Work (2008)
     """
+
     SLOT_IN = "slot in"
     GATHERED = "gathered"
     THIRD_PARTY = "third party"
     CREATED = "created"
     AFFIDAVIT = "affidavit"
+
 
 def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     """
@@ -547,6 +577,7 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
         else:
             return AnswerType.CREATED
     return AnswerType.GATHERED
+
 
 def time_to_answer_field(
     field: FieldInfo,
@@ -617,6 +648,7 @@ def time_to_answer_field(
             size=number_samples,
         )
 
+
 def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, float]:
     """
     Provide an estimate of how long it would take an average user to respond to the questions
@@ -642,6 +674,7 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
         np_array += field_simulator(num_samples)
     return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
 
+
 def unlock_pdf_in_place(in_file: str):
     """
     Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
@@ -651,6 +684,7 @@ def unlock_pdf_in_place(in_file: str):
     pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
+
 
 def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     """
@@ -675,44 +709,53 @@ def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     text = re.sub(r" \.", ".", text)
     return text
 
+
 def all_caps_words(text: str) -> int:
     results = re.findall(r"([A-Z][A-Z]+)", text)
     if results:
         return len(results)
     return 0
 
-def TextComplete(prompt,max_tokens=500):
+
+def TextComplete(prompt, max_tokens=500):
     try:
         response = openai.Completion.create(
-          model="text-davinci-003",
-          prompt=prompt,
-          temperature=0,
-          max_tokens=max_tokens,
-          top_p=1.0,
-          frequency_penalty=0.0,
-          presence_penalty=0.0
+            model="text-davinci-003",
+            prompt=prompt,
+            temperature=0,
+            max_tokens=max_tokens,
+            top_p=1.0,
+            frequency_penalty=0.0,
+            presence_penalty=0.0,
         )
         return str(response["choices"][0]["text"].strip())
     except:
         return "Error"
 
+
 def plain_lang(text):
     tokens = len(tokenizer(text)["input_ids"])
     prompt = text + "\nRewrite the above at a sixth grade reading level."
-    output = TextComplete(prompt,max_tokens=tokens)
+    output = TextComplete(prompt, max_tokens=tokens)
     return output
+
 
 def guess_form_name(text):
     tokens = 20
     prompt = text + "\nThe text above is from a court form. Write the form's name."
-    output = TextComplete(prompt,max_tokens=tokens)
+    output = TextComplete(prompt, max_tokens=tokens)
     return output
+
 
 def describe_form(text):
     tokens = 250
-    prompt = text + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
-    output = TextComplete(prompt,max_tokens=tokens)
+    prompt = (
+        text
+        + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
+    )
+    output = TextComplete(prompt, max_tokens=tokens)
     return output
+
 
 def parse_form(
     in_file: str,
@@ -730,7 +773,7 @@ def parse_form(
     unlock_pdf_in_place(in_file)
     f = pikepdf.open(in_file)
     npages = len(f.pages)
-    
+
     try:
         with time_limit(15):
             ff = get_existing_pdf_fields(f)
@@ -845,9 +888,9 @@ def parse_form(
             stats["error"] = "could not change form fields"
     return stats
 
+
 def form_complexity(text, fields, reading_lv):
     # check for fields that require user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
     return 0
-
