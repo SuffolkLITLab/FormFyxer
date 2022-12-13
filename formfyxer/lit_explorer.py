@@ -47,7 +47,7 @@ import math
 from contextlib import contextmanager
 import threading
 import _thread
-from typing import Union, BinaryIO, Iterable, List, Dict, Tuple, Callable, TypedDict
+from typing import Optional, Union, BinaryIO, Iterable, List, Dict, Tuple, Callable, TypedDict
 from pathlib import Path
 
 import openai
@@ -122,7 +122,7 @@ def time_limit(seconds: float):
         timer.cancel()
 
 
-def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: set = None):
+def recursive_get_id(values_to_unpack: Union[dict, list], tmpl: Optional[set] = None):
     """
     Pull ID values out of the LIST/NSMI results from Spot.
     """
@@ -759,9 +759,9 @@ def describe_form(text):
 
 def parse_form(
     in_file: str,
-    title: str = None,
-    jur: str = None,
-    cat: str = None,
+    title: Optional[str] = None,
+    jur: Optional[str] = None,
+    cat: Optional[str] = None,
     normalize: bool = True,
     use_spot: bool = False,
     rewrite: bool = False,
