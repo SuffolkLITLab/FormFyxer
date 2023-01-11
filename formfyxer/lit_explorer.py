@@ -840,7 +840,7 @@ def parse_form(
         readability = textstat.text_standard(text, float_output=True) if text else -1
     except:
         readability = -1
-    nmsi = spot(title + ". " + text, spot_token) if spot_token else []
+    nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
         last = "null"
