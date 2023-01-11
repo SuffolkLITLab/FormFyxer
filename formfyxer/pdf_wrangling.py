@@ -265,7 +265,9 @@ def _unnest_pdf_fields(field) -> List[PikeField]:
         return []
 
 
-def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, Pdf]) -> PikeField:
+def get_existing_pdf_fields(
+    in_file: Union[str, Path, BinaryIO, Pdf]
+) -> List[PikeField]:
     """Use PikePDF to get fields from the PDF"""
     if isinstance(in_file, Pdf):
         in_pdf = in_file

@@ -922,9 +922,9 @@ def parse_form(
                 my_pdf.Root.AcroForm.Fields
             )  # [0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
             # print(repr(fields_too))
-            for k, field in enumerate(new_names):
+            for k, field_name in enumerate(new_names):
                 # print(k,field)
-                fields_too[k].T = re.sub("^\*", "", field)
+                fields_too[k].T = re.sub("^\*", "", field_name)
             my_pdf.save(in_file)
         except Exception as ex:
             stats["error"] = f"could not change form fields: {ex}"
