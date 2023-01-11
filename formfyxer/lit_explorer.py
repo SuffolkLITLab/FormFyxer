@@ -972,10 +972,10 @@ def _form_complexity_per_metric(stats):
             val -= metric["intercept"]
         return val * weight
 
-    return [(metric["name"], weight(stats, metric)) for metric in metrics]
+    return [(m["name"], stats[m["name"]], weight(stats, m)) for m in metrics]
 
 
 def form_complexity(stats):
     """Gets a single number of how hard the form is to complete. Higher is harder."""
     metrics = _form_complexity_per_metric(stats)
-    return sum(val[1] for val in metrics)
+    return sum(val[2] for val in metrics)
