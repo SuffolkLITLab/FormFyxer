@@ -99,7 +99,7 @@ clf_field_names = load(
 with open(
     os.path.join(os.path.dirname(__file__), "keys", "spot_token.txt"), "r"
 ) as in_file:
-    spot_token = in_file.read().rstrip()
+    default_spot_token = in_file.read().rstrip()
 with open(
     os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
 ) as in_file:
@@ -155,13 +155,20 @@ def spot(
     pred: float = 0.5,
     upper: float = 0.6,
     verbose: float = 0,
+    token: str = "",
 ):
     """
     Call the Spot API (https://spot.suffolklitlab.org) to classify the text of a PDF using
     the NSMIv2/LIST taxonomy (https://taxonomy.legal/), but returns only the IDs of issues found in the text.
     """
+    global default_spot_token
+    if not token:
+        if not default_spot_token:
+            print("You need to pass a spot token when using Spot")
+            return []
+        token = default_spot_token
     headers = {
-        "Authorization": "Bearer " + spot_token,
+        "Authorization": "Bearer " + token,
         "Content-Type": "application/json",
     }
 
@@ -713,7 +720,16 @@ def all_caps_words(text: str) -> int:
     return 0
 
 
-def TextComplete(prompt, max_tokens=500):
+class OpenAiCreds(TypedDict):
+    org: str
+    key: str
+
+
+def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -> str:
+    if creds:
+        openai.organization = creds["org"].strip()
+        openai.api_key = creds["key"].strip()
+
     try:
         response = openai.Completion.create(
             model="text-davinci-003",
@@ -729,27 +745,27 @@ def TextComplete(prompt, max_tokens=500):
         return "Error"
 
 
-def plain_lang(text):
+def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
     prompt = text + "\nRewrite the above at a sixth grade reading level."
-    output = TextComplete(prompt, max_tokens=tokens)
+    output = text_complete(prompt, max_tokens=tokens, creds=creds)
     return output
 
 
-def guess_form_name(text):
+def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = 20
     prompt = text + "\nThe text above is from a court form. Write the form's name."
-    output = TextComplete(prompt, max_tokens=tokens)
+    output = text_complete(prompt, max_tokens=tokens, creds=creds)
     return output
 
 
-def describe_form(text):
+def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = 250
     prompt = (
         text
         + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
     )
-    output = TextComplete(prompt, max_tokens=tokens)
+    output = text_complete(prompt, max_tokens=tokens, creds=creds)
     return output
 
 
@@ -774,13 +790,15 @@ def parse_form(
     jur: Optional[str] = None,
     cat: Optional[str] = None,
     normalize: bool = True,
-    use_spot: bool = False,
+    spot_token: Optional[str] = None,
+    openai_creds: Optional[OpenAiCreds] = None,
     rewrite: bool = False,
     debug: bool = False,
-    improve: bool = False,
 ):
     """
-    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`).
+    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the
+    in_file with the new fields (if `rewrite=1`). If you pass a spot token, we will guess the
+    NSMI code. If you pass openai creds, we will give suggestions for the title and description.
     """
     unlock_pdf_in_place(in_file)
     the_pdf = pikepdf.open(in_file)
@@ -809,29 +827,26 @@ def parse_form(
     if title is None:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
-        if improve:
-            title = guess_form_name(text)
-        if not title or title == "Error" or not improve:
+        if not title or title == "Error" or not openai_creds:
             matches = re.search("(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
+    if openai_creds:
+        new_title = guess_form_name(text)
+    description = describe_form(text) if openai_creds else ""
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
     except:
         readability = -1
-    if use_spot:
-        nmsi = spot(title + ". " + text)
-    else:
-        nmsi = []
+    nmsi = spot(title + ". " + text, spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
         last = "null"
         new_names = []
         new_names_conf = []
         for i, field_name in enumerate(field_names):
-            # print(jur,cat,i,i/length,last,field)
             new_name, new_confidence = normalize_name(
                 jur or "", cat or "", i, i / length, last, field_name
             )
@@ -870,6 +885,8 @@ def parse_form(
     field_count = len(field_names)
     stats = {
         "title": title,
+        "suggested title": new_title,
+        "description": description,
         "category": cat,
         "pages": pages_count,
         "reading grade level": readability,
@@ -946,15 +963,15 @@ def _form_complexity_per_metric(stats):
         # {"name": "time to answer", "weight": 2},
         {"name": "pages", "weight": 2},
         {"name": "citations per field", "weight": 1.2},
-        {"name": "avg fields per page", "weight": 1 / 10},
+        {"name": "avg fields per page", "weight": 1 / 8},
         {"name": "sentences per page", "weight": 0.05},
         # percents will have a higher weight, because they are between 0 and 1
         {"name": "slotin percent", "weight": 2},
         {"name": "gathered percent", "weight": 5},
-        {"name": "created percent", "weight": 10},
+        {"name": "created percent", "weight": 20},
         {"name": "passive voice percent", "weight": 4},
         {"name": "all caps percent", "weight": 10},
-        {"name": "difficult word percent", "weight": 20},
+        {"name": "difficult word percent", "weight": 15},
     ]
 
     def weight(stats, metric):
