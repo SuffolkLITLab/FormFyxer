@@ -3,7 +3,18 @@ import math
 import re
 from enum import Enum
 import tempfile
-from typing import Any, Dict, Iterable, Optional, List, Union, Tuple, BinaryIO, Mapping
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Optional,
+    List,
+    Union,
+    Tuple,
+    BinaryIO,
+    Mapping,
+    TypedDict,
+)
 from numbers import Number
 from pathlib import Path
 import random
@@ -13,6 +24,7 @@ from boxdetect import config
 from boxdetect.pipelines import get_checkboxes
 import numpy as np
 from pdf2image import convert_from_path
+import pikepdf
 from pikepdf import Pdf
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
@@ -233,27 +245,37 @@ def rename_pdf_fields(in_file: str, out_file: str, mapping: Mapping[str, str]) -
     in_pdf.save(out_file)
 
 
-def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, Pdf]) -> Iterable:
+class PikeField(TypedDict):
+    type: str
+    var_name: str
+    all: pikepdf.objects.Object
+
+
+def _unnest_pdf_fields(field) -> List[PikeField]:
+    if hasattr(field, "FT") and hasattr(field, "F"):
+        # PDF fields have bit flags for specific options. The 17th bit (or hex
+        # 10000) on Buttons mark a "push button", w/o a permanent value
+        # (e.g. "Print this PDF") They aren't really fields, just skip them.
+        if hasattr(field, "Ff") and field.FT == "/Btn" and bool(field.Ff & 0x10000):
+            return []
+        return [{"type": field.FT, "var_name": str(field.T), "all": field}]
+    elif hasattr(field, "Kids"):
+        return [y for x in field.Kids for y in _unnest_pdf_fields(x)]
+    else:
+        return []
+
+
+def get_existing_pdf_fields(in_file: Union[str, Path, BinaryIO, Pdf]) -> PikeField:
+    """Use PikePDF to get fields from the PDF"""
     if isinstance(in_file, Pdf):
         in_pdf = in_file
     else:
         in_pdf = Pdf.open(in_file)
     return [
-        {"type": field.FT, "var_name": field.T, "all": field}
+        y
         for field in iter(in_pdf.Root.AcroForm.Fields)
+        for y in _unnest_pdf_fields(field)
     ]
-
-
-def get_existing_pdf_fields_with_context(
-    in_file: Union[str, Path, BinaryIO]
-) -> Iterable:
-    in_pdf = Pdf.open(in_file)
-    text_in_pdf = get_textboxes_in_pdf(in_file)
-    fields = [
-        {"type": field.FT, "var_name": field.T, "all": field}
-        for field in iter(in_pdf.Root.AcroForm.Fields)
-    ]
-    return fields
 
 
 def swap_pdf_page(
