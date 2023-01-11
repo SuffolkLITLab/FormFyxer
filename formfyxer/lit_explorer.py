@@ -833,8 +833,7 @@ def parse_form(
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    if openai_creds:
-        new_title = guess_form_name(text)
+    new_title = guess_form_name(text) if openai_creds else ""
     description = describe_form(text) if openai_creds else ""
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
