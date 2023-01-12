@@ -741,7 +741,8 @@ def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -
             presence_penalty=0.0,
         )
         return str(response["choices"][0]["text"].strip())
-    except:
+    except Exception as ex:
+        print(f"{ex}")
         return "Error"
 
 
@@ -824,17 +825,19 @@ def parse_form(
     # only thing to determine is when to run the (fairly expensive) ocrmypdf?
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
+    new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
     if title is None:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
-        if not title or title == "Error" or not openai_creds:
+        if not title and new_title and new_title != "Error":
+            title = new_title
+        if not title or title == "Error":
             matches = re.search("(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    new_title = guess_form_name(text) if openai_creds else ""
-    description = describe_form(text) if openai_creds else ""
+    description = describe_form(text, creds=openai_creds) if openai_creds else ""
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
     except:
@@ -891,7 +894,7 @@ def parse_form(
         "reading grade level": readability,
         "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_names)
         if ff
-        else (-1, -1),
+        else [-1, -1],
         "list": nmsi,
         "avg fields per page": f_per_page,
         "fields": new_names,
@@ -927,7 +930,9 @@ def parse_form(
                     "inferred answer type": str(
                         classify_field(field, new_names[index])
                     ),
-                    "time to answer": time_to_answer_field(field, new_names[index])(1),
+                    "time to answer": list(
+                        time_to_answer_field(field, new_names[index])(1)
+                    ),
                 }
             )
         stats["debug fields"] = debug_fields
