@@ -815,7 +815,7 @@ def parse_form(
         ff = None
     field_names = [field["var_name"] for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
-    # TODO(brycew): some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical test, but it's not detected.
+    # TODO(brycew): some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
     # Text contains a bunch of "(cid:72)", garbage output (reading level is like 1000).
     # An option that works: ocrmypdf:
     # ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "test.txt", fp, "test.pdf"
