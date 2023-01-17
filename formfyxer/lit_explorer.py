@@ -743,31 +743,44 @@ def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -
         return str(response["choices"][0]["text"].strip())
     except Exception as ex:
         print(f"{ex}")
-        return "Error"
+        return "ApiError"
+
+
+def complete_with_command(
+    text, command, tokens, creds: Optional[OpenAiCreds] = None
+) -> str:
+    """Combines some text with a command to send to open ai."""
+    # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
+    # A bit less than 4097 in case the tokenizer is wrong
+    # don't deal with negative numbers, clip at 1 (OpenAi will error anyway)
+    max_length = max(4080 - len(tokenizer(command)["input_ids"]) - tokens, 1)
+    text_tokens = tokenizer(text)
+    if len(text_tokens["input_ids"]) > max_length:
+        text = tokenizer.decode(
+            tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
+        )
+    return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
+
+
+def valid_form(text, creds: Optional[OpenAiCreds] = None) -> str:
+    tokens = 250
+    prompt = text + "\n\nIf the above is text from a news form"
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
-    prompt = text + "\nRewrite the above at a sixth grade reading level."
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = "Rewrite the above at a sixth grade reading level."
+    return complete_with_command(text, command, command, tokens, creds=creds)
 
 
 def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = 20
-    prompt = text + "\nThe text above is from a court form. Write the form's name."
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 20, creds=creds)
 
 
 def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = 250
-    prompt = (
-        text
-        + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
-    )
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 250, creds=creds)
 
 
 def needs_calculations(text: Union[str, Doc]) -> bool:
@@ -829,9 +842,9 @@ def parse_form(
     if title is None:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
-        if not title and new_title and new_title != "Error":
+        if not title and new_title and new_title != "ApiError":
             title = new_title
-        if not title or title == "Error":
+        if not title or title == "ApiError":
             matches = re.search("(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
