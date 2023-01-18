@@ -11,6 +11,7 @@ pdfminer.six
 pikepdf
 reportlab
 requests
+ocrmypdf
 scikit-learn
 spacy
 textstat
