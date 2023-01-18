@@ -763,15 +763,10 @@ def complete_with_command(
     return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
 
 
-def valid_form(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = 250
-    prompt = text + "\n\nIf the above is text from a news form"
-
-
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
     command = "Rewrite the above at a sixth grade reading level."
-    return complete_with_command(text, command, command, tokens, creds=creds)
+    return complete_with_command(text, command, tokens, creds=creds)
 
 
 def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
