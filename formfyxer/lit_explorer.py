@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 from sklearn.metrics import classification_report
 import spacy
 from spacy.tokens import Doc
@@ -828,18 +829,32 @@ def parse_form(
         ff = None
     field_names = [field["var_name"] for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
-    # TODO(brycew): some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
+    # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
     # Text contains a bunch of "(cid:72)", garbage output (reading level is like 1000).
-    # An option that works: ocrmypdf:
-    # ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "test.txt", fp, "test.pdf"
-    # subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
-    # with open("test.txt") as tmp:
-    #   text = tmp.read()
-    # only thing to determine is when to run the (fairly expensive) ocrmypdf?
+    # Our workaround is to ask GPT3 if it looks like a court form, and if not, try running
+    # ocrmypdf.
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
+    description = describe_form(text, creds=openai_creds) if openai_creds else ""
+    try:
+        readability = textstat.text_standard(text, float_output=True) if text else -1
+    except:
+        readability = -1
+    # Still attempt to re-evaluate if not using openai
+    if (openai_creds and description == "abortthisnow.") or readability > 30:
+        # We do not care what the PDF output is, doesn't add that much time
+        ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "-", in_file, "/tmp/test.pdf"]
+        process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
+        if process.returncode == 0:
+            original_text = process.stdout.decode()
+            text = cleanup_text(original_text)
+            try:
+              readability = textstat.text_standard(text, float_output=True) if text else -1
+            except:
+              readability = -1
+
     new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
-    if title is None:
+    if not title:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
         if not title and new_title and new_title != "ApiError":
@@ -850,11 +865,6 @@ def parse_form(
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    description = describe_form(text, creds=openai_creds) if openai_creds else ""
-    try:
-        readability = textstat.text_standard(text, float_output=True) if text else -1
-    except:
-        readability = -1
     nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
@@ -898,6 +908,8 @@ def parse_form(
     created_count = sum(1 for c in classified if c == AnswerType.CREATED)
     sentence_count = sum(1 for _ in sentences)
     field_count = len(field_names)
+    difficult_word_count = textstat.difficult_words(text)
+    citation_count = len(citations)
     stats = {
         "title": title,
         "suggested title": new_title,
@@ -927,9 +939,11 @@ def parse_form(
         "passive voice percent": passive_sentences / sentence_count
         if sentence_count > 0
         else 0,
-        "citations per field": len(citations) / field_count if field_count > 0 else 0,
+        "citations per field": citation_count / field_count if field_count > 0 else 0,
+        "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
-        "difficult word percent": textstat.difficult_words(text) / word_count,
+        "difficult word count": difficult_word_count,
+        "difficult word percent": difficult_word_count / word_count,
         "calculation required": needs_calculations(text),
     }
     if debug and ff:
