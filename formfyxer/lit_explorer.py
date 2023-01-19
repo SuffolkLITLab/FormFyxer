@@ -67,20 +67,20 @@ stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 except:
-    print("Downloading word2vec model en_core_web_lg")
+    print("Downloading word2vec model en_core_web_md")
     import subprocess
 
-    bashCommand = "python -m spacy download en_core_web_lg"
+    bashCommand = "python -m spacy download en_core_web_md"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
