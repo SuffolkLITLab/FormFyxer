@@ -852,9 +852,9 @@ def parse_form(
     if not title:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
-        if not title and new_title and new_title != "ApiError":
+        if not title and new_title and (new_title != "ApiError" and new_title.lower() != "abortthisnow."):
             title = new_title
-        if not title or title == "ApiError":
+        if not title or title == "ApiError" or title.lower() == "abortthisnow.":
             matches = re.search("(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
