@@ -884,8 +884,11 @@ def parse_form(
     sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
     # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-    passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+    if len(sentences) > 0:
+        passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
+        passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+    else:
+        passive_sentences = 0
     citations = eyecite.get_citations(
         eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
     )
