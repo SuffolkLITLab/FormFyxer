@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 from sklearn.metrics import classification_report
 import spacy
 from spacy.tokens import Doc
@@ -66,20 +67,20 @@ stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 except:
-    print("Downloading word2vec model en_core_web_lg")
+    print("Downloading word2vec model en_core_web_md")
     import subprocess
 
-    bashCommand = "python -m spacy download en_core_web_lg"
+    bashCommand = "python -m spacy download en_core_web_md"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
@@ -743,31 +744,39 @@ def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -
         return str(response["choices"][0]["text"].strip())
     except Exception as ex:
         print(f"{ex}")
-        return "Error"
+        return "ApiError"
+
+
+def complete_with_command(
+    text, command, tokens, creds: Optional[OpenAiCreds] = None
+) -> str:
+    """Combines some text with a command to send to open ai."""
+    # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
+    # A bit less than 4097 in case the tokenizer is wrong
+    # don't deal with negative numbers, clip at 1 (OpenAi will error anyway)
+    max_length = max(4080 - len(tokenizer(command)["input_ids"]) - tokens, 1)
+    text_tokens = tokenizer(text)
+    if len(text_tokens["input_ids"]) > max_length:
+        text = tokenizer.decode(
+            tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
+        )
+    return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
-    prompt = text + "\nRewrite the above at a sixth grade reading level."
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = "Rewrite the above at a sixth grade reading level."
+    return complete_with_command(text, command, tokens, creds=creds)
 
 
 def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = 20
-    prompt = text + "\nThe text above is from a court form. Write the form's name."
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 20, creds=creds)
 
 
 def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = 250
-    prompt = (
-        text
-        + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
-    )
-    output = text_complete(prompt, max_tokens=tokens, creds=creds)
-    return output
+    command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 250, creds=creds)
 
 
 def needs_calculations(text: Union[str, Doc]) -> bool:
@@ -815,33 +824,42 @@ def parse_form(
         ff = None
     field_names = [field["var_name"] for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
-    # TODO(brycew): some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
+    # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
     # Text contains a bunch of "(cid:72)", garbage output (reading level is like 1000).
-    # An option that works: ocrmypdf:
-    # ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "test.txt", fp, "test.pdf"
-    # subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
-    # with open("test.txt") as tmp:
-    #   text = tmp.read()
-    # only thing to determine is when to run the (fairly expensive) ocrmypdf?
+    # Our workaround is to ask GPT3 if it looks like a court form, and if not, try running
+    # ocrmypdf.
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
-    new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
-    if title is None:
-        if hasattr(the_pdf.docinfo, "Title"):
-            title = str(the_pdf.docinfo.Title)
-        if not title and new_title and new_title != "Error":
-            title = new_title
-        if not title or title == "Error":
-            matches = re.search("(.*)\n", text)
-            if matches:
-                title = re_case(matches.group(1).strip())
-            else:
-                title = "(Untitled)"
     description = describe_form(text, creds=openai_creds) if openai_creds else ""
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
     except:
         readability = -1
+    # Still attempt to re-evaluate if not using openai
+    if (openai_creds and description == "abortthisnow.") or readability > 30:
+        # We do not care what the PDF output is, doesn't add that much time
+        ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "-", in_file, "/tmp/test.pdf"]
+        process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
+        if process.returncode == 0:
+            original_text = process.stdout.decode()
+            text = cleanup_text(original_text)
+            try:
+              readability = textstat.text_standard(text, float_output=True) if text else -1
+            except:
+              readability = -1
+
+    new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
+    if not title:
+        if hasattr(the_pdf.docinfo, "Title"):
+            title = str(the_pdf.docinfo.Title)
+        if not title and new_title and (new_title != "ApiError" and new_title.lower() != "abortthisnow."):
+            title = new_title
+        if not title or title == "ApiError" or title.lower() == "abortthisnow.":
+            matches = re.search("(.*)\n", text)
+            if matches:
+                title = re_case(matches.group(1).strip())
+            else:
+                title = "(Untitled)"
     nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
@@ -866,8 +884,11 @@ def parse_form(
     sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
     # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-    passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+    if len(sentences) > 0:
+        passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
+        passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+    else:
+        passive_sentences = 0
     citations = eyecite.get_citations(
         eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
     )
@@ -885,6 +906,8 @@ def parse_form(
     created_count = sum(1 for c in classified if c == AnswerType.CREATED)
     sentence_count = sum(1 for _ in sentences)
     field_count = len(field_names)
+    difficult_word_count = textstat.difficult_words(text)
+    citation_count = len(citations)
     stats = {
         "title": title,
         "suggested title": new_title,
@@ -914,9 +937,11 @@ def parse_form(
         "passive voice percent": passive_sentences / sentence_count
         if sentence_count > 0
         else 0,
-        "citations per field": len(citations) / field_count if field_count > 0 else 0,
+        "citations per field": citation_count / field_count if field_count > 0 else 0,
+        "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
-        "difficult word percent": textstat.difficult_words(text) / word_count,
+        "difficult word count": difficult_word_count,
+        "difficult word percent": difficult_word_count / word_count,
         "calculation required": needs_calculations(text),
     }
     if debug and ff:
