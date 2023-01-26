@@ -1,15 +1,14 @@
 # Updated on 2022-12-12
 
-from ctypes.wintypes import SHORT
-from dataclasses import Field
-import enum
 import os
 import re
+import subprocess
 from sklearn.metrics import classification_report
 import spacy
+from spacy.tokens import Doc
 from pdfminer.high_level import extract_text
+from pdfminer.layout import LAParams
 
-# import PyPDF2
 import pikepdf
 import textstat
 import requests
@@ -29,6 +28,7 @@ from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
 import sigfig
+from .pdf_wrangling import get_existing_pdf_fields
 
 try:
     from nltk.corpus import stopwords
@@ -50,7 +50,6 @@ import _thread
 from typing import (
     Optional,
     Union,
-    BinaryIO,
     Iterable,
     List,
     Dict,
@@ -58,7 +57,6 @@ from typing import (
     Callable,
     TypedDict,
 )
-from pathlib import Path
 
 import openai
 from transformers import GPT2TokenizerFast
@@ -69,20 +67,20 @@ stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 except:
-    print("Downloading word2vec model en_core_web_lg")
+    print("Downloading word2vec model en_core_web_md")
     import subprocess
 
-    bashCommand = "python -m spacy download en_core_web_lg"
+    bashCommand = "python -m spacy download en_core_web_md"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
-    import en_core_web_lg
+    import en_core_web_md
 
-    nlp = en_core_web_lg.load()
+    nlp = en_core_web_md.load()
 
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
@@ -102,7 +100,7 @@ clf_field_names = load(
 with open(
     os.path.join(os.path.dirname(__file__), "keys", "spot_token.txt"), "r"
 ) as in_file:
-    spot_token = in_file.read().rstrip()
+    default_spot_token = in_file.read().rstrip()
 with open(
     os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
 ) as in_file:
@@ -158,13 +156,20 @@ def spot(
     pred: float = 0.5,
     upper: float = 0.6,
     verbose: float = 0,
+    token: str = "",
 ):
     """
     Call the Spot API (https://spot.suffolklitlab.org) to classify the text of a PDF using
     the NSMIv2/LIST taxonomy (https://taxonomy.legal/), but returns only the IDs of issues found in the text.
     """
+    global default_spot_token
+    if not token:
+        if not default_spot_token:
+            print("You need to pass a spot token when using Spot")
+            return []
+        token = default_spot_token
     headers = {
-        "Authorization": "Bearer " + spot_token,
+        "Authorization": "Bearer " + token,
         "Content-Type": "application/json",
     }
 
@@ -333,9 +338,12 @@ def vectorize(text: str, normalize: bool = True):
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`
 
 
-def normalize_name(jur: str, group: str, n: int, per, last_field: str, this_field: str):
+def normalize_name(
+    jur: str, group: str, n: int, per, last_field: str, this_field: str
+) -> Tuple[str, float]:
     """Add hard coded conversions maybe by calling a function
-    if returns 0 then fail over to ML or other way around poor prob -> check hard-coded"""
+    if returns 0 then fail over to ML or other way around poor prob -> check hard-coded.
+    Retuns the new name and a confidence value between 0 and 1"""
     if this_field not in included_fields:
         this_field = re_case(this_field)
         out_put = regex_norm_field(this_field)
@@ -415,22 +423,6 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     return screens
 
 
-def get_existing_pdf_fields(
-    in_file: Union[str, Path, BinaryIO, pikepdf.Pdf]
-) -> Iterable:
-    """
-    Use PikePDF to get fields from the PDF
-    """
-    if isinstance(in_file, pikepdf.Pdf):
-        in_pdf = in_file
-    else:
-        in_pdf = pikepdf.Pdf.open(in_file)
-    return [
-        {"type": str(field.FT), "var_name": str(field.T), "all": field}
-        for field in iter(in_pdf.Root.AcroForm.Fields)
-    ]
-
-
 def get_character_count(
     field: pikepdf.Object, char_width: float = 6, row_height: float = 16
 ) -> int:
@@ -466,7 +458,7 @@ class FieldInfo(TypedDict):
 
 
 def field_types_and_sizes(
-    fields: Iterable,
+    fields: Optional[Iterable],
 ) -> List[FieldInfo]:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
@@ -480,6 +472,8 @@ def field_types_and_sizes(
     ]
     """
     processed_fields: List[FieldInfo] = []
+    if not fields:
+        return []
     for field in fields:
         item: FieldInfo = {
             "var_name": field["var_name"],
@@ -600,11 +594,11 @@ def time_to_answer_field(
     It is hand-written for now.
     It will factor in the input type, the answer type (slot in, gathered, third party or created), and the
     amount of input text allowed in the field.
-    The return value is a function that can return N samples of how long it will take to answer the field
+    The return value is a function that can return N samples of how long it will take to answer the field (in minutes)
     """
     # Average CPM is about 40: https://en.wikipedia.org/wiki/Words_per_minute#Handwriting
     # Standard deviation is about 17 characters/minute
-    # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation
+    # Add mean amount of time for gathering or creating the answer itself (if any) + standard deviation in minutes
     TIME_TO_MAKE_ANSWER = {
         AnswerType.SLOT_IN: (0.25, 0.1),
         AnswerType.GATHERED: (3, 2),
@@ -727,7 +721,16 @@ def all_caps_words(text: str) -> int:
     return 0
 
 
-def TextComplete(prompt, max_tokens=500):
+class OpenAiCreds(TypedDict):
+    org: str
+    key: str
+
+
+def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -> str:
+    if creds:
+        openai.organization = creds["org"].strip()
+        openai.api_key = creds["key"].strip()
+
     try:
         response = openai.Completion.create(
             model="text-davinci-003",
@@ -739,32 +742,56 @@ def TextComplete(prompt, max_tokens=500):
             presence_penalty=0.0,
         )
         return str(response["choices"][0]["text"].strip())
-    except:
-        return "Error"
+    except Exception as ex:
+        print(f"{ex}")
+        return "ApiError"
 
 
-def plain_lang(text):
+def complete_with_command(
+    text, command, tokens, creds: Optional[OpenAiCreds] = None
+) -> str:
+    """Combines some text with a command to send to open ai."""
+    # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
+    # A bit less than 4097 in case the tokenizer is wrong
+    # don't deal with negative numbers, clip at 1 (OpenAi will error anyway)
+    max_length = max(4080 - len(tokenizer(command)["input_ids"]) - tokens, 1)
+    text_tokens = tokenizer(text)
+    if len(text_tokens["input_ids"]) > max_length:
+        text = tokenizer.decode(
+            tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
+        )
+    return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
+
+
+def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
-    prompt = text + "\nRewrite the above at a sixth grade reading level."
-    output = TextComplete(prompt, max_tokens=tokens)
-    return output
+    command = "Rewrite the above at a sixth grade reading level."
+    return complete_with_command(text, command, tokens, creds=creds)
 
 
-def guess_form_name(text):
-    tokens = 20
-    prompt = text + "\nThe text above is from a court form. Write the form's name."
-    output = TextComplete(prompt, max_tokens=tokens)
-    return output
+def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
+    command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 20, creds=creds)
 
 
-def describe_form(text):
-    tokens = 250
-    prompt = (
-        text
-        + "\nThe text above is from a court form. Write a brief description of its purpose at a sixth grade reading level."
-    )
-    output = TextComplete(prompt, max_tokens=tokens)
-    return output
+def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
+    command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
+    return complete_with_command(text, command, 250, creds=creds)
+
+
+def needs_calculations(text: Union[str, Doc]) -> bool:
+    """A conservative guess at if a given form needs the filler to make math calculations,
+    something that should be avoided. If"""
+    CALCULATION_WORDS = ["subtract", "total", "minus", "multiply" "divide"]
+    if isinstance(text, str):
+        doc = nlp(text)
+    else:
+        doc = text
+    for token in doc:
+        if token.text.lower() in CALCULATION_WORDS:
+            return True
+    # TODO(brycew): anything better than a binary yes-no value on this?
+    return False
 
 
 def parse_form(
@@ -773,100 +800,149 @@ def parse_form(
     jur: Optional[str] = None,
     cat: Optional[str] = None,
     normalize: bool = True,
-    use_spot: bool = False,
+    spot_token: Optional[str] = None,
+    openai_creds: Optional[OpenAiCreds] = None,
     rewrite: bool = False,
     debug: bool = False,
 ):
     """
-    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the in_file with the new fields (if `rewrite=1`).
+    Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the
+    in_file with the new fields (if `rewrite=1`). If you pass a spot token, we will guess the
+    NSMI code. If you pass openai creds, we will give suggestions for the title and description.
     """
     unlock_pdf_in_place(in_file)
-    f = pikepdf.open(in_file)
-    npages = len(f.pages)
+    the_pdf = pikepdf.open(in_file)
+    pages_count = len(the_pdf.pages)
 
     try:
         with time_limit(15):
-            ff = get_existing_pdf_fields(f)
+            ff = get_existing_pdf_fields(the_pdf)
     except TimeoutException as e:
         print("Timed out!")
         ff = None
     except AttributeError:
         ff = None
-    if ff:
-        fields = [field["var_name"] for field in ff]
-    else:
-        fields = []
-    f_per_page = len(fields) / npages
-    original_text = extract_text(in_file)
+    field_names = [field["var_name"] for field in ff] if ff else []
+    f_per_page = len(field_names) / pages_count
+    # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
+    # Text contains a bunch of "(cid:72)", garbage output (reading level is like 1000).
+    # Our workaround is to ask GPT3 if it looks like a court form, and if not, try running
+    # ocrmypdf.
+    original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
-    if title is None:
-        title = guess_form_name(text)
-        if title == "Error":
+    description = describe_form(text, creds=openai_creds) if openai_creds else ""
+    try:
+        readability = textstat.text_standard(text, float_output=True) if text else -1
+    except:
+        readability = -1
+    # Still attempt to re-evaluate if not using openai
+    if (openai_creds and description == "abortthisnow.") or readability > 30:
+        # We do not care what the PDF output is, doesn't add that much time
+        ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "-", in_file, "/tmp/test.pdf"]
+        process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
+        if process.returncode == 0:
+            original_text = process.stdout.decode()
+            text = cleanup_text(original_text)
+            try:
+              readability = textstat.text_standard(text, float_output=True) if text else -1
+            except:
+              readability = -1
+
+    new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
+    if not title:
+        if hasattr(the_pdf.docinfo, "Title"):
+            title = str(the_pdf.docinfo.Title)
+        if not title and new_title and (new_title != "ApiError" and new_title.lower() != "abortthisnow."):
+            title = new_title
+        if not title or title == "ApiError" or title.lower() == "abortthisnow.":
             matches = re.search("(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    try:
-        if text != "":
-            readability = textstat.text_standard(text, float_output=True)
-        else:
-            readability = -1
-    except:
-        readability = -1
-    if use_spot:
-        nmsi = spot(title + ". " + text)
-    else:
-        nmsi = []
+    nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
-        i = 0
-        length = len(fields)
+        length = len(field_names)
         last = "null"
-        new_fields = []
-        new_fields_conf = []
-        for field in fields:
-            # print(jur,cat,i,i/length,last,field)
-            this_field, this_conf = normalize_name(
-                jur or "", cat or "", i, i / length, last, field
+        new_names = []
+        new_names_conf = []
+        for i, field_name in enumerate(field_names):
+            new_name, new_confidence = normalize_name(
+                jur or "", cat or "", i, i / length, last, field_name
             )
-            new_fields.append(this_field)
-            new_fields_conf.append(this_conf)
-            last = field
-        new_fields = [
-            v + "__" + str(new_fields[:i].count(v) + 1)
-            if new_fields.count(v) > 1
-            else v
-            for i, v in enumerate(new_fields)
+            new_names.append(new_name)
+            new_names_conf.append(new_confidence)
+            last = field_name
+        new_names = [
+            v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
+            for i, v in enumerate(new_names)
         ]
     else:
-        new_fields = fields
-        new_fields_conf = []
-    sentences = sent_tokenize(text)
-    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3). PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-    passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+        new_names = field_names
+        new_names_conf = []
+    # textstat removes sentences with 2 or fewer words, do the same
+    sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
+    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
+    # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
+    if len(sentences) > 0:
+        passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
+        passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
+    else:
+        passive_sentences = 0
     citations = eyecite.get_citations(
         eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
     )
+    word_count = len(text.split(" "))
+    all_caps_count = all_caps_words(text)
+    citations = [cite.matched_text() for cite in citations]
+    field_types = field_types_and_sizes(ff)
+    classified = [
+        classify_field(field, new_names[index])
+        for index, field in enumerate(field_types)
+    ]
+    slotin_count = sum(1 for c in classified if c == AnswerType.SLOT_IN)
+    gathered_count = sum(1 for c in classified if c == AnswerType.GATHERED)
+    third_party_count = sum(1 for c in classified if c == AnswerType.THIRD_PARTY)
+    created_count = sum(1 for c in classified if c == AnswerType.CREATED)
+    sentence_count = sum(1 for _ in sentences)
+    field_count = len(field_names)
+    difficult_word_count = textstat.difficult_words(text)
+    citation_count = len(citations)
     stats = {
         "title": title,
+        "suggested title": new_title,
+        "description": description,
         "category": cat,
-        "pages": npages,
+        "pages": pages_count,
         "reading grade level": readability,
-        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_fields)
+        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_names)
         if ff
-        else -1,
+        else [-1, -1],
         "list": nmsi,
         "avg fields per page": f_per_page,
-        "fields": new_fields,
-        "fields_conf": new_fields_conf,
-        "fields_old": fields,
+        "fields": new_names,
+        "fields_conf": new_names_conf,
+        "fields_old": field_names,
         "text": text,
         "original_text": original_text,
-        "number of sentences": len(sentences),
+        "number of sentences": sentence_count,
+        "sentences per page": sentence_count / pages_count,
         "number of passive voice sentences": passive_sentences,
-        "number of all caps words": all_caps_words(text),
-        "citations": [cite.matched_text() for cite in citations],
+        "number of all caps words": all_caps_count,
+        "citations": citations,
+        "total fields": field_count,
+        "slotin percent": slotin_count / field_count if field_count > 0 else 0,
+        "gathered percent": gathered_count / field_count if field_count > 0 else 0,
+        "created percent": created_count / field_count if field_count > 0 else 0,
+        "passive voice percent": passive_sentences / sentence_count
+        if sentence_count > 0
+        else 0,
+        "citations per field": citation_count / field_count if field_count > 0 else 0,
+        "citation count": citation_count,
+        "all caps percent": all_caps_count / word_count,
+        "difficult word count": difficult_word_count,
+        "difficult word percent": difficult_word_count / word_count,
+        "calculation required": needs_calculations(text),
     }
     if debug and ff:
         debug_fields = []
@@ -877,9 +953,11 @@ def parse_form(
                     "input type": str(field["type"]),
                     "max length": field["max_length"],
                     "inferred answer type": str(
-                        classify_field(field, new_fields[index])
+                        classify_field(field, new_names[index])
                     ),
-                    "time to answer": time_to_answer_field(field, new_fields[index])(1),
+                    "time to answer": list(
+                        time_to_answer_field(field, new_names[index])(1)
+                    ),
                 }
             )
         stats["debug fields"] = debug_fields
@@ -890,17 +968,60 @@ def parse_form(
                 my_pdf.Root.AcroForm.Fields
             )  # [0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
             # print(repr(fields_too))
-            for k, field in enumerate(new_fields):
+            for k, field_name in enumerate(new_names):
                 # print(k,field)
-                fields_too[k].T = re.sub("^\*", "", field)
+                fields_too[k].T = re.sub("^\*", "", field_name)
             my_pdf.save(in_file)
-        except:
-            stats["error"] = "could not change form fields"
+        except Exception as ex:
+            stats["error"] = f"could not change form fields: {ex}"
     return stats
 
 
-def form_complexity(text, fields, reading_lv):
+def _form_complexity_per_metric(stats):
     # check for fields that require user to look up info, when found add to complexity
     # maybe score these by minutes to recall/fill out
     # so, figure out words per minute, mix in with readability and page number and field numbers
-    return 0
+
+    # TODO(brycew):
+    # to write: options with unknown?
+    # to write: fields with exact info
+    # to write: fields with open ended responses (text boxes)
+    metrics = [
+        {"name": "reading grade level", "weight": 10 / 7, "intercept": 5},
+        {"name": "calculation required", "weight": 2},
+        # {"name": "time to answer", "weight": 2},
+        {"name": "pages", "weight": 2},
+        {"name": "citations per field", "weight": 1.2},
+        {"name": "avg fields per page", "weight": 1 / 8},
+        {"name": "sentences per page", "weight": 0.05},
+        # percents will have a higher weight, because they are between 0 and 1
+        {"name": "slotin percent", "weight": 2},
+        {"name": "gathered percent", "weight": 5},
+        {"name": "created percent", "weight": 20},
+        {"name": "passive voice percent", "weight": 4},
+        {"name": "all caps percent", "weight": 10},
+        {"name": "difficult word percent", "weight": 15},
+    ]
+
+    def weight(stats, metric):
+        """Handles if we need to scale / "normalize" the metrics at all."""
+        name = metric["name"]
+        weight = metric.get("weight") or 1
+        val = 0
+        if "clip" in metric:
+            val = min(max(stats[name], metric["clip"][0]), metric["clip"][1])
+        elif isinstance(stats[name], bool):
+            val = 1 if stats[name] else 0
+        else:
+            val = stats[name]
+        if "intercept" in metric:
+            val -= metric["intercept"]
+        return val * weight
+
+    return [(m["name"], stats[m["name"]], weight(stats, m)) for m in metrics]
+
+
+def form_complexity(stats):
+    """Gets a single number of how hard the form is to complete. Higher is harder."""
+    metrics = _form_complexity_per_metric(stats)
+    return sum(val[2] for val in metrics)

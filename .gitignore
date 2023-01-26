@@ -8,3 +8,4 @@ dist/**
 .history/
 dev-testing/.DS_Store
 .DS_Store
+.env
