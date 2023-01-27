@@ -801,12 +801,14 @@ def highlight_text(sentence:str, fragments:str, highlight_class:str="highlight")
     return highlighted
 
 
-def get_passive_sentences(text:Union[List, str], highlight_class: str="passive-voice") -> pd.DataFrame:
-    """Tokenize and then return a Pandas dataframe containing all sentences that appear to be written in passive voice.
-    Columns will include the full sentence and the passive voice portion of the sentence, as well as a column
-    with an HTML span surrounding the "passive" portion of the sentence. 
+def get_passive_sentences(text:Union[List, str], highlight_class: str="passive-voice") -> List[str]:
+    """Tokenize and then return a list containing all sentences that appear to be written in passive voice.
+    The "passive" fragment in the sentence will be highlighted
+    with an HTML span.
 
-    Sentences containing fewer than 2 words will be ignored.
+    Text can either be a string or a list of strings. 
+    If provided a single string, it will be tokenized with NTLK and
+    sentences containing fewer than 2 words will be ignored.
     """
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
     # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
@@ -823,8 +825,7 @@ def get_passive_sentences(text:Union[List, str], highlight_class: str="passive-v
     passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
     matching_rows = passive_text_df[passive_text_df["binary"] > 0]
 
-    matching_rows["highlights"] = [highlight_text(*a, highlight_class="passive-voice") for a in tuple(zip(matching_rows["document"], matching_rows["all_passives"]))]
-    return matching_rows
+    return [highlight_text(*a, highlight_class=highlight_class) for a in tuple(zip(matching_rows["document"], matching_rows["all_passives"]))]
 
 
 def get_citations(text:str, tokenized_sentences: List[str]) -> List[str]:
@@ -945,11 +946,11 @@ def parse_form(
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
     try:
-        passive_text_df = get_passive_sentences(sentences, highlight_class="passive-voice")
-        passive_sentences_count = len(passive_text_df)
+        passive_sentences = get_passive_sentences(sentences, highlight_class="passive-voice")
+        passive_sentences_count = len(passive_sentences)
     except ValueError:
         passive_sentences_count = 0
-        passive_text_df = pd.DataFrame()
+        passive_sentences = []
 
     citations = get_citations(original_text, tokenized_sentences)
     word_count = len(text.split(" "))
@@ -988,7 +989,7 @@ def parse_form(
         "number of sentences": sentence_count,
         "sentences per page": sentence_count / pages_count,
         "number of passive voice sentences": passive_sentences_count,
-        "passive sentences": passive_text_df,
+        "passive sentences": passive_sentences,
         "number of all caps words": all_caps_count,
         "citations": citations,
         "total fields": field_count,
