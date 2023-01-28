@@ -920,7 +920,7 @@ def parse_form(
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
+    nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
         last = "null"
@@ -941,7 +941,7 @@ def parse_form(
         new_names = field_names
         new_names_conf = []
 
-    tokenized_sentences = sent_tokenize(text)    
+    tokenized_sentences = sent_tokenize(original_text)
     # No need to detect passive voice in very short sentences
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
@@ -979,7 +979,7 @@ def parse_form(
         "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_names)
         if ff
         else [-1, -1],
-        "list": nmsi,
+        "list": nsmi,
         "avg fields per page": f_per_page,
         "fields": new_names,
         "fields_conf": new_names_conf,
