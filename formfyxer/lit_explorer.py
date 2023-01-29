@@ -507,11 +507,14 @@ class AnswerType(Enum):
     See Jarret and Gaffney, Forms That Work (2008)
     """
 
-    SLOT_IN = "slot in"
-    GATHERED = "gathered"
-    THIRD_PARTY = "third party"
-    CREATED = "created"
-    AFFIDAVIT = "affidavit"
+    SLOT_IN = "Slot in"
+    GATHERED = "Gathered"
+    THIRD_PARTY = "Third party"
+    CREATED = "Created"
+    AFFIDAVIT = "Affidavit"
+    
+    def __str__(self):
+        return self.value
 
 
 def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
