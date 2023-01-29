@@ -446,10 +446,11 @@ class InputType(Enum):
     handle text, checkbox, and signature fields.
     """
 
-    TEXT = "text"
-    CHECKBOX = "checkbox"
-    SIGNATURE = "signature"
-
+    TEXT = "Text"
+    CHECKBOX = "Checkbox"
+    SIGNATURE = "Signature"
+    def __str__(self):
+        return self.value
 
 class FieldInfo(TypedDict):
     var_name: str
@@ -512,7 +513,7 @@ class AnswerType(Enum):
     THIRD_PARTY = "Third party"
     CREATED = "Created"
     AFFIDAVIT = "Affidavit"
-    
+
     def __str__(self):
         return self.value
 
