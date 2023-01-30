@@ -446,10 +446,11 @@ class InputType(Enum):
     handle text, checkbox, and signature fields.
     """
 
-    TEXT = "text"
-    CHECKBOX = "checkbox"
-    SIGNATURE = "signature"
-
+    TEXT = "Text"
+    CHECKBOX = "Checkbox"
+    SIGNATURE = "Signature"
+    def __str__(self):
+        return self.value
 
 class FieldInfo(TypedDict):
     var_name: str
@@ -507,11 +508,14 @@ class AnswerType(Enum):
     See Jarret and Gaffney, Forms That Work (2008)
     """
 
-    SLOT_IN = "slot in"
-    GATHERED = "gathered"
-    THIRD_PARTY = "third party"
-    CREATED = "created"
-    AFFIDAVIT = "affidavit"
+    SLOT_IN = "Slot in"
+    GATHERED = "Gathered"
+    THIRD_PARTY = "Third party"
+    CREATED = "Created"
+    AFFIDAVIT = "Affidavit"
+
+    def __str__(self):
+        return self.value
 
 
 def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
@@ -794,6 +798,61 @@ def needs_calculations(text: Union[str, Doc]) -> bool:
     return False
 
 
+def get_passive_sentences(text:Union[List, str]) -> List[Tuple[str,List[str]]]:
+    """Return a list of tuples, where each tuple represents a
+    sentence in which passive voice was detected along with a list of each
+    fragment that is phrased in the passive voice. The combination of the two
+    can be used in the PDFStats frontend to highlight the passive text in an
+    individual sentence.
+
+    Text can either be a string or a list of strings. 
+    If provided a single string, it will be tokenized with NTLK and
+    sentences containing fewer than 2 words will be ignored.
+    """
+    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
+    # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
+
+    if isinstance(text, str):
+        sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
+        if not sentences:
+            raise ValueError("There are no sentences over 2 words in the provided text.")
+    elif isinstance(text, list):
+        sentences = text
+    else:
+        raise ValueError(f"Can't tokenize {type(text)} object into sentences")
+
+    passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
+    matching_rows = passive_text_df[passive_text_df["binary"] > 0]
+
+    return list(zip(matching_rows["document"], matching_rows["all_passives"]))
+
+
+def get_citations(text:str, tokenized_sentences: List[str]) -> List[str]:
+    """
+    Get citations and some extra surrounding context (the full sentence), if the citation is 
+    fewer than 5 characters (often eyecite only captures a section symbol
+    for state-level short citation formats)
+    """
+    citations = eyecite.get_citations(
+        eyecite.clean_text(text, ["all_whitespace", "underscores"])
+    )
+    citations_with_context = []
+    tokens = set()
+    for cite in citations:
+        if len(cite.matched_text()) < 5:
+            tokens.add(cite.matched_text())
+        else:
+            citations_with_context.append(cite.matched_text())
+    for token in tokens:
+        citations_with_context.extend([
+            sentence
+            for sentence
+            in tokenized_sentences
+            if token in sentence
+        ])
+    
+    return citations_with_context
+
 def parse_form(
     in_file: str,
     title: Optional[str] = None,
@@ -860,7 +919,7 @@ def parse_form(
                 title = re_case(matches.group(1).strip())
             else:
                 title = "(Untitled)"
-    nmsi = spot(title + ". " + text, token=spot_token) if spot_token else []
+    nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         length = len(field_names)
         last = "null"
@@ -880,21 +939,21 @@ def parse_form(
     else:
         new_names = field_names
         new_names_conf = []
-    # textstat removes sentences with 2 or fewer words, do the same
-    sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
-    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
-    # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    if len(sentences) > 0:
-        passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-        passive_sentences = len(passive_text_df[passive_text_df["binary"] > 0])
-    else:
-        passive_sentences = 0
-    citations = eyecite.get_citations(
-        eyecite.clean_text(original_text, ["all_whitespace", "underscores"])
-    )
+
+    tokenized_sentences = sent_tokenize(original_text)
+    # No need to detect passive voice in very short sentences
+    sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
+
+    try:
+        passive_sentences = get_passive_sentences(sentences)
+        passive_sentences_count = len(passive_sentences)
+    except ValueError:
+        passive_sentences_count = 0
+        passive_sentences = []
+
+    citations = get_citations(original_text, tokenized_sentences)
     word_count = len(text.split(" "))
     all_caps_count = all_caps_words(text)
-    citations = [cite.matched_text() for cite in citations]
     field_types = field_types_and_sizes(ff)
     classified = [
         classify_field(field, new_names[index])
@@ -906,7 +965,8 @@ def parse_form(
     created_count = sum(1 for c in classified if c == AnswerType.CREATED)
     sentence_count = sum(1 for _ in sentences)
     field_count = len(field_names)
-    difficult_word_count = textstat.difficult_words(text)
+    difficult_words = textstat.difficult_words_list(text)
+    difficult_word_count = len(difficult_words)
     citation_count = len(citations)
     stats = {
         "title": title,
@@ -918,7 +978,7 @@ def parse_form(
         "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_names)
         if ff
         else [-1, -1],
-        "list": nmsi,
+        "list": nsmi,
         "avg fields per page": f_per_page,
         "fields": new_names,
         "fields_conf": new_names_conf,
@@ -927,19 +987,24 @@ def parse_form(
         "original_text": original_text,
         "number of sentences": sentence_count,
         "sentences per page": sentence_count / pages_count,
-        "number of passive voice sentences": passive_sentences,
+        "number of passive voice sentences": passive_sentences_count,
+        "passive sentences": passive_sentences,
         "number of all caps words": all_caps_count,
         "citations": citations,
         "total fields": field_count,
         "slotin percent": slotin_count / field_count if field_count > 0 else 0,
         "gathered percent": gathered_count / field_count if field_count > 0 else 0,
         "created percent": created_count / field_count if field_count > 0 else 0,
-        "passive voice percent": passive_sentences / sentence_count
-        if sentence_count > 0
-        else 0,
+        "third party percent": third_party_count / field_count if field_count > 0 else 0,
+        "passive voice percent": (
+            passive_sentences_count / sentence_count
+            if sentence_count > 0
+            else 0
+        ),
         "citations per field": citation_count / field_count if field_count > 0 else 0,
         "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
+        "difficult words": difficult_words,
         "difficult word count": difficult_word_count,
         "difficult word percent": difficult_word_count / word_count,
         "calculation required": needs_calculations(text),
