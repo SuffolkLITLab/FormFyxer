@@ -798,17 +798,12 @@ def needs_calculations(text: Union[str, Doc]) -> bool:
     return False
 
 
-def highlight_text(sentence:str, fragments:str, highlight_class:str="highlight")->str:
-    highlighted = sentence
-    for frag in fragments:
-        highlighted = re.sub(frag, f'<span class="{ highlight_class }">{frag}</span>', sentence)
-    return highlighted
-
-
-def get_passive_sentences(text:Union[List, str], highlight_class: str="passive-voice") -> List[str]:
-    """Tokenize and then return a list containing all sentences that appear to be written in passive voice.
-    The "passive" fragment in the sentence will be highlighted
-    with an HTML span.
+def get_passive_sentences(text:Union[List, str]) -> List[Tuple[str,List[str]]]:
+    """Return a list of tuples, where each tuple represents a
+    sentence in which passive voice was detected along with a list of each
+    fragment that is phrased in the passive voice. The combination of the two
+    can be used in the PDFStats frontend to highlight the passive text in an
+    individual sentence.
 
     Text can either be a string or a list of strings. 
     If provided a single string, it will be tokenized with NTLK and
@@ -829,7 +824,7 @@ def get_passive_sentences(text:Union[List, str], highlight_class: str="passive-v
     passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
     matching_rows = passive_text_df[passive_text_df["binary"] > 0]
 
-    return [highlight_text(*a, highlight_class=highlight_class) for a in tuple(zip(matching_rows["document"], matching_rows["all_passives"]))]
+    return list(zip(matching_rows["document"], matching_rows["all_passives"]))
 
 
 def get_citations(text:str, tokenized_sentences: List[str]) -> List[str]:
@@ -950,7 +945,7 @@ def parse_form(
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
     try:
-        passive_sentences = get_passive_sentences(sentences, highlight_class="passive-voice")
+        passive_sentences = get_passive_sentences(sentences)
         passive_sentences_count = len(passive_sentences)
     except ValueError:
         passive_sentences_count = 0
