@@ -449,8 +449,10 @@ class InputType(Enum):
     TEXT = "Text"
     CHECKBOX = "Checkbox"
     SIGNATURE = "Signature"
+
     def __str__(self):
         return self.value
+
 
 class FieldInfo(TypedDict):
     var_name: str
@@ -798,14 +800,14 @@ def needs_calculations(text: Union[str, Doc]) -> bool:
     return False
 
 
-def get_passive_sentences(text:Union[List, str]) -> List[Tuple[str,List[str]]]:
+def get_passive_sentences(text: Union[List, str]) -> List[Tuple[str, List[str]]]:
     """Return a list of tuples, where each tuple represents a
     sentence in which passive voice was detected along with a list of each
     fragment that is phrased in the passive voice. The combination of the two
     can be used in the PDFStats frontend to highlight the passive text in an
     individual sentence.
 
-    Text can either be a string or a list of strings. 
+    Text can either be a string or a list of strings.
     If provided a single string, it will be tokenized with NTLK and
     sentences containing fewer than 2 words will be ignored.
     """
@@ -815,7 +817,9 @@ def get_passive_sentences(text:Union[List, str]) -> List[Tuple[str,List[str]]]:
     if isinstance(text, str):
         sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
         if not sentences:
-            raise ValueError("There are no sentences over 2 words in the provided text.")
+            raise ValueError(
+                "There are no sentences over 2 words in the provided text."
+            )
     elif isinstance(text, list):
         sentences = text
     else:
@@ -827,9 +831,9 @@ def get_passive_sentences(text:Union[List, str]) -> List[Tuple[str,List[str]]]:
     return list(zip(matching_rows["document"], matching_rows["all_passives"]))
 
 
-def get_citations(text:str, tokenized_sentences: List[str]) -> List[str]:
+def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     """
-    Get citations and some extra surrounding context (the full sentence), if the citation is 
+    Get citations and some extra surrounding context (the full sentence), if the citation is
     fewer than 5 characters (often eyecite only captures a section symbol
     for state-level short citation formats)
     """
@@ -844,14 +848,12 @@ def get_citations(text:str, tokenized_sentences: List[str]) -> List[str]:
         else:
             citations_with_context.append(cite.matched_text())
     for token in tokens:
-        citations_with_context.extend([
-            sentence
-            for sentence
-            in tokenized_sentences
-            if token in sentence
-        ])
-    
+        citations_with_context.extend(
+            [sentence for sentence in tokenized_sentences if token in sentence]
+        )
+
     return citations_with_context
+
 
 def parse_form(
     in_file: str,
@@ -897,21 +899,35 @@ def parse_form(
     # Still attempt to re-evaluate if not using openai
     if (openai_creds and description == "abortthisnow.") or readability > 30:
         # We do not care what the PDF output is, doesn't add that much time
-        ocr_p = ["ocrmypdf", "--force-ocr", "--rotate-pages", "--sidecar", "-", in_file, "/tmp/test.pdf"]
+        ocr_p = [
+            "ocrmypdf",
+            "--force-ocr",
+            "--rotate-pages",
+            "--sidecar",
+            "-",
+            in_file,
+            "/tmp/test.pdf",
+        ]
         process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
         if process.returncode == 0:
             original_text = process.stdout.decode()
             text = cleanup_text(original_text)
             try:
-              readability = textstat.text_standard(text, float_output=True) if text else -1
+                readability = (
+                    textstat.text_standard(text, float_output=True) if text else -1
+                )
             except:
-              readability = -1
+                readability = -1
 
     new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
     if not title:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
-        if not title and new_title and (new_title != "ApiError" and new_title.lower() != "abortthisnow."):
+        if (
+            not title
+            and new_title
+            and (new_title != "ApiError" and new_title.lower() != "abortthisnow.")
+        ):
             title = new_title
         if not title or title == "ApiError" or title.lower() == "abortthisnow.":
             matches = re.search("(.*)\n", text)
@@ -995,11 +1011,11 @@ def parse_form(
         "slotin percent": slotin_count / field_count if field_count > 0 else 0,
         "gathered percent": gathered_count / field_count if field_count > 0 else 0,
         "created percent": created_count / field_count if field_count > 0 else 0,
-        "third party percent": third_party_count / field_count if field_count > 0 else 0,
+        "third party percent": third_party_count / field_count
+        if field_count > 0
+        else 0,
         "passive voice percent": (
-            passive_sentences_count / sentence_count
-            if sentence_count > 0
-            else 0
+            passive_sentences_count / sentence_count if sentence_count > 0 else 0
         ),
         "citations per field": citation_count / field_count if field_count > 0 else 0,
         "citation count": citation_count,
