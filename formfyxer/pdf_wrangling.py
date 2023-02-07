@@ -288,6 +288,26 @@ def swap_pdf_page(
     destination_offset: int = 0,
     append_fields: bool = False,
 ) -> Pdf:
+    """(DEPRECATED: use copy_pdf_fields) Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
+    the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
+    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
+    return copy_pdf_fields(
+        source_pdf=source_pdf,
+        destination_pdf=destination_pdf,
+        source_offset=source_offset,
+        destination_offset=destination_offset,
+        append_fields=append_fields,
+    )
+
+
+def copy_pdf_fields(
+    *,
+    source_pdf: Union[str, Path, Pdf],
+    destination_pdf: Union[str, Path, Pdf],
+    source_offset: int = 0,
+    destination_offset: int = 0,
+    append_fields: bool = False,
+) -> Pdf:
     """Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
     in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
