@@ -28,7 +28,12 @@ from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
 import sigfig
-from .pdf_wrangling import get_existing_pdf_fields
+from .pdf_wrangling import (
+    get_existing_pdf_fields,
+    FormField,
+    FieldType,
+    unlock_pdf_in_place,
+)
 
 try:
     from nltk.corpus import stopwords
@@ -424,20 +429,16 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
 
 
 def get_character_count(
-    field: pikepdf.Object, char_width: float = 6, row_height: float = 16
+    field: FormField, char_width: float = 6, row_height: float = 16
 ) -> int:
-    if not hasattr(field["all"], "Rect"):
-        return 1
     # https://pikepdf.readthedocs.io/en/latest/api/main.html#pikepdf.Rectangle
     # Rectangle with llx,lly,urx,ury
-    height = field["all"].Rect[3] - field["all"].Rect[1]  # type: ignore
-    width = field["all"].Rect[2] - field["all"].Rect[0]  # type: ignore
-    # height = field["all"].Rect.height
-    # width = field["all"].Rect.width
+    height = field.configs.get("height") or field.configs.get("size", 0)
+    width = field.configs.get("width") or field.configs.get("size", 0)
     num_rows = int(height / row_height) if height > row_height else 1  # type: ignore
     num_cols = int(width / char_width)  # type: ignore
     max_chars = num_rows * num_cols
-    return max_chars
+    return min(max_chars, 1)
 
 
 class InputType(Enum):
@@ -461,7 +462,7 @@ class FieldInfo(TypedDict):
 
 
 def field_types_and_sizes(
-    fields: Optional[Iterable],
+    fields: Optional[Iterable[FormField]],
 ) -> List[FieldInfo]:
     """
     Transform the fields provided by get_existing_pdf_fields into a summary format.
@@ -479,20 +480,20 @@ def field_types_and_sizes(
         return []
     for field in fields:
         item: FieldInfo = {
-            "var_name": field["var_name"],
+            "var_name": field.name,
             "max_length": get_character_count(
                 field,
             ),
             "type": "",
         }
-        if field["type"] == "/Tx":
+        if field.type == FieldType.TEXT or field.type == FieldType.AREA:
             item["type"] = InputType.TEXT
-        elif field["type"] == "/Btn":
+        elif field.type == FieldType.CHECK_BOX:
             item["type"] = InputType.CHECKBOX
-        elif field["type"] == "/Sig":
+        elif field.type == FieldType.SIGNATURE:
             item["type"] = InputType.SIGNATURE
         else:
-            item["type"] = str(field["type"])
+            item["type"] = str(field.type)
         processed_fields.append(item)
     return processed_fields
 
@@ -685,17 +686,6 @@ def time_to_answer_form(processed_fields, normalized_fields) -> Tuple[float, flo
     return sigfig.round(np_array.mean(), 2), sigfig.round(np_array.std(), 2)
 
 
-def unlock_pdf_in_place(in_file: str):
-    """
-    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
-    """
-    if not isinstance(in_file, str):
-        return
-    pdf_file = pikepdf.open(in_file, allow_overwriting_input=True)
-    if pdf_file.is_encrypted:
-        pdf_file.save(in_file)
-
-
 def cleanup_text(text: str, fields_to_sentences: bool = False) -> str:
     """
     Apply cleanup routines to text to provide more accurate readability statistics.
@@ -877,13 +867,16 @@ def parse_form(
 
     try:
         with time_limit(15):
-            ff = get_existing_pdf_fields(the_pdf)
+            all_fields_per_page = get_existing_pdf_fields(the_pdf)
+            ff = []
+            for fields_in_page in all_fields_per_page:
+                ff.extend(fields_in_page)
     except TimeoutException as e:
         print("Timed out!")
         ff = None
     except AttributeError:
         ff = None
-    field_names = [field["var_name"] for field in ff] if ff else []
+    field_names = [field.name for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
     # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
     # Text contains a bunch of "(cid:72)", garbage output (reading level is like 1000).

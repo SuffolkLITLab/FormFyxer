@@ -3,6 +3,7 @@ import math
 import re
 from enum import Enum
 import tempfile
+from copy import copy
 from typing import (
     Any,
     Dict,
@@ -15,7 +16,7 @@ from typing import (
     Mapping,
     TypedDict,
 )
-from numbers import Number
+from collections.abc import Sequence
 from pathlib import Path
 import random
 
@@ -48,10 +49,26 @@ DEBUG = False
 class FieldType(Enum):
     TEXT = "text"  # Text input Field
     AREA = "area"  # Text input Field, but an area
+    SIGNATURE = "Signature"
     CHECK_BOX = "checkbox"
     LIST_BOX = "listbox"  # allows multiple selection
     CHOICE = "choice"  # allows only one selection
     RADIO = "radio"
+
+    def __str__(self):
+        return self.value
+
+
+class PikeField(TypedDict):
+    type: str
+    var_name: str
+    all: pikepdf.objects.Object
+
+
+BoundingBox = Tuple[int, int, int, int]
+# x0, y0, width, height
+BoundingBoxF = Tuple[float, float, float, float]
+XYPair = Tuple[float, float]
 
 
 class FormField:
@@ -63,7 +80,7 @@ class FormField:
         type_name: Union[FieldType, str],
         x: int,
         y: int,
-        font_size: int = 20,
+        font_size: Optional[int] = None,
         user_name: str = "",
         configs: Optional[Dict[str, Any]] = None,
     ):
@@ -80,8 +97,11 @@ class FormField:
             config: a dictionary containing any keyword argument to the reportlab field functions,
                 which will vary depending on what type of field this is. See section 4.7 of the
                 [reportlab User Guide](https://www.reportlab.com/docs/reportlab-userguide.pdf)
+            program_name: the programmatic name of the field. Not the tooltip, but `users1_name__0`
 
         """
+        if font_size is None:
+            font_size = 20
         if isinstance(type_name, str):
             # throws a ValueError, keeping in for now
             self.type = FieldType(type_name.lower())
@@ -112,8 +132,100 @@ class FormField:
         if configs:
             self.configs.update(configs)
 
+    @classmethod
+    def make_textbox(cls, label: str, field_bbox: BoundingBox, font_size):
+        return FormField(
+            label,
+            FieldType.TEXT,
+            field_bbox[0],
+            field_bbox[1],
+            font_size=font_size,
+            configs={"width": field_bbox[2], "height": field_bbox[3]},
+        )
+
+    @classmethod
+    def make_textarea(cls, label: str, field_bbox: BoundingBox, font_size):
+        return FormField(
+            label,
+            FieldType.AREA,
+            field_bbox[0],
+            field_bbox[1],
+            font_size=font_size,
+            configs={"width": field_bbox[2], "height": field_bbox[3]},
+        )
+
+    @classmethod
+    def make_checkbox(cls, label: str, bbox: BoundingBox):
+        return FormField(
+            label,
+            FieldType.CHECK_BOX,
+            bbox[0],
+            bbox[1] - bbox[3],
+            configs={"size": min(bbox[2], bbox[3])},
+        )
+
+    @classmethod
+    def from_pikefield(cls, pike_field: PikeField):
+        if pike_field["type"] == "/Tx":
+            var_type = FieldType.TEXT
+        elif pike_field["type"] == "/Btn":
+            var_type = FieldType.CHECK_BOX
+        elif pike_field["type"] == "/Sig":
+            var_type = FieldType.SIGNATURE
+        else:
+            var_type = FieldType.TEXT
+
+        if hasattr(pike_field["all"], "Rect"):
+            x = float(pike_field["all"].Rect[0])  # type: ignore
+            y = float(pike_field["all"].Rect[1])  # type: ignore
+            width = float(pike_field["all"].Rect[2]) - x  # type: ignore
+            height = float(pike_field["all"].Rect[3]) - y  # type: ignore
+        else:
+            x = 0
+            y = 0
+            width = 0
+            height = 0
+        font_size = None
+        if hasattr(pike_field["all"], "DA"):
+            try:
+                da_ops = str(pike_field["all"].DA).split()
+                tf_idx = da_ops.index("Tf")
+                font_size = int(float(da_ops[tf_idx - 1]))
+            except (IndexError, ValueError, AttributeError, KeyError) as ex:
+                print(f"Skipping {str(pike_field['all'].DA)}, because of {ex}")
+        return FormField(
+            pike_field["var_name"],
+            var_type,
+            int(x),
+            int(y),
+            font_size=font_size,
+            configs={"width": width, "height": height},
+        )
+
+    def get_bbox(self) -> BoundingBoxF:
+        if self.type == FieldType.TEXT or self.type == FieldType.AREA:
+            return (
+                self.x,
+                self.y,
+                self.configs.get("width", 0),
+                self.configs.get("height", 0),
+            )
+        elif self.type == FieldType.CHECK_BOX:
+            return (
+                self.x,
+                self.y,
+                self.configs.get("size", 0),
+                self.configs.get("size", 0),
+            )
+        return (
+            self.x,
+            self.y,
+            self.configs.get("size", 0),
+            self.configs.get("size", 0),
+        )
+
     def __str__(self):
-        return f"Type: {self.type}, Name: {self.name}, User name: {self.user_name}, X: {self.x}, Y: {self.y}, Configs: {self.configs}"
+        return f"Type: {self.type}, Name: {self.name}, User name: {self.user_name}, X: {self.x}, Y: {self.y}, font_size: {self.font_size}, Configs: {self.configs}"
 
     def __repr__(self):
         return str(self)
@@ -136,7 +248,8 @@ def _create_only_fields(
         for field in fields:
             if hasattr(field, "font_size"):
                 c.setFont(font_name, field.font_size)
-            if field.type == FieldType.TEXT:
+            # Signatures aren't supported in reportlab, so just make them textblocks.
+            if field.type == FieldType.TEXT or field.type == FieldType.SIGNATURE:
                 form.textfield(
                     name=field.name,
                     tooltip=field.user_name,
@@ -233,51 +346,95 @@ def set_fields(
     in_pdf.save(out_file)
 
 
-def rename_pdf_fields(in_file: str, out_file: str, mapping: Mapping[str, str]) -> None:
+def rename_pdf_fields(
+    in_file: Union[str, Path, BinaryIO],
+    out_file: Union[str, Path, BinaryIO],
+    mapping: Mapping[str, str],
+) -> None:
     """Given a dictionary that maps old to new field names, rename the AcroForm
     field with a matching key to the specified value"""
     in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
 
-    for field in iter(in_pdf.Root.AcroForm.Fields):
-        if str(field.T) in mapping:
-            field.T = mapping[str(field.T)]
+    for parent_field in iter(in_pdf.Root.AcroForm.Fields):
+        for field in _unnest_pdf_fields(parent_field):
+            name = str(field["var_name"])
+            if name in mapping:
+                # we aren't changing the parent names at all, so just change the last part of the name
+                if "." in mapping[name]:
+                    field["all"].T = mapping[name].split(".")[-1]
+                else:
+                    field["all"].T = mapping[name]
 
     in_pdf.save(out_file)
 
 
-class PikeField(TypedDict):
-    type: str
-    var_name: str
-    all: pikepdf.objects.Object
+def unlock_pdf_in_place(in_file: Union[str, Path, BinaryIO]) -> None:
+    """
+    Try using pikePDF to unlock the PDF it it is locked. This won't work if it has a non-zero length password.
+    """
+    pdf_file = Pdf.open(in_file, allow_overwriting_input=True)
+    if pdf_file.is_encrypted:
+        pdf_file.save(in_file)
 
 
-def _unnest_pdf_fields(field) -> List[PikeField]:
+def _unnest_pdf_fields(
+    field, parent_name: Optional[List[str]] = None
+) -> List[PikeField]:
+    if parent_name is None:
+        parent_name = []
+    if hasattr(field, "T"):
+        parent_name.append(str(field.T))
     if hasattr(field, "FT") and hasattr(field, "F"):
         # PDF fields have bit flags for specific options. The 17th bit (or hex
         # 10000) on Buttons mark a "push button", w/o a permanent value
         # (e.g. "Print this PDF") They aren't really fields, just skip them.
         if hasattr(field, "Ff") and field.FT == "/Btn" and bool(field.Ff & 0x10000):
             return []
-        return [{"type": field.FT, "var_name": str(field.T), "all": field}]
+        return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
     elif hasattr(field, "Kids"):
-        return [y for x in field.Kids for y in _unnest_pdf_fields(x)]
+        return [y for x in field.Kids for y in _unnest_pdf_fields(x, copy(parent_name))]
     else:
         return []
 
 
 def get_existing_pdf_fields(
     in_file: Union[str, Path, BinaryIO, Pdf]
-) -> List[PikeField]:
+) -> List[List[FormField]]:
     """Use PikePDF to get fields from the PDF"""
     if isinstance(in_file, Pdf):
         in_pdf = in_file
     else:
         in_pdf = Pdf.open(in_file)
-    return [
+    fields_in_pages: List[List[FormField]] = [[] for p in in_pdf.pages]
+    if not hasattr(in_pdf.Root, "AcroForm") or not hasattr(
+        in_pdf.Root.AcroForm, "Fields"
+    ):
+        return fields_in_pages
+    all_fields = [
         y
         for field in iter(in_pdf.Root.AcroForm.Fields)
         for y in _unnest_pdf_fields(field)
     ]
+    i = 0
+    pages = list(in_pdf.pages)
+    for field_i, field in enumerate(all_fields):
+        if len(pages) == 1 or not hasattr(field["all"], "P"):
+            # I don't know how exactly fields are associated with pages (they're associated with
+            # annotations, and pages have names? Unclear), so just throw it at the beginning
+            # if there isn't a page.
+            i = 0
+        elif hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
+            continue
+        elif not field["all"].P.objgen == pages[i].objgen:
+            i = -1
+            for idx, page in enumerate(pages):
+                if field["all"].P.objgen == page.objgen:
+                    i = idx
+                    break
+            if i is -1:
+                continue
+        fields_in_pages[i].append(FormField.from_pikefield(field))
+    return fields_in_pages
 
 
 def swap_pdf_page(
@@ -423,11 +580,16 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 
+class Textbox(TypedDict):
+    textbox: LTTextBoxHorizontal
+    bbox: BoundingBoxF
+
+
 def get_textboxes_in_pdf(
     in_file: Union[str, Path, BinaryIO],
     line_margin=0.02,
     char_margin=2.0,
-) -> List[List[Tuple[LTTextBoxHorizontal, Tuple[float, float, float, float]]]]:
+) -> List[List[Textbox]]:
     """Gets all of the text boxes found by pdfminer in a PDF, as well as their bounding boxes"""
     if isinstance(in_file, str) or isinstance(in_file, Path):
         open_file = open(in_file, "rb")
@@ -449,7 +611,7 @@ def get_textboxes_in_pdf(
         open_file.close()
     return [
         [
-            (obj, (obj.x0, obj.y0, obj.width, obj.height))
+            {"textbox": obj, "bbox": (obj.x0, obj.y0, obj.width, obj.height)}
             for obj in device.get_result()[i]._objs
             if isinstance(obj, LTTextBoxHorizontal)
             and obj.get_text().strip(" \n") != ""
@@ -515,9 +677,6 @@ def get_bracket_chars_in_pdf(
 
 ####### OpenCV related functions #########
 
-BoundingBox = Tuple[int, int, int, int]
-XYPair = Tuple[Number, Number]
-
 pts_in_inch = 72
 dpi = 250
 
@@ -543,142 +702,6 @@ def img2pdf_coords(img, max_height):
         return (unit_convert(img[0]), unit_convert(max_height - img[1]))
     else:
         return unit_convert(img[0])
-
-
-def get_possible_fields(
-    in_pdf_file: Union[str, Path, BinaryIO],
-) -> List[List[FormField]]:
-    images = convert_from_path(in_pdf_file, dpi=dpi)
-
-    tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
-    for file_obj, img in zip(tmp_files, images):
-        img.save(file_obj, "JPEG")
-        file_obj.flush()
-
-    checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
-    text_in_pdf = get_textboxes_in_pdf(in_pdf_file)
-    if not any([y is not None and len(y) for y in checkbox_bboxes_per_page]):
-        all_text = " ".join(
-            [
-                " ".join([page_item[0].get_text() for page_item in page])
-                for page in text_in_pdf
-            ]
-        )
-        if re.search(r"\[ {1,3}\]", all_text):
-            if DEBUG:
-                print("finding in text")
-            checkbox_pdf_bboxes = get_bracket_chars_in_pdf(in_pdf_file)
-        else:
-            if DEBUG:
-                print("finding small")
-            checkbox_bboxes_per_page = [
-                get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files
-            ]
-            checkbox_pdf_bboxes = [
-                [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
-                for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
-            ]
-    else:
-        checkbox_pdf_bboxes = [
-            [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
-            for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
-        ]
-
-    text_bboxes_per_page = [
-        get_possible_text_fields(tmp.name, page_text)
-        for tmp, page_text in zip(tmp_files, text_in_pdf)
-    ]
-    text_pdf_bboxes = [
-        [
-            (img2pdf_coords(bbox, images[i].height), font_size)
-            for bbox, font_size in bboxes_in_page
-        ]
-        for i, bboxes_in_page in enumerate(text_bboxes_per_page)
-    ]
-
-    fields = []
-    i = 0
-    used_field_names = set()
-    for bboxes_in_page, checkboxes_in_page, text_in_page in zip(
-        text_pdf_bboxes, checkbox_pdf_bboxes, text_in_pdf
-    ):
-        # Get text boxes with more than one character (not including spaces, _, etc.)
-        text_obj_bboxes = [
-            text[1]
-            for text in text_in_page
-            if len(text[0].get_text().strip(" \n\t_,.")) > 1
-        ]
-        page_fields = []
-        for j, field_info in enumerate(bboxes_in_page):
-            field_bbox, font_size = field_info
-            intersected = [
-                obj
-                for obj, intersect in zip(
-                    text_in_page,
-                    intersect_bboxs(
-                        field_bbox, text_obj_bboxes, horiz_dilation=50, vert_dilation=50
-                    ),
-                )
-                if intersect
-            ]
-            if intersected:
-                dists = [
-                    (bbox_distance(field_bbox, bbox)[0], obj, bbox)
-                    for obj, bbox, in intersected
-                ]
-                min_obj = min(dists, key=lambda d: d[0])
-                # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
-                # text_obj_bboxes.remove(min_obj[2])
-                # TODO(brycew): actual regex replacement of lots of underscores
-                label = re.sub(
-                    "[\W]", "_", min_obj[1].get_text().lower().strip(" \n\t_,.")
-                )
-                label = re.sub("_{3,}", "_", label).strip("_")
-                if label in used_field_names:
-                    if DEBUG:
-                        print(f"avoiding using label {label} more than once")
-                    label = f"page_{i}_field_{j}"
-            else:
-                label = f"page_{i}_field_{j}"
-            # By default the line size is 16.
-            if field_bbox[3] > 24:
-                page_fields.append(
-                    FormField(
-                        label,
-                        FieldType.AREA,
-                        field_bbox[0],
-                        field_bbox[1],
-                        font_size=font_size,
-                        configs={"width": field_bbox[2], "height": field_bbox[3]},
-                    )
-                )
-            else:
-                page_fields.append(
-                    FormField(
-                        label,
-                        FieldType.TEXT,
-                        field_bbox[0],
-                        field_bbox[1],
-                        font_size=font_size,
-                        configs={"width": field_bbox[2], "height": field_bbox[3]},
-                    )
-                )
-            used_field_names.add(label)
-
-        page_fields += [
-            FormField(
-                f"page_{i}_check_{j}",
-                FieldType.CHECK_BOX,
-                bbox[0],
-                bbox[1] - bbox[3],
-                configs={"size": min(bbox[2], bbox[3])},
-            )
-            for j, bbox in enumerate(checkboxes_in_page)
-        ]
-        i += 1
-        fields.append(page_fields)
-
-    return fields
 
 
 def intersect_bbox(bbox_a, bbox_b, vert_dilation=2, horiz_dilation=2) -> bool:
@@ -710,7 +733,7 @@ def intersect_bboxs(
     ]
 
 
-def contain_boxes(bbox_a, bbox_b) -> Iterable[float]:
+def contain_boxes(bbox_a: BoundingBoxF, bbox_b: BoundingBoxF) -> BoundingBoxF:
     """Given two bounding boxes, return a single bounding box that contains both of them."""
     top, bottom = min(bbox_a[1] - bbox_a[3], bbox_b[1] - bbox_b[3]), max(
         bbox_a[1], bbox_b[1]
@@ -718,21 +741,20 @@ def contain_boxes(bbox_a, bbox_b) -> Iterable[float]:
     left, right = min(bbox_a[0], bbox_b[0]), max(
         bbox_a[0] + bbox_a[2], bbox_b[0] + bbox_b[2]
     )
-    to_ret = [left, bottom, right - left, bottom - top]
-    return to_ret
+    return (left, bottom, right - left, bottom - top)
 
 
-def get_dist_sq(point_a, point_b) -> float:
+def get_dist_sq(point_a: XYPair, point_b: XYPair) -> float:
     """returns the distance squared between two points. Faster than the true euclidean dist"""
     return (point_a[0] - point_b[0]) ** 2 + (point_a[1] - point_b[1]) ** 2
 
 
-def get_dist(point_a, point_b) -> float:
+def get_dist(point_a: XYPair, point_b: XYPair) -> float:
     """euclidean (L^2 norm) distance between two points"""
     return math.sqrt((point_a[0] - point_b[0]) ** 2 + (point_a[1] - point_b[1]) ** 2)
 
 
-def get_connected_edges(point, point_list):
+def get_connected_edges(point: XYPair, point_list: Sequence):
     """point list is always ordered clockwise from the bottom left,
     i.e. bottom left, top left, top right, bottom right"""
     if point == point_list[0] or point == point_list[3]:
@@ -747,7 +769,7 @@ def get_connected_edges(point, point_list):
 
 
 def bbox_distance(
-    bbox_a, bbox_b
+    bbox_a: BoundingBoxF, bbox_b: BoundingBoxF
 ) -> Tuple[float, Tuple[XYPair, XYPair], Tuple[XYPair, XYPair]]:
     """Gets our specific "distance measure" between two different bounding boxes.
     This distance is roughly the sum of the horizontal and vertical difference in alignment of
@@ -788,6 +810,151 @@ def bbox_distance(
         return hori_dist + vert_dist, a_hori, b_hori
     else:
         return vert_dist + hori_dist, a_vert, b_vert
+
+
+###### Field functionality #######
+
+
+def get_possible_fields(
+    in_pdf_file: Union[str, Path, BinaryIO],
+    textboxes: Optional[List[List[Textbox]]] = None,
+) -> List[List[FormField]]:
+    images = convert_from_path(in_pdf_file, dpi=dpi)
+
+    tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
+    for file_obj, img in zip(tmp_files, images):
+        img.save(file_obj, "JPEG")
+        file_obj.flush()
+
+    if not textboxes:
+        textboxes = get_textboxes_in_pdf(in_pdf_file)
+    checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
+    if not any(
+        [in_page is not None and len(in_page) for in_page in checkbox_bboxes_per_page]
+    ):
+        all_text = " ".join(
+            [
+                " ".join([page_item["textbox"].get_text() for page_item in page])
+                for page in textboxes
+            ]
+        )
+        if re.search(r"\[ {1,3}\]", all_text):
+            checkbox_pdf_bboxes = get_bracket_chars_in_pdf(in_pdf_file)
+        else:
+            checkbox_bboxes_per_page = [
+                get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files
+            ]
+            checkbox_pdf_bboxes = [
+                [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+                for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
+            ]
+    else:
+        checkbox_pdf_bboxes = [
+            [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+            for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
+        ]
+
+    text_bboxes_per_page = [
+        get_possible_text_fields(tmp.name, page_text)
+        for tmp, page_text in zip(tmp_files, textboxes)
+    ]
+    text_pdf_bboxes = [
+        [
+            (img2pdf_coords(bbox, images[i].height), font_size)
+            for bbox, font_size in bboxes_in_page
+        ]
+        for i, bboxes_in_page in enumerate(text_bboxes_per_page)
+    ]
+
+    fields = []
+    i = 0
+    for (
+        bboxes_in_page,
+        checkboxes_in_page,
+    ) in zip(text_pdf_bboxes, checkbox_pdf_bboxes):
+        # Get text boxes with more than one character (not including spaces, _, etc.)
+        page_fields = []
+        for j, field_info in enumerate(bboxes_in_page):
+            field_bbox, font_size = field_info
+            label = f"page_{i}_field_{j}"
+            # By default the line size is 16.
+            if field_bbox[3] > 24:
+                page_fields.append(
+                    FormField.make_textarea(label, field_bbox, font_size)
+                )
+            else:
+                page_fields.append(FormField.make_textbox(label, field_bbox, font_size))
+
+        page_fields += [
+            FormField.make_checkbox(f"page_{i}_check_{j}", bbox)
+            for j, bbox in enumerate(checkboxes_in_page)
+        ]
+        i += 1
+        fields.append(page_fields)
+
+    return fields
+
+
+def improve_names_with_surrounding_text(
+    fields: List[List[FormField]], textboxes: List[List[Textbox]]
+):
+    new_fields = []
+    used_field_names = set()
+    for i, (fields_in_page, text_in_page) in enumerate(zip(fields, textboxes)):
+        # Get text boxes with more than one character (not including spaces, _, etc.)
+        text_in_page = [
+            text
+            for text in text_in_page
+            if len(text["textbox"].get_text().strip(" \n\t_,."))
+        ]
+        text_obj_bboxes = [text["bbox"] for text in text_in_page]
+        if DEBUG:
+            print(text_in_page)
+        page_fields = []
+        for field_info in fields_in_page:
+            copied_field_info = copy(field_info)
+            field_bbox = field_info.get_bbox()
+            if DEBUG:
+                print(f"For {field_info.name}, field_bbox: {field_bbox}")
+            intersected = [
+                textbox
+                for textbox, intersect in zip(
+                    text_in_page,
+                    intersect_bboxs(
+                        field_bbox, text_obj_bboxes, horiz_dilation=50, vert_dilation=50
+                    ),
+                )
+                if intersect
+            ]
+            if intersected:
+                dists = [
+                    (
+                        bbox_distance(field_bbox, textbox["bbox"])[0],
+                        textbox["textbox"],
+                        textbox["bbox"],
+                    )
+                    for textbox in intersected
+                ]
+                if DEBUG:
+                    print(f"For {field_info.name}, dists: {dists}")
+                min_textbox = min(dists, key=lambda d: d[0])
+                # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
+                # text_obj_bboxes.remove(min_obj[2])
+                # TODO(brycew): actual regex replacement of lots of underscores
+                label = re.sub(
+                    "[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,.")
+                )
+                label = re.sub("_{3,}", "_", label).strip("_")
+                if label not in used_field_names:
+                    copied_field_info.name = label
+                    used_field_names.add(label)
+                elif DEBUG:
+                    print(f"avoiding using label {label} more than once")
+            page_fields.append(copied_field_info)
+
+        new_fields.append(page_fields)
+
+    return new_fields
 
 
 def get_possible_checkboxes(
@@ -857,7 +1024,9 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
 
 
 def get_possible_text_fields(
-    img: Union[str, BinaryIO, cv2.Mat], text_lines, default_line_height: int = 44
+    img: Union[str, BinaryIO, cv2.Mat],
+    text_lines: List[Textbox],
+    default_line_height: int = 44,
 ) -> List[Tuple[BoundingBox, int]]:
     """Uses openCV to attempt to find places where a PDF could expect an input text field.
 
@@ -947,7 +1116,7 @@ def get_possible_text_fields(
     else:
         no_vert_coll = boundingBoxes
 
-    text_obj_bboxes = [text[1] for text in text_lines]
+    text_obj_bboxes = [text["bbox"] for text in text_lines]
 
     to_return: List[Tuple[BoundingBox, int]] = []
     for bbox in no_vert_coll:
@@ -965,8 +1134,8 @@ def get_possible_text_fields(
         ]
         if intersected:
             dists = [
-                (bbox_distance(bbox, text_bbox)[0], obj)
-                for obj, text_bbox, in intersected
+                (bbox_distance(bbox, text_bbox["bbox"])[0], text_bbox["textbox"])
+                for text_bbox in intersected
             ]
             min_obj = min(dists, key=lambda d: d[0])
             line_height = int(min_obj[1].height * dpi / pts_in_inch)
@@ -1027,5 +1196,24 @@ def get_possible_text_fields(
 def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
     """Uses `get_possible_fields` and `set_fields` to automatically add new fields
     to an input PDF."""
-    fields = get_possible_fields(in_pdf_file)
+    textboxes = get_textboxes_in_pdf(in_pdf_file)
+    fields = get_possible_fields(in_pdf_file, textboxes=textboxes)
+    fields = improve_names_with_surrounding_text(fields, textboxes=textboxes)
     set_fields(in_pdf_file, out_pdf_file, fields, overwrite=True)
+
+
+def auto_rename_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
+    textboxes = get_textboxes_in_pdf(in_pdf_file)
+    fields = get_existing_pdf_fields(in_pdf_file)
+    all_fields = [field for fields_in_page in fields for field in fields_in_page]
+    new_fields = improve_names_with_surrounding_text(fields, textboxes=textboxes)
+    all_new_fields = [
+        field for fields_in_page in new_fields for field in fields_in_page
+    ]
+    old_to_new_names = {
+        old_field.name: new_field.name
+        for old_field, new_field in zip(all_fields, all_new_fields)
+    }
+    if DEBUG:
+        print(old_to_new_names)
+    rename_pdf_fields(in_pdf_file, out_pdf_file, old_to_new_names)
