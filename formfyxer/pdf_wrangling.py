@@ -431,7 +431,7 @@ def get_existing_pdf_fields(
                 if field["all"].P.objgen == page.objgen:
                     i = idx
                     break
-            if i is -1:
+            if i == -1:
                 continue
         fields_in_pages[i].append(FormField.from_pikefield(field))
     return fields_in_pages
@@ -447,7 +447,8 @@ def swap_pdf_page(
 ) -> Pdf:
     """(DEPRECATED: use copy_pdf_fields) Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
-    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
+    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`
+    """
     return copy_pdf_fields(
         source_pdf=source_pdf,
         destination_pdf=destination_pdf,
@@ -467,7 +468,8 @@ def copy_pdf_fields(
 ) -> Pdf:
     """Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
-    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`"""
+    in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`
+    """
     if isinstance(source_pdf, (str, Path)):
         source_pdf = Pdf.open(source_pdf)
     if isinstance(destination_pdf, (str, Path)):
