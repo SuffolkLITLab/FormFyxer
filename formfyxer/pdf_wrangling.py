@@ -76,12 +76,12 @@ class FormField:
 
     def __init__(
         self,
-        program_name: str,
+        field_name: str,
         type_name: Union[FieldType, str],
         x: int,
         y: int,
         font_size: Optional[int] = None,
-        user_name: str = "",
+        tooltip: str = "",
         configs: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -97,7 +97,7 @@ class FormField:
             config: a dictionary containing any keyword argument to the reportlab field functions,
                 which will vary depending on what type of field this is. See section 4.7 of the
                 [reportlab User Guide](https://www.reportlab.com/docs/reportlab-userguide.pdf)
-            program_name: the programmatic name of the field. Not the tooltip, but `users1_name__0`
+            field_name: the name of the field, exposed to via most APIs. Not the tooltip, but `users1_name__0`
 
         """
         if font_size is None:
@@ -107,10 +107,10 @@ class FormField:
             self.type = FieldType(type_name.lower())
         else:
             self.type = type_name
-        self.name = program_name
+        self.name = field_name
         self.x = x
         self.y = y
-        self.user_name = user_name
+        self.tooltip = tooltip
         self.font_size = font_size
         # If we aren't given options, make our own depending on self.type
         if self.type == FieldType.CHECK_BOX:
@@ -225,7 +225,7 @@ class FormField:
         )
 
     def __str__(self):
-        return f"Type: {self.type}, Name: {self.name}, User name: {self.user_name}, X: {self.x}, Y: {self.y}, font_size: {self.font_size}, Configs: {self.configs}"
+        return f"Type: {self.type}, Name: {self.name}, tooltip: {self.tooltip}, X: {self.x}, Y: {self.y}, font_size: {self.font_size}, Configs: {self.configs}"
 
     def __repr__(self):
         return str(self)
@@ -252,7 +252,7 @@ def _create_only_fields(
             if field.type == FieldType.TEXT or field.type == FieldType.SIGNATURE:
                 form.textfield(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     fontSize=field.font_size,
@@ -261,7 +261,7 @@ def _create_only_fields(
             elif field.type == FieldType.AREA:
                 form.textfield(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     fontSize=field.font_size,
@@ -270,7 +270,7 @@ def _create_only_fields(
             elif field.type == FieldType.CHECK_BOX:
                 form.checkbox(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     **field.configs,
@@ -278,7 +278,7 @@ def _create_only_fields(
             elif field.type == FieldType.LIST_BOX:
                 form.listbox(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     **field.configs,
@@ -286,7 +286,7 @@ def _create_only_fields(
             elif field.type == FieldType.CHOICE:
                 form.choice(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     **field.configs,
@@ -294,7 +294,7 @@ def _create_only_fields(
             elif field.type == FieldType.RADIO:
                 form.radio(
                     name=field.name,
-                    tooltip=field.user_name,
+                    tooltip=field.tooltip,
                     x=field.x,
                     y=field.y,
                     **field.configs,
