@@ -31,10 +31,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
 from pdfminer.converter import PDFLayoutAnalyzer
-from pdfminer.layout import LTChar
+from pdfminer.layout import LAParams, LTPage, LTTextBoxHorizontal, LTChar, LTContainer
 from pdfminer.pdffont import PDFUnicodeNotDefined
-from pdfminer.layout import LTPage
-from pdfminer.layout import LAParams, LTTextBoxHorizontal
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.pdfpage import PDFPage
@@ -587,6 +585,18 @@ class Textbox(TypedDict):
     bbox: BoundingBoxF
 
 
+def _get_nested_textboxes(obj):
+    if isinstance(obj, LTTextBoxHorizontal):
+        return [obj]
+    if isinstance(obj, LTContainer):
+        boxes = []
+        for child in obj:
+            boxes.extend(_get_nested_textboxes(child))
+        return boxes
+    else:
+        return []
+
+
 def get_textboxes_in_pdf(
     in_file: Union[str, Path, BinaryIO],
     line_margin=0.02,
@@ -602,7 +612,10 @@ def get_textboxes_in_pdf(
     doc = PDFDocument(parser)
     rsrcmgr = PDFResourceManager()
     device = BoxPDFPageAggregator(
-        rsrcmgr, laparams=LAParams(line_margin=line_margin, char_margin=char_margin)
+        rsrcmgr,
+        laparams=LAParams(
+            line_margin=line_margin, char_margin=char_margin, all_texts=True
+        ),
     )
     interpreter = PDFPageInterpreter(rsrcmgr, device)
     page_count = 0
@@ -614,9 +627,8 @@ def get_textboxes_in_pdf(
     return [
         [
             {"textbox": obj, "bbox": (obj.x0, obj.y0, obj.width, obj.height)}
-            for obj in device.get_result()[i]._objs
-            if isinstance(obj, LTTextBoxHorizontal)
-            and obj.get_text().strip(" \n") != ""
+            for obj in _get_nested_textboxes(device.get_result()[i])
+            if obj.get_text().strip(" \n") != ""
         ]
         for i in range(page_count)
     ]
