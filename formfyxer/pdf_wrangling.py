@@ -327,6 +327,7 @@ def set_fields(
         ]
       ]
     )
+    ```
     """
     if not fields_per_page:
         # Nothing to do, lol
