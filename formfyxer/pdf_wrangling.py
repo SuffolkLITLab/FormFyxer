@@ -310,10 +310,10 @@ def set_fields(
     *,
     overwrite=False,
 ):
-    """Adds fields per page to the in_file PDF, writing the new PDF to out_file.
+    """Adds fields per page to the in_file PDF, writing the new PDF to a new file.
 
     Example usage:
-    ```
+    ```python
     set_fields('no_fields.pdf', 'four_fields_on_second_page.pdf',
       [
         [],  # nothing on the first page
@@ -328,6 +328,21 @@ def set_fields(
       ]
     )
     ```
+
+    Args:
+      in_file: the input file name or path of a PDF that we're adding the fields to
+      out_file: the output file name or path where the new version of in_file will
+          be written. Doesn't need to exist.
+      fields_per_page: for each page, a series of fields that should be added to that
+          page.
+      owerwrite: if the input file already some fields (AcroForm fields specifically)
+          and this value is true, it will erase those existing fields and just add
+          `fields_per_page`. If not true and the input file has fields, this won't generate
+          a PDF, since there isn't currently a way to merge AcroForm fields from
+          different PDFs.
+
+    Returns:
+      Nothing.
     """
     if not fields_per_page:
         # Nothing to do, lol
@@ -341,7 +356,7 @@ def set_fields(
     _create_only_fields(io_obj, fields_per_page)
     temp_pdf = Pdf.open(io_obj)
 
-    in_pdf = swap_pdf_page(source_pdf=temp_pdf, destination_pdf=in_pdf)
+    in_pdf = copy_pdf_fields(source_pdf=temp_pdf, destination_pdf=in_pdf)
     in_pdf.save(out_file)
 
 
@@ -351,7 +366,22 @@ def rename_pdf_fields(
     mapping: Mapping[str, str],
 ) -> None:
     """Given a dictionary that maps old to new field names, rename the AcroForm
-    field with a matching key to the specified value"""
+    field with a matching key to the specified value.
+
+    Example:
+    ```python
+    rename_pdf_fields('current.pdf', 'new_field_names.pdf',
+        {'abc123': 'user1_name', 'abc124', 'user1_address_city'})
+
+    Args:
+      in_file: the filename of an input file
+      out_file: the filename of the output file. Doesn't need to exist,
+          will be overwritten if it does exist.
+      mapping: the python dict that maps from a current field name to the desired name
+
+    Returns:
+      Nothing
+    """
     in_pdf = Pdf.open(in_file, allow_overwriting_input=True)
 
     for parent_field in iter(in_pdf.Root.AcroForm.Fields):
@@ -465,10 +495,35 @@ def copy_pdf_fields(
     destination_offset: int = 0,
     append_fields: bool = False,
 ) -> Pdf:
-    """Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
+    """Copies the AcroForm fields from one PDF to another blank PDF form (without AcroForm fields).
+    Useful for getting started with an updated PDF form, where the old fields are pretty close to where
+    they should go on the new document.
+
+    Optionally, you can choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
     in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`
+
+    Example:
+    ```python
+    new_pdf_with_fields = copy_pdf_fields(
+        source_pdf="old_pdf.pdf",
+        destination_pdf="new_pdf_with_no_fields.pdf")
+    new_pdf_with_fields.save("new_pdf_with_fields.pdf")
+    ```
+
+    Args:
+      source_pdf: a file name or path to a PDF that has AcroForm fields
+      destination_pdf: a file name or path to a PDF without AcroForm fields. Existing fields will be removed.
+      source_offset: the starting page that fields will be copied from. Defaults to 0.
+      destination_offset: the starting page that fields will be copied to. Defaults to 0.
+      append_annotations: controls whether formfyxer will try to append form fields instead of
+        overwriting. Defaults to false; when enabled may lead to undefined behavior.
+
+    Returns:
+      A pikepdf.Pdf object with new fields. If `blank_pdf` was a pikepdf.Pdf object, the
+      same object is returned.
     """
+
     if isinstance(source_pdf, (str, Path)):
         source_pdf = Pdf.open(source_pdf)
     if isinstance(destination_pdf, (str, Path)):
@@ -834,6 +889,27 @@ def get_possible_fields(
     in_pdf_file: Union[str, Path, BinaryIO],
     textboxes: Optional[List[List[Textbox]]] = None,
 ) -> List[List[FormField]]:
+    """Given an input PDF, runs a series of heuristics to predict where there
+    might be places for user enterable information (i.e. PDF fields), and returns
+    those predictions.
+
+    Example:
+    ```python
+    fields = get_possible_fields('no_field.pdf')
+    print(fields[0][0])
+    # Type: FieldType.TEXT, Name: name, User name: , X: 67.68, Y: 666.0, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}
+    ```
+
+    Args:
+      in_pdf_file: the input PDF
+      textboxes (optional): the location of various lines of text in the PDF.
+          If not given, will be calculated automatically. This allows us to
+          pass through expensive info to calculate through several functions.
+
+    Returns:
+      For each page in the input PDF, a list of predicted form fields
+    """
+
     images = convert_from_path(in_pdf_file, dpi=dpi)
 
     tmp_files = [tempfile.NamedTemporaryFile() for i in range(len(images))]
@@ -1209,8 +1285,24 @@ def get_possible_text_fields(
 
 
 def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
-    """Uses `get_possible_fields` and `set_fields` to automatically add new fields
-    to an input PDF."""
+    """Uses [get_possible_fields](#formfyxer.pdf_wrangling.get_possible_fields) and
+    [set_fields](#formfyxer.pdf_wrangling.set_fields) to automatically add new detected fields
+    to an input PDF.
+
+    Example:
+    ```python
+    auto_add_fields('no_fields.pdf', 'newly_added_fields.pdf')
+    ```
+
+    Args:
+      in_pdf_file: the input file name or path of the PDF where we'll try to find possible fields
+      out_pdf_file: the output file name or path of the PDF where a new version of `in_pdf_file` will
+          be stored, with the new fields. Doesn't need to existing, but if a file does exist at that
+          filename, it will be overwritten.
+
+    Returns:
+      Nothing
+    """
     textboxes = get_textboxes_in_pdf(in_pdf_file)
     fields = get_possible_fields(in_pdf_file, textboxes=textboxes)
     fields = improve_names_with_surrounding_text(fields, textboxes=textboxes)
