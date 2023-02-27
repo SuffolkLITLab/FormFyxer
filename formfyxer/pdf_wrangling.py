@@ -886,7 +886,7 @@ def bbox_distance(
 
 
 def get_possible_fields(
-    in_pdf_file: Union[str, Path, BinaryIO],
+    in_pdf_file: Union[str, Path],
     textboxes: Optional[List[List[Textbox]]] = None,
 ) -> List[List[FormField]]:
     """Given an input PDF, runs a series of heuristics to predict where there
