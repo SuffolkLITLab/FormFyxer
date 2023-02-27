@@ -1,4 +1,7 @@
 # FormFyxer
+
+[![PyPI version](https://badge.fury.io/py/formfyxer.svg)](https://badge.fury.io/py/formfyxer)
+
 A Python package with a collection of functions for learning about and pre-processing pdf forms and associated form fields. This processing is done with an eye towards interoperability with the Suffolk LIT Lab's [Document Assembly Line Project](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/).
 
 ## Installation and updating
