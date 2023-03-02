@@ -815,6 +815,9 @@ def get_passive_sentences(text: Union[List, str]) -> List[Tuple[str, List[str]]]
     else:
         raise ValueError(f"Can't tokenize {type(text)} object into sentences")
 
+    if not sentences:
+        return []
+
     passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
     matching_rows = passive_text_df[passive_text_df["binary"] > 0]
 
