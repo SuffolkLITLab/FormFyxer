@@ -72,20 +72,20 @@ stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
-    import en_core_web_md
+    import en_core_web_sm
 
-    nlp = en_core_web_md.load()
+    nlp = en_core_web_sm.load()
 except:
-    print("Downloading word2vec model en_core_web_md")
+    print("Downloading word2vec model en_core_web_sm")
     import subprocess
 
-    bashCommand = "python -m spacy download en_core_web_md"
+    bashCommand = "python -m spacy download en_core_web_sm"
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
     print(f"output of word2vec model download: {str(output)}")
-    import en_core_web_md
+    import en_core_web_sm
 
-    nlp = en_core_web_md.load()
+    nlp = en_core_web_sm.load()
 
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
@@ -116,6 +116,14 @@ with open(
     openai.api_key = in_file.read().rstrip()
 
 # This creates a timeout exception that can be triggered when something hangs too long.
+
+
+vec_token = ""
+
+
+def set_vec_token(token_str):
+    global vec_token
+    vec_token = token_str
 
 
 class TimeoutException(Exception):
@@ -282,12 +290,16 @@ def reformat_field(text: str, max_length: int = 30):
         x_words = math.floor((max_length) / av_word_len)
         sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
         # for each word compared to other
+        filtered_words_vecs = [
+            vectorize(word, normalize=False).reshape(1, 300)
+            for word in filtered_title_words
+        ]
         for i in range(len(filtered_title_words)):
             for j in range(len(filtered_title_words)):
                 if i != j:
                     sim_mat[i][j] = cosine_similarity(
-                        nlp(filtered_title_words[i]).vector.reshape(1, 300),
-                        nlp(filtered_title_words[j]).vector.reshape(1, 300),
+                        filtered_words_vecs[i],
+                        filtered_words_vecs[j],
                     )[0, 0]
         try:
             nx_graph = nx.from_numpy_array(sim_mat)
@@ -319,7 +331,7 @@ def norm(row):
     """Normalize a word vector."""
     try:
         matrix = row.reshape(1, -1).astype(np.float64)
-        return normalize(matrix, axis=1, norm="l1")[0]
+        return normalize(matrix, axis=1, norm="l2")[0]
     except Exception as e:
         print("===================")
         print("Error: ", e)
@@ -329,7 +341,22 @@ def norm(row):
 
 def vectorize(text: str, normalize: bool = True):
     """Vectorize a string of text."""
-    output = nlp(str(text)).vector
+    global vec_token
+    headers = {
+        "Authorization": "Bearer " + vec_token,
+        "Content-Type": "application/json",
+    }
+    body = {"text": text}
+    r = requests.post(
+        "https://tools.suffolklitlab.org/vectorize/",
+        headers=headers,
+        data=json.dumps(body),
+    )
+    if not r.ok:
+        raise Exception("Couldn't access tools.suffolklitlab.org")
+    output = np.array(r.json().get("embedding", []))
+    if len(output) <= 0:
+        raise Exception("Vector from tools.suffolklitlab.org is empty")
     if normalize:
         return norm(output)
     else:
@@ -406,7 +433,7 @@ def cluster_screens(fields: List[str] = [], damping: float = 0.7):
     Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
     vec_mat = np.zeros([len(fields), 300])
     for i in range(len(fields)):
-        vec_mat[i] = [nlp(re_case(fields[i])).vector][0]
+        vec_mat[i] = [vectorize(re_case(fields[i]), normalize=False)][0]
     # create model
     model = AffinityPropagation(damping=damping, random_state=None)
     # model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
@@ -1049,6 +1076,7 @@ def parse_form(
                 # print(k,field)
                 fields_too[k].T = re.sub("^\*", "", field_name)
             my_pdf.save(in_file)
+            my_pdf.close()
         except Exception as ex:
             stats["error"] = f"could not change form fields: {ex}"
     return stats

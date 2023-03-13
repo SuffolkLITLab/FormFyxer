@@ -358,6 +358,8 @@ def set_fields(
 
     in_pdf = copy_pdf_fields(source_pdf=temp_pdf, destination_pdf=in_pdf)
     in_pdf.save(out_file)
+    in_pdf.close()
+    temp_pdf.close()
 
 
 def rename_pdf_fields(
@@ -395,6 +397,7 @@ def rename_pdf_fields(
                     field["all"].T = mapping[name]
 
     in_pdf.save(out_file)
+    in_pdf.close()
 
 
 def unlock_pdf_in_place(in_file: Union[str, Path, BinaryIO]) -> None:
@@ -404,6 +407,7 @@ def unlock_pdf_in_place(in_file: Union[str, Path, BinaryIO]) -> None:
     pdf_file = Pdf.open(in_file, allow_overwriting_input=True)
     if pdf_file.is_encrypted:
         pdf_file.save(in_file)
+    pdf_file.close()
 
 
 def _unnest_pdf_fields(
