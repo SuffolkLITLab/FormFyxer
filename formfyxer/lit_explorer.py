@@ -72,20 +72,26 @@ stop_words = set(stopwords.words("english"))
 
 try:
     # this takes a while to load
-    import en_core_web_sm
+    import en_core_web_lg
 
-    nlp = en_core_web_sm.load()
+    nlp = en_core_web_lg.load()
 except:
-    print("Downloading word2vec model en_core_web_sm")
-    import subprocess
+    try:
+        import en_core_web_sm
 
-    bashCommand = "python -m spacy download en_core_web_sm"
-    process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-    output, error = process.communicate()
-    print(f"output of word2vec model download: {str(output)}")
-    import en_core_web_sm
+        nlp = en_core_web_sm.load()
+    except:
+        print("Downloading word2vec model en_core_web_sm")
+        import subprocess
 
-    nlp = en_core_web_sm.load()
+        bashCommand = "python -m spacy download en_core_web_sm"
+        process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+        output, error = process.communicate()
+        print(f"output of word2vec model download: {str(output)}")
+        import en_core_web_sm
+
+        nlp = en_core_web_sm.load()
+
 
 passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
@@ -115,17 +121,8 @@ with open(
 ) as in_file:
     openai.api_key = in_file.read().rstrip()
 
+
 # This creates a timeout exception that can be triggered when something hangs too long.
-
-
-vec_token = ""
-
-
-def set_vec_token(token_str):
-    global vec_token
-    vec_token = token_str
-
-
 class TimeoutException(Exception):
     pass
 
@@ -266,7 +263,7 @@ def regex_norm_field(text: str):
     return text
 
 
-def reformat_field(text: str, max_length: int = 30):
+def reformat_field(text: str, max_length: int = 30, tools_token=tools_token):
     """
     Transforms a string of text into a snake_case variable close in length to `max_length` name by
     summarizing the string and stitching the summary together in snake_case.
@@ -290,10 +287,7 @@ def reformat_field(text: str, max_length: int = 30):
         x_words = math.floor((max_length) / av_word_len)
         sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
         # for each word compared to other
-        filtered_words_vecs = [
-            vectorize(word, normalize=False).reshape(1, 300)
-            for word in filtered_title_words
-        ]
+        filtered_words_vecs = vectorize(filtered_title_words, tools_token=tools_token)
         for i in range(len(filtered_title_words)):
             for j in range(len(filtered_title_words)):
                 if i != j:
@@ -339,28 +333,40 @@ def norm(row):
         return np.NaN
 
 
-def vectorize(text: str, normalize: bool = True):
-    """Vectorize a string of text."""
-    global vec_token
-    headers = {
-        "Authorization": "Bearer " + vec_token,
-        "Content-Type": "application/json",
-    }
-    body = {"text": text}
-    r = requests.post(
-        "https://tools.suffolklitlab.org/vectorize/",
-        headers=headers,
-        data=json.dumps(body),
-    )
-    if not r.ok:
-        raise Exception("Couldn't access tools.suffolklitlab.org")
-    output = np.array(r.json().get("embedding", []))
-    if len(output) <= 0:
-        raise Exception("Vector from tools.suffolklitlab.org is empty")
-    if normalize:
-        return norm(output)
-    else:
+def vectorize(text: Union[str, List[str]], tools_token: Optional[str] = None):
+    """Vectorize a string of text.
+
+    Args:
+      text: a string of multiple words to vectorize
+      tools_token: the token to tools.suffolklitlab.org, used for micro-service
+          to reduce the amount of memory you need on your machine. If
+          not passed, you need to have `en_core_web_lg` installed
+    """
+    if tools_token:
+        headers = {
+            "Authorization": "Bearer " + tools_token,
+            "Content-Type": "application/json",
+        }
+        if isinstance(text, list):
+            body = {"texts": text}
+        else:
+            body = {"text": text}
+        r = requests.post(
+            "https://tools.suffolklitlab.org/vectorize/",
+            headers=headers,
+            data=json.dumps(body),
+        )
+        if not r.ok:
+            raise Exception("Couldn't access tools.suffolklitlab.org")
+        output = np.array(r.json().get("embedding", []))
+        if len(output) <= 0:
+            raise Exception("Vector from tools.suffolklitlab.org is empty")
         return output
+    else:
+        if isinstance(text, list):
+            return [normalize(nlp(txt).vector) for txt in text]
+        else:
+            return normalize(nlp(text).vector)
 
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
@@ -371,7 +377,13 @@ def vectorize(text: str, normalize: bool = True):
 
 
 def normalize_name(
-    jur: str, group: str, n: int, per, last_field: str, this_field: str
+    jur: str,
+    group: str,
+    n: int,
+    per,
+    last_field: str,
+    this_field: str,
+    tools_token: Optional[str] = None,
 ) -> Tuple[str, float]:
     """Add hard coded conversions maybe by calling a function
     if returns 0 then fail over to ML or other way around poor prob -> check hard-coded.
@@ -394,7 +406,7 @@ def normalize_name(
                     params.append(0)
             params.append(n)
             params.append(per)
-            for vec in vectorize(this_field):
+            for vec in vectorize(this_field, tools_token=tools_token):
                 params.append(vec)
             for item in included_fields:
                 if last_field == item:
@@ -415,9 +427,9 @@ def normalize_name(
                 conf,
             )  # this * is a hack to show when something is in the list of known fields later. I need to fix this
         else:
-            return reformat_field(this_field), conf
+            return reformat_field(this_field, tools_token=tools_token), conf
     else:
-        return reformat_field(this_field), conf
+        return reformat_field(this_field, tools_token=tools_token), conf
 
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
@@ -428,12 +440,24 @@ def normalize_name(
 # 4. For the collection of fields, it finds clusters of these "sentences" within the semantic space defined by word2vec. Currently it uses Affinity Propagation. See https://machinelearningmastery.com/clustering-algorithms-with-python/
 
 
-def cluster_screens(fields: List[str] = [], damping: float = 0.7):
-    """Takes in a list (fields) and returns a suggested screen grouping
-    Set damping to value >= 0.5 or < 1 to tune how related screens should be"""
+def cluster_screens(
+    fields: List[str] = [], damping: float = 0.7, tools_token: Optional[str] = None
+) -> Dict[str, List[str]]:
+    """
+    Groups the given fields into screens based on how much they are related.
+
+    Args:
+      fields: a list of field names
+      damping: a value >= 0.5 and < 1. Tunes how related screens should be
+      tools_token: the token to tools.suffolklitlab.org, needed of doing
+          micro-service vectorization
+
+    returs: a suggested screen grouping, each screen name mapped to the list of fields on it
+    """
     vec_mat = np.zeros([len(fields), 300])
+    vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
     for i in range(len(fields)):
-        vec_mat[i] = [vectorize(re_case(fields[i]), normalize=False)][0]
+        vec_mat[i] = vecs[i]
     # create model
     model = AffinityPropagation(damping=damping, random_state=None)
     # model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
@@ -882,6 +906,7 @@ def parse_form(
     cat: Optional[str] = None,
     normalize: bool = True,
     spot_token: Optional[str] = None,
+    tools_token: Optional[str] = None,
     openai_creds: Optional[OpenAiCreds] = None,
     rewrite: bool = False,
     debug: bool = False,
@@ -966,7 +991,13 @@ def parse_form(
         new_names_conf = []
         for i, field_name in enumerate(field_names):
             new_name, new_confidence = normalize_name(
-                jur or "", cat or "", i, i / length, last, field_name
+                jur or "",
+                cat or "",
+                i,
+                i / length,
+                last,
+                field_name,
+                tools_token=tools_token,
             )
             new_names.append(new_name)
             new_names_conf.append(new_confidence)
