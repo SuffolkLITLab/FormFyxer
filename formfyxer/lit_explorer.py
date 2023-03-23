@@ -263,7 +263,7 @@ def regex_norm_field(text: str):
     return text
 
 
-def reformat_field(text: str, max_length: int = 30, tools_token=tools_token):
+def reformat_field(text: str, max_length: int = 30, tools_token=None):
     """
     Transforms a string of text into a snake_case variable close in length to `max_length` name by
     summarizing the string and stitching the summary together in snake_case.
@@ -287,13 +287,17 @@ def reformat_field(text: str, max_length: int = 30, tools_token=tools_token):
         x_words = math.floor((max_length) / av_word_len)
         sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
         # for each word compared to other
-        filtered_words_vecs = vectorize(filtered_title_words, tools_token=tools_token)
+        # filt_vecs = vectorize(filtered_title_words, tools_token=tools_token)
+        filt_vecs = [
+            vectorize(word, tools_token=tools_token) for word in filtered_title_words
+        ]
+        filt_vecs = [vec.reshape(1, 300) for vec in filt_vecs]
         for i in range(len(filtered_title_words)):
             for j in range(len(filtered_title_words)):
                 if i != j:
                     sim_mat[i][j] = cosine_similarity(
-                        filtered_words_vecs[i],
-                        filtered_words_vecs[j],
+                        filt_vecs[i],
+                        filt_vecs[j],
                     )[0, 0]
         try:
             nx_graph = nx.from_numpy_array(sim_mat)
@@ -333,7 +337,7 @@ def norm(row):
         return np.NaN
 
 
-def vectorize(text: Union[str, List[str]], tools_token: Optional[str] = None):
+def vectorize(text: str, tools_token: Optional[str] = None):
     """Vectorize a string of text.
 
     Args:
@@ -347,10 +351,7 @@ def vectorize(text: Union[str, List[str]], tools_token: Optional[str] = None):
             "Authorization": "Bearer " + tools_token,
             "Content-Type": "application/json",
         }
-        if isinstance(text, list):
-            body = {"texts": text}
-        else:
-            body = {"text": text}
+        body = {"text": text}
         r = requests.post(
             "https://tools.suffolklitlab.org/vectorize/",
             headers=headers,
@@ -363,10 +364,7 @@ def vectorize(text: Union[str, List[str]], tools_token: Optional[str] = None):
             raise Exception("Vector from tools.suffolklitlab.org is empty")
         return output
     else:
-        if isinstance(text, list):
-            return [normalize(nlp(txt).vector) for txt in text]
-        else:
-            return normalize(nlp(text).vector)
+        return norm(nlp(text).vector)
 
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
@@ -455,7 +453,7 @@ def cluster_screens(
     returs: a suggested screen grouping, each screen name mapped to the list of fields on it
     """
     vec_mat = np.zeros([len(fields), 300])
-    vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
+    vecs = [vectorize(re_case(field), tools_token=tools_token) for field in fields]
     for i in range(len(fields)):
         vec_mat[i] = vecs[i]
     # create model
@@ -775,8 +773,8 @@ class OpenAiCreds(TypedDict):
 
 def text_complete(prompt, max_tokens=500, creds: Optional[OpenAiCreds] = None) -> str:
     if creds:
-        openai.organization = creds["org"].strip()
-        openai.api_key = creds["key"].strip()
+        openai.organization = creds["org"].strip() or ""
+        openai.api_key = creds["key"].strip() or ""
 
     try:
         response = openai.Completion.create(
