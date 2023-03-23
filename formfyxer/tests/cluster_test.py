@@ -1,20 +1,17 @@
 import unittest
 from ..pdf_wrangling import get_existing_pdf_fields
-from ..lit_explorer import cluster_screens, normalize_name, set_vec_token
+from ..lit_explorer import cluster_screens, normalize_name
 from pathlib import Path
 import os
 
 
 class TestVectorFunctions(unittest.TestCase):
-    def setUp(self):
-        set_vec_token(os.environ.get("LIT_TOOLS_TOKEN"))
-
     def test_cluster(self):
         pdf_fields = get_existing_pdf_fields(
             Path(__file__).parent / "affidavit_supplement.pdf"
         )
         field_names = [f.name for page in pdf_fields for f in page]
-        screens = cluster_screens(field_names)
+        screens = cluster_screens(field_names, tools_token=os.getenv("TOOLS_TOKEN"))
         existing = {
             "screen_0": ["court_name", "case_name", "case_number"],
             "screen_1": ["user_training"],
@@ -109,7 +106,13 @@ class TestVectorFunctions(unittest.TestCase):
         new_names_conf = []
         for i, field_name in enumerate(field_names):
             new_name, new_confidence = normalize_name(
-                "state", "", i, i / length, last, field_name
+                "state",
+                "",
+                i,
+                i / length,
+                last,
+                field_name,
+                tools_token=os.getenv("TOOLS_TOKEN"),
             )
             new_names.append(new_name)
             new_names_conf.append(new_confidence)
