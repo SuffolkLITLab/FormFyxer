@@ -1,6 +1,6 @@
 boxdetect
 joblib
-networkx
+networkx>=3.0
 nltk
 numpy
 mypy

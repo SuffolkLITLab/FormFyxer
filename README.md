@@ -17,12 +17,21 @@ If you are on Anaconda, simply run `conda install poppler`. Otherwise, follow th
 - [macOS instructions](https://macappstore.org/poppler/)
 - [Windows download](https://github.com/oschwartz10612/poppler-windows/releases/tag/v22.04.0-0)
 
+## Testing
+
+```bash
+TOOLS_TOKEN=<your_token_here> ISUNITTEST=True python -m unittest formfyxer.tests.cluster_test
+```
+
+You should test with and without `TOOLS_TOKEN`, and make sure that both pass.
+
 ## Functions
 
 Functions from `pdf_wrangling` are found on [our documentation site](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/reference/formfyxer/pdf_wrangling).
 
 - [FormFyxer](#formfyxer)
   - [Installation and updating](#installation-and-updating)
+  - [Testing](#testing)
   - [Functions](#functions)
     - [formfyxer.re\_case(text)](#formfyxerre_casetext)
       - [Parameters:](#parameters)

@@ -3,7 +3,6 @@
 import os
 import re
 import subprocess
-from sklearn.metrics import classification_report
 import spacy
 from spacy.tokens import Doc
 from pdfminer.high_level import extract_text
@@ -120,6 +119,9 @@ with open(
     os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
 ) as in_file:
     openai.api_key = in_file.read().rstrip()
+
+# TODO(brycew): remove by retraining the model to work with random_state=4.
+NEEDS_STABILITY = True if os.getenv("ISUNITTEST") else False
 
 
 # This creates a timeout exception that can be triggered when something hangs too long.
@@ -287,10 +289,7 @@ def reformat_field(text: str, max_length: int = 30, tools_token=None):
         x_words = math.floor((max_length) / av_word_len)
         sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
         # for each word compared to other
-        # filt_vecs = vectorize(filtered_title_words, tools_token=tools_token)
-        filt_vecs = [
-            vectorize(word, tools_token=tools_token) for word in filtered_title_words
-        ]
+        filt_vecs = vectorize(filtered_title_words, tools_token=tools_token)
         filt_vecs = [vec.reshape(1, 300) for vec in filt_vecs]
         for i in range(len(filtered_title_words)):
             for j in range(len(filtered_title_words)):
@@ -337,7 +336,7 @@ def norm(row):
         return np.NaN
 
 
-def vectorize(text: str, tools_token: Optional[str] = None):
+def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
     """Vectorize a string of text.
 
     Args:
@@ -359,12 +358,18 @@ def vectorize(text: str, tools_token: Optional[str] = None):
         )
         if not r.ok:
             raise Exception("Couldn't access tools.suffolklitlab.org")
-        output = np.array(r.json().get("embedding", []))
+        if isinstance(text, str):
+            output = np.array(r.json().get("embeddings", []))
+        else:
+            output = [np.array(embed) for embed in r.json().get("embeddings", [])]
         if len(output) <= 0:
             raise Exception("Vector from tools.suffolklitlab.org is empty")
         return output
     else:
-        return norm(nlp(text).vector)
+        if isinstance(text, str):
+            return norm(nlp(text).vector)
+        else:
+            return [norm(nlp(indiv_text).vector) for indiv_text in text]
 
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
@@ -453,13 +458,15 @@ def cluster_screens(
     returs: a suggested screen grouping, each screen name mapped to the list of fields on it
     """
     vec_mat = np.zeros([len(fields), 300])
-    vecs = [vectorize(re_case(field), tools_token=tools_token) for field in fields]
+    vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
     for i in range(len(fields)):
         vec_mat[i] = vecs[i]
     # create model
-    model = AffinityPropagation(damping=damping, random_state=None)
-    # model = AffinityPropagation(damping=damping,random_state=4) consider using this to get consistent results. note will have to require newer version
-    # fit the model
+    # note will have to require newer version to fit the model when running with random_state=4
+    # just on the unit test for now, to make sure `tools.suffolklitlab.org` and local don't differ
+    model = AffinityPropagation(
+        damping=damping, random_state=4 if NEEDS_STABILITY else None
+    )
     model.fit(vec_mat)
     # assign a cluster to each example
     yhat = model.predict(vec_mat)
