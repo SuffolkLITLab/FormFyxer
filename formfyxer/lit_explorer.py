@@ -360,11 +360,11 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
             raise Exception("Couldn't access tools.suffolklitlab.org")
         if isinstance(text, str):
             output = np.array(r.json().get("embeddings", []))
+            if len(output) <= 0:
+                raise Exception("Vector from tools.suffolklitlab.org is empty")
+            return output
         else:
-            output = [np.array(embed) for embed in r.json().get("embeddings", [])]
-        if len(output) <= 0:
-            raise Exception("Vector from tools.suffolklitlab.org is empty")
-        return output
+            return [np.array(embed) for embed in r.json().get("embeddings", [])]
     else:
         if isinstance(text, str):
             return norm(nlp(text).vector)
