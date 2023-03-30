@@ -101,6 +101,7 @@ def main() -> None:
                 p.save(tmp_file.name)
                 tmp_file.flush()
                 auto_add_fields(tmp_file.name, out_folder + "/" + in_file)
+                p.close()
             else:
                 shutil.copyfile(in_path, out_folder + "/" + in_file)
         except Exception as ex:
