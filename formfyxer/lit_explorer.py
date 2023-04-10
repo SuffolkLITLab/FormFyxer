@@ -904,6 +904,31 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
+def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) -> Tuple[str, List[Tuple[int, int]]]:
+    new_string = input_string
+    substitutions: List[Tuple[int, int]] = []
+    
+    for original, replacement in substitution_phrases.items():
+        start_pos = 0
+        while True:
+            match = re.search(re.escape(original), new_string, re.IGNORECASE)
+            if not match:
+                break
+
+            start_pos, end_pos = match.start(), match.end()
+            substitutions.append((start_pos, end_pos + len(replacement) - len(original)))
+            new_string = new_string[:start_pos] + replacement + new_string[end_pos:]
+            start_pos += len(replacement)
+            
+    return new_string, sorted(substitutions)
+
+
+def neutral_gender(input_string: str) -> Tuple[str, List[Tuple[int, int]]]:
+    """
+    Subtitute gendered phrases with neutral phrases in the input string.
+    """
+    pass
+
 def parse_form(
     in_file: str,
     title: Optional[str] = None,
