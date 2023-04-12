@@ -128,7 +128,9 @@ NEEDS_STABILITY = True if os.getenv("ISUNITTEST") else False
 
 CURRENT_DIRECTORY = os.path.dirname(__file__)
 GENDERED_TERMS_PATH = os.path.join(CURRENT_DIRECTORY, "data", "gendered_terms.yml")
-PLAIN_LANGUAGE_TERMS_PATH = os.path.join(CURRENT_DIRECTORY, "data", "simplified_words.yml")
+PLAIN_LANGUAGE_TERMS_PATH = os.path.join(
+    CURRENT_DIRECTORY, "data", "simplified_words.yml"
+)
 
 # This creates a timeout exception that can be triggered when something hangs too long.
 class TimeoutException(Exception):
@@ -852,13 +854,15 @@ def needs_calculations(text: Union[str, Doc]) -> bool:
     return False
 
 
-def get_passive_sentences(text: Union[List, str]) -> List[Tuple[str, List[Tuple[int,int]]]]:
+def get_passive_sentences(
+    text: Union[List, str]
+) -> List[Tuple[str, List[Tuple[int, int]]]]:
     """Return a list of tuples, where each tuple represents a
     sentence in which passive voice was detected along with a list of the
-    starting and ending position of each fragment that is phrased in the passive voice. 
-    The combination of the two can be used in the PDFStats frontend to highlight the 
+    starting and ending position of each fragment that is phrased in the passive voice.
+    The combination of the two can be used in the PDFStats frontend to highlight the
     passive text in an individual sentence.
-    
+
     Text can either be a string or a list of strings.
     If provided a single string, it will be tokenized with NTLK and
     sentences containing fewer than 2 words will be ignored.
@@ -876,24 +880,27 @@ def get_passive_sentences(text: Union[List, str]) -> List[Tuple[str, List[Tuple[
         sentences = text
     else:
         raise ValueError(f"Can't tokenize {type(text)} object into sentences")
-    
+
     if not sentences:
         return []
-    
+
     passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
     matching_rows = passive_text_df[passive_text_df["binary"] > 0]
     sentences_with_highlights = []
-    
+
     for item in list(zip(matching_rows["document"], matching_rows["all_passives"])):
         for fragment in item[1]:
             sentences_with_highlights.append(
-                (item[0], [
-                    (match.start(), match.end())
-                    for match
-                    in re.finditer(re.escape(fragment), item[0])
-                ])
+                (
+                    item[0],
+                    [
+                        (match.start(), match.end())
+                        for match in re.finditer(re.escape(fragment), item[0])
+                    ],
+                )
             )
     return sentences_with_highlights
+
 
 def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     """
@@ -919,7 +926,9 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
-def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) -> Tuple[str, List[Tuple[int, int]]]:
+def substitute_phrases(
+    input_string: str, substitution_phrases: Dict[str, str]
+) -> Tuple[str, List[Tuple[int, int]]]:
     """
     Generic function to assist with replacing phrases
     """
@@ -928,12 +937,14 @@ def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) 
     for original, replacement in substitution_phrases.items():
         start_pos = 0
         while True:
-            pattern = r'\b' + re.escape(original) + r'\b'
+            pattern = r"\b" + re.escape(original) + r"\b"
             match = re.search(pattern, new_string[start_pos:], re.IGNORECASE)
             if not match:
                 break
             start_pos, end_pos = start_pos + match.start(), start_pos + match.end()
-            substitutions.append((start_pos, end_pos + len(replacement) - len(original)))
+            substitutions.append(
+                (start_pos, end_pos + len(replacement) - len(original))
+            )
             new_string = new_string[:start_pos] + replacement + new_string[end_pos:]
             start_pos += len(replacement)
     return new_string, sorted(substitutions)
@@ -941,12 +952,13 @@ def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) 
 
 def substitute_neutral_gender(input_string: str) -> Tuple[str, List[Tuple[int, int]]]:
     """
-    Substitute gendered phrases with neutral phrases in the input string. 
+    Substitute gendered phrases with neutral phrases in the input string.
     Primary source is https://github.com/joelparkerhenderson/inclusive-language
     """
     with open(GENDERED_TERMS_PATH) as f:
         terms = yaml.safe_load(f)
     return substitute_phrases(input_string, terms)
+
 
 def substitute_plain_language(input_string: str) -> Tuple[str, List[Tuple[int, int]]]:
     """
@@ -957,13 +969,16 @@ def substitute_plain_language(input_string: str) -> Tuple[str, List[Tuple[int, i
         terms = yaml.safe_load(f)
     return substitute_phrases(input_string, terms)
 
-def transformed_sentences(sentence_list: List[str], fun: Callable) -> List[Tuple[str, str, List[Tuple[int, int]]]]:
+
+def transformed_sentences(
+    sentence_list: List[str], fun: Callable
+) -> List[Tuple[str, str, List[Tuple[int, int]]]]:
     """
     Apply a function to a list of sentences and return only the sentences with changed terms.
     The result is a tuple of the original sentence, new sentence, and the starting and ending position
     of each changed fragment in the sentence.
     """
-    transformed:List[Tuple[str, str, List[Tuple[int,int]]]] = []
+    transformed: List[Tuple[str, str, List[Tuple[int, int]]]] = []
     for sentence in sentence_list:
         run = fun(sentence)
         if run[0] != sentence:
@@ -1094,8 +1109,12 @@ def parse_form(
         passive_sentences = []
 
     citations = get_citations(original_text, tokenized_sentences)
-    plain_language_suggestions = transformed_sentences(sentences, substitute_plain_language)
-    neutral_gender_suggestions = transformed_sentences(sentences, substitute_neutral_gender)
+    plain_language_suggestions = transformed_sentences(
+        sentences, substitute_plain_language
+    )
+    neutral_gender_suggestions = transformed_sentences(
+        sentences, substitute_neutral_gender
+    )
     word_count = len(text.split(" "))
     all_caps_count = all_caps_words(text)
     field_types = field_types_and_sizes(ff)
