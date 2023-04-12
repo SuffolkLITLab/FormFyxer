@@ -296,7 +296,7 @@ waiter: waiter
 "fiancée": nearlywed
 woman: person
 niece: child of sibling
-uncle: parent of sibling
+uncle: sibling of parent
 actor: actor
 major: major
 usher: usher
@@ -305,7 +305,7 @@ groom: newlywed
 hers: theirs
 girl: child
 wife: spouse
-aunt: parent of sibling
+aunt: sibling of parent
 coed: student
 host: host
 she: they
