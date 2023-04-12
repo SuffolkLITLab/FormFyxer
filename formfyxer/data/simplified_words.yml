@@ -5,8 +5,10 @@ accomplish: "[carry out, do]"
 accorded: given
 accordingly: so
 accrue: "[add, gain]"
-accurate correct: "[exact, right]"
-additional added: "[more, other]"
+accurate: "[exact, right]"
+correct: "[exact, right]"
+additional: "[more, other]"
+added: "[more, other]"
 address: discuss
 addressees: you
 addressees are requested: (omit)
@@ -14,6 +16,7 @@ please: (omit)
 adjacent to: next to
 advantageous: helpful
 adversely impact on: "[hurt, set back]"
+adversely impact: "[hurt, set back]"
 advise: "[recommend, tell]"
 afford an opportunity: "[allow, let]"
 aircraft: plane
@@ -54,11 +57,15 @@ constitutes is: "[forms, makes up]"
 contains: has
 convene: meet
 currently: "[(omit), now]"
-deem believe: "[consider, think]"
+deem: "[consider, think]"
+believe: "[consider, think]"
 delete: "[cut, drop]"
 demonstrate: "[prove, show]"
 depart: leave
-designate appoint: "[choose, name]"
+designate: "[choose, name]"
+designated: "[chose, named]"
+appoint: "[choose, name]"
+appointed: "[chose, named]"
 desire: "[want, wish]"
 determine: "[figure, find]"
 decide: "[figure, find]"
@@ -67,7 +74,7 @@ discontinue: "[drop, stop]"
 disseminate: give
 at issue: being questioned or challenged
 issue: "[pass, send]"
-due to the fact that: "[due to, since]"
+due to the fact that: "[due to, since, because]"
 during the period: during
 effect modifications: "[make changes]"
 elect: "[choose, pick]"
@@ -79,10 +86,11 @@ ensure: make sure
 enumerate: count
 equipments: equipment
 equitable: fair
-establish set up: "[prove, show]"
+establish: "[prove, show]"
+set up: "[prove, show]"
 evidenced: showed
 evident: clear
-exhibit: show
+exhibit: "[show, exhibit]"
 expedite: "[hasten, speed up]"
 expeditious: "[fast, quick]"
 expend: spend
@@ -95,7 +103,7 @@ females: women
 finalize: "[complete, finish]"
 for a period of: for
 forfeit: "[give up, lose]"
-forward: send
+forward: "[send, forward]"
 frequently: often
 function act: "[role, work]"
 furnish: "[give, send]"
@@ -111,7 +119,7 @@ impacted: "[affected, changed]"
 implement: "[carry out, start]"
 in accordance with: by 
 following: "[per, under]"
-in addition also: "[besides, too]"
+in addition: "[besides, too]"
 in an effort to: to
 inasmuch as: since
 in a timely manner: "[on time, promptly]"
@@ -124,8 +132,8 @@ initiate: start
 in lieu of: instead
 in order that: "[for, so]"
 in order to: to
-in regard to about: "[concerning, on]"
-in relation to about: "[with, to]"
+in regard to: "[concerning, on]"
+in relation to: "[with, to]"
 inter alia: (omit)
 interface: "[meet, work with]"
 interpose no objection: don't object
@@ -147,7 +155,8 @@ liaison: discussion
 limited number: limits
 magnitude: size
 maintain: "[keep, support]"
-maximum greatest: "[largest, most]"
+maximum: "[largest, most]"
+greatest: "[largest, most]"
 methodology: method
 minimize: decrease
 minimum: "[least, smallest]"
@@ -162,8 +171,8 @@ objective: "[aim, goal]"
 obligate: "[bind, compel]"
 observe: see
 on a regular basis: (omit)
-operate run: "[use, work]"
-optimum best: "[greatest, most]"
+operate: "[use, work]"
+optimum: "[greatest, most]"
 option: "[choice, way]"
 parameters: limits
 participate: take part
@@ -188,7 +197,7 @@ provides guidance for: guides
 purchase: buy
 pursuant to by: "[following, per, under]"
 reflect: "[say, show]"
-regarding about: "[of, on]"
+regarding: "[of, on]"
 relative to: "[about, on]"
 relocate: move
 remain: stay
@@ -201,7 +210,6 @@ require: "[must, need]"
 requirement: need
 reside: live
 retain: keep
-said, some, such: "[the, this, that]"
 selection: choice
 set forth in: in
 similar to: like
