@@ -1258,6 +1258,7 @@ def _form_complexity_per_metric(stats):
         # percents will have a higher weight, because they are between 0 and 1
         {"name": "slotin percent", "weight": 2},
         {"name": "gathered percent", "weight": 5},
+        {"name": "third party percent", "weight": 10},
         {"name": "created percent", "weight": 20},
         {"name": "passive voice percent", "weight": 4},
         {"name": "all caps percent", "weight": 10},
