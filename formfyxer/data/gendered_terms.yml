@@ -1,0 +1,316 @@
+actor: actor
+actress: actor
+ad-man: ad-person
+ad-woman: ad-person
+airman: airperson
+airwoman: airperson
+alderman: alderperson
+alderwoman: alderperson
+alumna: alum
+alumnae: alums
+alumni: alums
+alumnus: alum
+anchorman: anchor
+anchorwoman: anchor
+assemblyman: assemblyperson
+assemblywoman: assemblyperson
+aunt: sibling of parent
+bachelor: unmarried person
+bachelorette: unmarried person
+bagboy: bagperson
+baggirl: bagperson
+barman: barperson
+barwoman: barperson
+batboy: batperson
+batgirl: batperson
+bellboy: bellperson
+bellgirl: bellperson
+best maid: best person
+best man: best person
+best matron: best person
+biological man: cisgender person
+biological woman: cisgender person
+bondsman: bondsperson
+bondswoman: bondsperson
+boss man: boss
+boss woman: boss
+boy Friday: aide
+boy: child
+boyfriend: friend
+boys & girls: everyone
+brakeman: brake operator
+brakewoman: brake operator
+brethren: laity
+brewmaster: brewmaker
+brewmistress: brewmaker
+bride: newlywed
+bridesmaid: attendant
+bridesmaids: attendants
+brother: sibling
+brotherhood: siblinghood
+brotherly love: siblingly love
+brotherly: siblingly
+busboy: busperson
+busgirl: busperson
+businessman: businessperson
+businesswoman: businessperson
+cabinboy: cabinperson
+cabingirl: cabinperson
+cameraman: cameraperson
+camerawoman: cameraperson
+careerman: careerperson
+careerwoman: careerperson
+caveman: cave person
+cavewoman: cave person
+chairman: chair
+chairwoman: chair
+choirboy: choirperson
+choirgirl: choirperson
+chorusboy: chorusperson
+chorusgirl: chorusperson
+clergyman: clergyperson
+clergywoman: clergyperson
+coed: student
+comedian: comedian
+comedienne: comedian
+committeeman: committeeperson
+committeewoman: committeeperson
+conductor: conductor
+conductress: conductor
+confidence-man: confidence-person
+confidence-woman: confidence-person
+congressman: congressperson
+congresswoman: congressperson
+contact-man: contact-person
+contact-woman: contact-person
+copyboy: copyperson
+copygirl: copyperson
+councilman: councilperson
+councilwoman: councilperson
+countryman: countryperson
+countrywoman: countryperson
+cowboy: cowperson
+cowgirl: cowperson
+craftsman: craftsperson
+craftswoman: craftsperson
+crewman: crewperson
+crewwoman: crewperson
+dairyman: dairyperson
+dairywoman: dairyperson
+daughter: child
+Dear Sir/Madam: Dear Reader
+deliveryman: deliveryperson
+deliverywoman: deliveryperson
+doorman: doorperson
+doorwoman: doorperson
+draftsman: draftsperson
+draftswoman: draftsperson
+enlisted man: enlisted person
+enlisted woman: enlisted person
+everyman: everyperson
+everywoman: everyperson
+fall gal: fall person
+fall guy: fall person
+father: parent
+fatherhood: parenthood
+fatherland: homeland
+female pronouns: she/her pronouns
+feminine pronouns: she/her pronouns
+fiancé: nearlywed
+fiancée: nearlywed
+fireman: firefighter
+firewoman: firefighter
+fisherman: fisherperson
+fisherwoman: fisherperson
+flower boy: flower child
+flower girl: flower child
+flyboy: flyperson
+flygirl: flyperson
+forefathers: foreparents
+foreman: foreperson
+foremothers: foreparents
+forewoman: foreperson
+founding fathers: founders
+founding mothers: founders
+fraternal twins: differentiable twins
+freshman: first-year student
+freshwoman: first-year student
+gentleman: gentleperson
+gentlemen's agreement: unwritten agreement
+gentlewoman: gentleperson
+gentlewomen's agreement: unwritten agreement
+girl Friday: aide
+girl: child
+girlfriend: friend
+grandfather clause: pre-existing clause
+grandmother clause: pre-existing clause
+groom: newlywed
+groomsman: attendant
+groomsmen: attendants
+handyman: handyperson
+handywoman: handyperson
+he: they
+headmaster: headmaker
+headmistress: headmaker
+hen party: animal party
+her: them
+hermaphrodite: intersex
+hers: theirs
+him: them
+his: theirs
+horseman: horseperson
+horsewoman: horseperson
+host: host
+hostess: host
+husband: spouse
+Jane Q. Public: the public
+John Q. Public: the public
+kinsman: kinsperson
+kinswoman: kinsperson
+ladies & gentlemen: everyone
+lawman: lawperson
+lawwoman: lawperson
+layman: layperson
+laywoman: layperson
+letterman: letterperson
+letterwoman: letterperson
+lifestyle: orientation
+lineman: lineperson
+linesman: lineperson
+lineswoman: lineperson
+linewoman: lineperson
+maid of honor: person of honor
+maiden name: family name
+maiden voyage: first voyage
+mailman: mail carrier
+mailwoman: mail carrier
+major: major
+majorette: major
+male pronouns: he/him pronouns
+man (verb): to guard
+man among men: outstanding person
+man of action: action-oriented person
+man of distinction: person of distinction
+man of honor: person of honor
+man of letters: person of letters
+man of the hour: person of the hour
+man to man: person to person
+man-made: synthetic
+man: person
+manhole: utility hole
+mankind: people
+manpower: personpower
+masculine pronouns: he/him pronouns
+masseur: masseur
+masseuse: masseur
+matron of honor: person of honor
+men & women: everyone
+meter-maid: meter-reader
+meter-man: meter-reader
+meter-matron: meter-reader
+middleman: intermediary
+middlewoman: intermediary
+mother: parent
+motherhood: parenthood
+motherland: homeland
+nephew: child of sibling
+newsboy: newsperson
+newsgirl: newsperson
+newsman: newsperson
+newswoman: newsperson
+niece: child of sibling
+no man is an island: no one is an island
+no-man's land: no-go land
+officeboy: officeperson
+officegirl: officeperson
+ombudsman: ombudsperson
+ombudswoman: ombudsperson
+outdoorsman: outdoors person
+outdoorswoman: outdoors person
+paperboy: paperperson
+papergirl: paperperson
+patrolman: patrolperson
+patrolwoman: patrolperson
+patron: patron
+patroness: patron
+playboy: playperson
+playgirl: playperson
+policeman: police officer
+policewoman: police officer
+postman: mail carrier
+postwoman: mail carrier
+preference: orientation
+preferred pronouns: personal pronouns
+pressman: press operator
+presswoman: press operator
+priest: priest
+priestess: priest
+prodigal daughter: prodigal child
+prodigal son: prodigal child
+repairman: repairperson
+repairwoman: repairperson
+schoolboy: schoolchild
+schoolgirl: schoolchild
+sculptor: sculptor
+sculptress: sculptor
+sex change: gender affirmation
+sex reassignment: gender affirmation
+she: they
+shepherd: shepherd
+shepherdess: shepherd
+shipmaster: shipmaker
+shipmistress: shipmaker
+sister: sibling
+sisterhood: siblinghood
+sisterly love: siblingly love
+sisterly: siblingly
+snowman: snowperson
+snowwoman: snowperson
+son: child
+sorcerer: sorcerer
+sorceress: sorcerer
+spokesman: spokesperson
+spokeswoman: spokesperson
+sportsman: sportsperson
+sportsmanlike: sportspersonlike
+sportsmanship: sportspersonship
+sportswoman: sportsperson
+sportswomanlike: sportspersonlike
+sportswomanship: sportspersonship
+stag party: animal party
+statesman: statesperson
+stateswoman: statesperson
+steward: steward
+stewardess: steward
+taskmaster: taskmaker
+taskmistress: taskmaker
+tempter: tempter
+temptress: tempter
+the common man: the common person
+the man in the street: the person in the street
+the right man for the job: the right one for the job
+to a man: to a one
+to the last man: to the last one
+toastmaster: toastmaker
+toastmistress: toastmaker
+transsexual: trans person
+uncle: sibling of parent
+usher: usher
+usherette: usher
+waiter: waiter
+waitress: waiter
+watchman: watchperson
+watchwoman: watchperson
+weatherman: weatherperson
+weatherwoman: weatherperson
+wife: spouse
+woman among women: outstanding person
+woman of action: action-oriented person
+woman of distinction: person of distinction
+woman of letters: person of letters
+woman of the hour: person of the hour
+woman to woman: person to person
+woman-made: synthetic
+woman: person
+womankind: people
+womanpower: personpower
