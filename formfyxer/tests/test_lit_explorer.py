@@ -50,20 +50,45 @@ class TestSubstitutePhrases(unittest.TestCase):
             result, _ = substitute_phrases(input_string, substitution_phrases)
             self.assertEqual(result, expected_output, f"Expected '{expected_output}', but got '{result}'")
 
-    def test_substitute_phrases_positions(self):
-        input_string = "This is an example sentence for a woman about town to demonstrate the function."
-        substitution_phrases: Dict[str, str] = {
-            "woman about town": "bon vivant",
-            "example": "sample",
-            "demonstrate": "illustrate",
-        }
-        expected_output = "This is an sample sentence for a bon vivant to illustrate the function."
-        expected_positions = [(11, 17), (34, 44), (48, 58)]
 
-        new_string, positions = substitute_phrases(input_string, substitution_phrases)
-        
-        self.assertEqual(new_string, expected_output)
-        self.assertEqual(positions, expected_positions)
+    def test_phrase_and_position_various_orders(self):
+        test_cases = [
+            ("The quick brown fox jumped over the lazy dog.",
+             {"quick brown": "swift reddish", "lazy dog": "sleepy canine"},
+            "The swift reddish fox jumped over the sleepy canine.",
+             [(4, 17), (38, 51)]),
+             
+            ("The sun is shining, and the sunshine is bright.",
+             {"sun": "moon", "sunshine": "moonlight"},
+             "The moon is shining, and the moonlight is bright.",
+             [(4, 8), (29, 38)]),
+             
+            ("The black cat sat on the black mat.",
+             {"black cat": "brown dog", "black": "red"},
+             "The brown dog sat on the red mat.",
+             [(4, 13), (25, 28)]),
+             
+            ("The woman about town is a woman.",
+             {"woman about town": "bon vivant", "woman": "person"},
+             "The bon vivant is a person.",
+             [(4, 14), (20, 26)]),
+             
+            ("The fast car raced past the stationary car.",
+             {"fast car": "speedy vehicle", "car": "automobile"},
+             "The speedy vehicle raced past the stationary automobile.",
+             [(4, 18), (45, 55)]),
+            ("This is an example sentence for a woman about town to demonstrate the function.",
+             {"woman about town": "bon vivant","example": "sample","demonstrate": "illustrate",},
+             "This is an sample sentence for a bon vivant to illustrate the function.",
+             [(11, 17), (33, 43), (47, 57)],
+            ),
+        ]
+
+        for input_string, substitution_phrases, expected_output, expected_positions in test_cases:
+            new_string, actual_positions = substitute_phrases(input_string, substitution_phrases)
+            self.assertEqual(new_string, expected_output)
+            self.assertEqual(actual_positions, expected_positions)
+
 
 if __name__ == '__main__':
     unittest.main()

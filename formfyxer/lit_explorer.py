@@ -926,24 +926,39 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
+import os
+import yaml
+from typing import Dict, List, Tuple
+import re
+
 def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) -> Tuple[str, List[Tuple[int, int]]]:
-    """
-    Generic function to assist with replacing phrases
-    """
-    new_string = input_string
+    # Sort the substitution phrases by length in descending order
+    sorted_phrases = sorted(substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True)
+    
+    matches = []
+    
+    # Find all matches for the substitution phrases
+    for original, replacement in sorted_phrases:
+        for match in re.finditer(re.escape(original), input_string, re.IGNORECASE):
+            matches.append((match.start(), match.end(), replacement))
+    
+    # Sort the matches based on their starting position
+    matches.sort(key=lambda x: x[0])
+
+    new_string = ""
     substitutions: List[Tuple[int, int]] = []
-    for original, replacement in sorted(substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True):
-        start_pos = 0
-        pattern = re.compile(r'\b' + re.escape(original) + r'\b', re.IGNORECASE)
-        while True:
-            match = pattern.search(new_string, start_pos)
-            if not match:
-                break
-            start_pos, end_pos = match.start(), match.end()
-            substitutions.append((start_pos, start_pos + len(replacement)))
-            new_string = new_string[:start_pos] + replacement + new_string[end_pos:]
-            start_pos += len(replacement)
-    return new_string, sorted(substitutions)
+    prev_end_pos = 0
+    
+    # Build the new string and substitutions list
+    for start_pos, end_pos, replacement in matches:
+        if start_pos >= prev_end_pos:
+            new_string += input_string[prev_end_pos:start_pos] + replacement
+            substitutions.append((len(new_string) - len(replacement), len(new_string)))
+            prev_end_pos = end_pos
+    
+    new_string += input_string[prev_end_pos:]
+            
+    return new_string, substitutions
 
 
 def substitute_neutral_gender(input_string: str) -> Tuple[str, List[Tuple[int, int]]]:
