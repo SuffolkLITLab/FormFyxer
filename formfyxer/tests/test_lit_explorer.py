@@ -50,5 +50,20 @@ class TestSubstitutePhrases(unittest.TestCase):
             result, _ = substitute_phrases(input_string, substitution_phrases)
             self.assertEqual(result, expected_output, f"Expected '{expected_output}', but got '{result}'")
 
+    def test_substitute_phrases_positions(self):
+        input_string = "This is an example sentence for a woman about town to demonstrate the function."
+        substitution_phrases: Dict[str, str] = {
+            "woman about town": "bon vivant",
+            "example": "sample",
+            "demonstrate": "illustrate",
+        }
+        expected_output = "This is an sample sentence for a bon vivant to illustrate the function."
+        expected_positions = [(11, 17), (34, 44), (48, 58)]
+
+        new_string, positions = substitute_phrases(input_string, substitution_phrases)
+        
+        self.assertEqual(new_string, expected_output)
+        self.assertEqual(positions, expected_positions)
+
 if __name__ == '__main__':
     unittest.main()

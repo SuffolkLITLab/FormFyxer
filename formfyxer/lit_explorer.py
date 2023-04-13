@@ -928,27 +928,21 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
 
 def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) -> Tuple[str, List[Tuple[int, int]]]:
     """
-    Function to assist with replacing phrases in sentences.
+    Generic function to assist with replacing phrases
     """
+    new_string = input_string
     substitutions: List[Tuple[int, int]] = []
-
-    # Sort the substitution phrases by length (longest first)
-    sorted_phrases = sorted(substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True)
-
-    # Create a single compiled regular expression pattern
-    pattern = r'\b(?:' + '|'.join(re.escape(original) for original, _ in sorted_phrases) + r')\b'
-    regex = re.compile(pattern, re.IGNORECASE)
-
-    def replace_match(match):
-        original = match.group()
-        replacement = substitution_phrases[original.lower()]
-        start_pos, end_pos = match.start(), match.end()
-        substitutions.append((start_pos, end_pos + len(replacement) - len(original)))
-        return replacement
-
-    # Replace the input string in one pass
-    new_string = regex.sub(replace_match, input_string)
-
+    for original, replacement in sorted(substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True):
+        start_pos = 0
+        pattern = re.compile(r'\b' + re.escape(original) + r'\b', re.IGNORECASE)
+        while True:
+            match = pattern.search(new_string, start_pos)
+            if not match:
+                break
+            start_pos, end_pos = match.start(), match.end()
+            substitutions.append((start_pos, start_pos + len(replacement)))
+            new_string = new_string[:start_pos] + replacement + new_string[end_pos:]
+            start_pos += len(replacement)
     return new_string, sorted(substitutions)
 
 
