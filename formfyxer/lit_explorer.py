@@ -926,38 +926,57 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
-import os
-import yaml
-from typing import Dict, List, Tuple
-import re
+def substitute_phrases(
+    input_string: str, substitution_phrases: Dict[str, str]
+) -> Tuple[str, List[Tuple[int, int]]]:
+    """Substitute phrases in the input string and return the new string and positions of substituted phrases.
 
-def substitute_phrases(input_string: str, substitution_phrases: Dict[str, str]) -> Tuple[str, List[Tuple[int, int]]]:
+    Args:
+        input_string (str): The input string containing phrases to be replaced.
+        substitution_phrases (Dict[str, str]): A dictionary mapping original phrases to their replacement phrases.
+
+    Returns:
+        Tuple[str, List[Tuple[int, int]]]: A tuple containing the new string with substituted phrases and a list of
+                                          tuples, each containing the start and end positions of the substituted
+                                          phrases in the new string.
+
+    Example:
+        >>> input_string = "The quick brown fox jumped over the lazy dog."
+        >>> substitution_phrases = {"quick brown": "swift reddish", "lazy dog": "sleepy canine"}
+        >>> new_string, positions = substitute_phrases(input_string, substitution_phrases)
+        >>> print(new_string)
+        "The swift reddish fox jumped over the sleepy canine."
+        >>> print(positions)
+        [(4, 17), (35, 48)]
+    """
     # Sort the substitution phrases by length in descending order
-    sorted_phrases = sorted(substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True)
-    
+    sorted_phrases = sorted(
+        substitution_phrases.items(), key=lambda x: len(x[0]), reverse=True
+    )
+
     matches = []
-    
+
     # Find all matches for the substitution phrases
     for original, replacement in sorted_phrases:
         for match in re.finditer(re.escape(original), input_string, re.IGNORECASE):
             matches.append((match.start(), match.end(), replacement))
-    
+
     # Sort the matches based on their starting position
     matches.sort(key=lambda x: x[0])
 
     new_string = ""
     substitutions: List[Tuple[int, int]] = []
     prev_end_pos = 0
-    
+
     # Build the new string and substitutions list
     for start_pos, end_pos, replacement in matches:
         if start_pos >= prev_end_pos:
             new_string += input_string[prev_end_pos:start_pos] + replacement
             substitutions.append((len(new_string) - len(replacement), len(new_string)))
             prev_end_pos = end_pos
-    
+
     new_string += input_string[prev_end_pos:]
-            
+
     return new_string, substitutions
 
 
