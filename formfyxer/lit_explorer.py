@@ -654,6 +654,60 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     return AnswerType.GATHERED
 
 
+def get_adjusted_character_count(
+        field: FieldInfo
+)-> float:
+    """
+    Determines the bracketed length of an input field based on its max_length attribute, 
+    returning a float representing the approximate length of the field content. 
+
+    The function chunks the answers into 5 different lengths (checkboxes, 2 words, short, medium, and long)
+    instead of directly using the character count, as forms can allocate different spaces
+    for the same data without considering the space the user actually needs.
+
+    Args:
+        field (FieldInfo): An object containing information about the input field, 
+                           including the "max_length" attribute.
+
+    Returns:
+        float: The approximate length of the field content, categorized into checkboxes, 2 words, short, 
+               medium, or long based on the max_length attribute.
+
+    Examples:
+        >>> get_adjusted_character_count({"type"}: InputType.CHECKBOX)
+        4.7
+        >>> get_adjusted_character_count({"max_length": 100})
+        9.4
+        >>> get_adjusted_character_count({"max_length": 300})
+        230
+        >>> get_adjusted_character_count({"max_length": 600})
+        115
+        >>> get_adjusted_character_count({"max_length": 1200})
+        1150
+    """
+    ONE_WORD = 4.7  # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
+    ONE_LINE = 115  # Standard line is ~ 115 characters wide at 12 point font
+    SHORT_ANSWER = (
+        ONE_LINE * 2
+    )  # Anything over 1 line but less than 3 probably needs about the same time to answer
+    MEDIUM_ANSWER = ONE_LINE * 5
+    LONG_ANSWER = (
+        ONE_LINE * 10
+    )  # Anything over 10 lines probably needs a full page but form author skimped on space
+    if field["type"] != InputType.TEXT:
+        return ONE_WORD
+    
+    if field["max_length"] <= ONE_LINE or (
+        field["max_length"] <= ONE_LINE * 2
+    ):
+        return ONE_WORD * 2
+    elif field["max_length"] <= SHORT_ANSWER:
+        return SHORT_ANSWER
+    elif field["max_length"] <= MEDIUM_ANSWER:
+        return MEDIUM_ANSWER
+    return LONG_ANSWER
+
+
 def time_to_answer_field(
     field: FieldInfo,
     new_name: str,
@@ -689,32 +743,10 @@ def time_to_answer_field(
             size=number_samples,
         )
     else:
-        # We chunk answers into three different lengths rather than directly using the character count,
-        # as forms can give very different spaces for the same data without regard to the room the
-        # user actually needs. But small, medium, and full page is still helpful information.
-        ONE_WORD = 4.7  # average word length: https://www.researchgate.net/figure/Average-word-length-in-the-English-language-Different-colours-indicate-the-results-for_fig1_230764201
-        ONE_LINE = 115  # Standard line is ~ 115 characters wide at 12 point font
-        SHORT_ANSWER = (
-            ONE_LINE * 2
-        )  # Anything over 1 line but less than 3 probably needs about the same time to answer
-        MEDIUM_ANSWER = ONE_LINE * 5
-        LONG_ANSWER = (
-            ONE_LINE * 10
-        )  # Anything over 10 lines probably needs a full page but form author skimped on space
-        if field["max_length"] <= ONE_LINE or (
-            field["max_length"] <= ONE_LINE * 2 and kind == AnswerType.SLOT_IN
-        ):
-            time_to_write_answer = ONE_WORD * 2 / cpm
-            time_to_write_std_dev = ONE_WORD * 2 / cpm_std_dev
-        elif field["max_length"] <= SHORT_ANSWER:
-            time_to_write_answer = SHORT_ANSWER / cpm
-            time_to_write_std_dev = SHORT_ANSWER / cpm_std_dev
-        elif field["max_length"] <= MEDIUM_ANSWER:
-            time_to_write_answer = MEDIUM_ANSWER / cpm
-            time_to_write_std_dev = MEDIUM_ANSWER / cpm_std_dev
-        else:
-            time_to_write_answer = LONG_ANSWER / cpm
-            time_to_write_std_dev = LONG_ANSWER / cpm_std_dev
+        adjusted_character_count = get_adjusted_character_count(field)
+        time_to_write_answer = adjusted_character_count / cpm
+        time_to_write_std_dev = adjusted_character_count / cpm_std_dev
+
         return lambda number_samples: np.random.normal(
             loc=time_to_write_answer, scale=time_to_write_std_dev, size=number_samples
         ) + np.random.normal(
@@ -1197,6 +1229,7 @@ def parse_form(
         "citations per field": citation_count / field_count if field_count > 0 else 0,
         "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
+        "normalized characters per field": sum(get_adjusted_character_count(field) for field in field_types ) / field_count if ff else 0,
         "difficult words": difficult_words,
         "difficult word count": difficult_word_count,
         "difficult word percent": difficult_word_count / word_count,
@@ -1254,6 +1287,7 @@ def _form_complexity_per_metric(stats):
         {"name": "pages", "weight": 2},
         {"name": "citations per field", "weight": 1.2},
         {"name": "avg fields per page", "weight": 1 / 8},
+        {"name": "normalized characters per field", "weight": 1/8},
         {"name": "sentences per page", "weight": 0.05},
         # percents will have a higher weight, because they are between 0 and 1
         {"name": "slotin percent", "weight": 2},
@@ -1271,16 +1305,16 @@ def _form_complexity_per_metric(stats):
         weight = metric.get("weight") or 1
         val = 0
         if "clip" in metric:
-            val = min(max(stats[name], metric["clip"][0]), metric["clip"][1])
-        elif isinstance(stats[name], bool):
-            val = 1 if stats[name] else 0
+            val = min(max(stats.get(name,0), metric["clip"][0]), metric["clip"][1])
+        elif isinstance(stats.get(name), bool):
+            val = 1 if stats.get(name) else 0
         else:
-            val = stats[name]
+            val = stats.get(name,0)
         if "intercept" in metric:
             val -= metric["intercept"]
         return val * weight
 
-    return [(m["name"], stats[m["name"]], weight(stats, m)) for m in metrics]
+    return [(m["name"], stats.get(m["name"], 0), weight(stats, m)) for m in metrics]
 
 
 def form_complexity(stats):
