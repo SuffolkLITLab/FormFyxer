@@ -1314,7 +1314,7 @@ def _form_complexity_per_metric(stats):
             val -= metric["intercept"]
         return val * weight
 
-    return [(m["name"], stats.get(m["name"], 0), weight(stats, m)) for m in metrics]
+    return [(m["name"], stats[m["name"]], weight(stats, m)) for m in metrics]
 
 
 def form_complexity(stats):
