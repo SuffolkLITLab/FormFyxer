@@ -990,7 +990,7 @@ def substitute_phrases(
 
     # Find all matches for the substitution phrases
     for original, replacement in sorted_phrases:
-        for match in re.finditer(re.escape(original), input_string, re.IGNORECASE):
+        for match in re.finditer(r"\b" + re.escape(original) + r"\b", input_string, re.IGNORECASE):
             matches.append((match.start(), match.end(), replacement))
 
     # Sort the matches based on their starting position
