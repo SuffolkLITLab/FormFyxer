@@ -10,7 +10,7 @@ accrue: "[add, gain]"
 accurate: "[exact, right]"
 added: "[more, other]"
 additional: "[more, other]"
-address: discuss
+# address: discuss # Too many false positives
 addressees are requested: (omit)
 addressees: you
 adjacent to: next to
@@ -205,7 +205,7 @@ remainder: rest
 remuneration: "[pay, payment]"
 render: "[give, make]"
 represents: is
-request: ask
+request: "[document asking for, ask]"
 require: "[must, need]"
 requirement: need
 reside: live

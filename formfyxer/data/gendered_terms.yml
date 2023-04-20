@@ -157,7 +157,9 @@ her: them
 hermaphrodite: intersex
 hers: theirs
 him: them
-his: theirs
+his/her: their
+his or her: their
+his: "[their, theirs]"
 horseman: horseperson
 horsewoman: horseperson
 host: host
