@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## Version v0.2.0
+
+### Added
+* Add suggestions to remove complex and gendered terms from text of forms by @nonprofittechy in https://github.com/SuffolkLITLab/FormFyxer/pull/101
+* Improve complexity score coverage by @nonprofittechy in https://github.com/SuffolkLITLab/FormFyxer/pull/102
+
+### Changed
+* Work with both `tools.suffolklitlab.org` and locally by @BryceStevenWilley in https://github.com/SuffolkLITLab/FormFyxer/pull/96
+
+### Fixed
+* If no sentences, just return by @BryceStevenWilley in https://github.com/SuffolkLITLab/FormFyxer/pull/95
+
+**Full Changelog**: https://github.com/SuffolkLITLab/FormFyxer/compare/v0.1.1...v0.2.0
+
 ## Version v0.1.1
 
 ### Added
