@@ -146,7 +146,11 @@ is applicable to: "applies to"
 is authorized to: may
 is in consonance with: "[agrees with, follows]"
 is responsible for: "[(omit), handles]"
-issue: "[pass, send]"
+shall issue: "[will pass, will send]"
+shall be issued: will be sent # still passive but can't fix in isolation
+must issue: "[will pass, will send]"
+will issue: "[will pass, will send]"
+# issue: "[pass, send]"
 it appears: seems
 it is essential: "[must, need to]"
 it is requested: "[please, we request, I request]"
@@ -235,10 +239,10 @@ therefore: so
 therein: there
 thereof: "[its, their]"
 this activity command: "[us, we]"
-time period: (either one)
+time period: time
 timely: prompt
 transmit: send
-type: (omit)
+# type: (omit) # ambiguous
 under the provisions of: under
 until such time as: until
 utilization: use

@@ -136,9 +136,11 @@ fraternal twins: differentiable twins
 freshman: first-year student
 freshwoman: first-year student
 gentleman: gentleperson
-gentlemen's agreement: unwritten agreement
+gentlemen's agreement: informal agreement
+gentleman's agreement: informal agreement
 gentlewoman: gentleperson
-gentlewomen's agreement: unwritten agreement
+gentlewomen's agreement: informal agreement
+gentlewoman's agreement: informal agreement
 girl Friday: aide
 girl: child
 girlfriend: friend
@@ -170,6 +172,36 @@ John Q. Public: the public
 kinsman: kinsperson
 kinswoman: kinsperson
 ladies & gentlemen: everyone
+ladies and gentlemen: esteemed guests
+mothers and fathers: parents
+brothers and sisters: siblings
+salesgirl: salesperson
+saleswoman: salesperson
+salesman: salesperson
+head boy: head student
+head girl: head student
+grandpa: grandparent
+grandma: grandparent
+granduncle: grand-uncle/aunt
+grandaunt: grand-uncle/aunt
+great uncle: great-uncle/aunt
+great aunt: great-uncle/aunt
+mother-in-law: parent-in-law
+father-in-law: parent-in-law
+sister-in-law: sibling-in-law
+brother-in-law: sibling-in-law
+son-in-law: child-in-law
+daughter-in-law: child-in-law
+man of the house: head of the household
+lady of the house: head of the household
+manpower: workforce
+guys: folks
+mothers-to-be: expectant parents
+fathers-to-be: expectant parents
+Sir or Madam: Esteemed
+Sir/Madam: Esteemed
+Sir: Esteemed
+Madam: Esteemed
 lawman: lawperson
 lawwoman: lawperson
 layman: layperson
