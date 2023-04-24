@@ -1347,6 +1347,6 @@ def is_tagged(in_pdf_file: Union[str, Path, pikepdf.Pdf]) -> bool:
     if '/MarkInfo' in the_pdf.Root:
         mark_info = the_pdf.Root['/MarkInfo']
         if '/Marked' in mark_info:
-            return mark_info['/Marked']
+            return bool(mark_info['/Marked'])
 
     return False
