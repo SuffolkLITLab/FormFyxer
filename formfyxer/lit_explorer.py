@@ -33,7 +33,8 @@ from .pdf_wrangling import (
     FormField,
     FieldType,
     unlock_pdf_in_place,
-)
+    is_tagged,
+)   
 
 try:
     from nltk.corpus import stopwords
@@ -1184,6 +1185,7 @@ def parse_form(
         classify_field(field, new_names[index])
         for index, field in enumerate(field_types)
     ]
+
     slotin_count = sum(1 for c in classified if c == AnswerType.SLOT_IN)
     gathered_count = sum(1 for c in classified if c == AnswerType.GATHERED)
     third_party_count = sum(1 for c in classified if c == AnswerType.THIRD_PARTY)
@@ -1193,6 +1195,7 @@ def parse_form(
     difficult_words = textstat.difficult_words_list(text)
     difficult_word_count = len(difficult_words)
     citation_count = len(citations)
+    pdf_is_tagged = is_tagged(the_pdf)
     stats = {
         "title": title,
         "suggested title": new_title,
@@ -1236,6 +1239,7 @@ def parse_form(
         "calculation required": needs_calculations(text),
         "plain language suggestions": plain_language_suggestions,
         "neutral gender suggestions": neutral_gender_suggestions,
+        "pdf_is_tagged": pdf_is_tagged,
     }
     if debug and ff:
         debug_fields = []

@@ -41,7 +41,7 @@ from pdfminer.pdfparser import PDFParser
 # Change this to true to output lots of images to help understand why a kernel didn't work
 DEBUG = False
 
-######## PDF internals related funcitons ##########
+######## PDF internals related functions ##########
 
 
 class FieldType(Enum):
@@ -1328,3 +1328,25 @@ def auto_rename_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, P
     if DEBUG:
         print(old_to_new_names)
     rename_pdf_fields(in_pdf_file, out_pdf_file, old_to_new_names)
+
+def is_tagged(in_pdf_file: Union[str, Path, pikepdf.Pdf]) -> bool:
+    """
+    Determines if the input PDF file is tagged for accessibility.
+    
+    Args:
+        in_pdf_file (Union[str, Path]): The path to the PDF file, as a string or a Path object.
+    
+    Returns:
+        bool: True if the PDF is tagged, False otherwise.
+    """
+    if not isinstance(in_pdf_file, Pdf):
+        the_pdf = Pdf.open(in_pdf_file)
+    else:
+        the_pdf = in_pdf_file
+
+    if '/MarkInfo' in the_pdf.Root:
+        mark_info = the_pdf.Root['/MarkInfo']
+        if '/Marked' in mark_info:
+            return mark_info['/Marked']
+
+    return False
