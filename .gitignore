@@ -9,3 +9,4 @@ dist/**
 dev-testing/.DS_Store
 .DS_Store
 .env
+.~lock*
