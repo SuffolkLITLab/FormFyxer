@@ -3,7 +3,7 @@ requires = ["setuptools>=40.0.0,<66", "pip", "spacy"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
-extend-exclude = '(__init__.py|setup.py)'
+extend-exclude = '(__init__.py|setup.py|.*\.ipynb)'
 
 [tool.mypy]
 exclude= '''(?x)(
