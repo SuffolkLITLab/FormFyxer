@@ -1,258 +1,258 @@
 # Table originates from https://www.plainlanguage.gov/guidelines/words/use-simple-words-phrases/, https://web.archive.org/web/20230102195508/https://www.plainlanguage.gov/guidelines/words/use-simple-words-phrases/
-/: "[and, or]"
-a and/or b: a or b or both
-a number of: some
-accompany: go with
-accomplish: "[carry out, do]"
-accorded: given
-accordingly: so
-accrue: "[add, gain]"
-accurate: "[exact, right]"
-added: "[more, other]"
-additional: "[more, other]"
-# address: discuss # Too many false positives
 addressees are requested: (omit)
-addressees: you
-adjacent to: next to
-advantageous: helpful
-adversely impact on: "[hurt, set back]"
-adversely impact: "[hurt, set back]"
-advise: "[recommend, tell]"
+under the provisions of: under
+interpose no objection: don't object
 afford an opportunity: "[allow, let]"
-aircraft: plane
-allocate: divide
-anticipate: expect
-apparent: "[clear, plain]"
-appoint: "[choose, name]"
-appointed: "[chose, named]"
+has a requirement for: needs
+is in consonance with: "[agrees with, follows]"
+provides guidance for: guides
+successfully complete: "[complete, pass]"
+this activity command: "[us, we]"
+with the exception of: except for
+due to the fact that: "[due to, since, because]"
+effect modifications: "[make changes]"
+in view of the above: so
+adversely impact on: "[hurt, set back]"
+at the present time: now
+pertaining to about: "[of, on]"
+combat environment: combat
+in a timely manner: "[on time, promptly]"
+in accordance with: by
+in the near future: "[shortly, soon]"
+is responsible for: "[(omit), handles]"
+on a regular basis: (omit)
+until such time as: until
+during the period: during
+in the process of: (omit)
+with reference to: about
+adversely impact: "[hurt, set back]"
+as prescribed by: "[in, under]"
+in the amount of: for
+is applicable to: applies to
+is authorized to: may
+state of the art: latest
+state-of-the-art: latest
+close proximity: near
+for a period of: for
+in an effort to: to
+in the event of: if
+it is essential: "[must, need to]"
+it is requested: "[please, we request, I request]"
+notwithstanding: "[despite, still]"
+shall be issued: will be sent # still passive but can't fix in isolation
+the undersigned: I
+arrive onboard: arrive
+constitutes is: "[forms, makes up]"
+in relation to: "[with, to]"
+incumbent upon: must
+limited number: limits
+not later than: "[before, by]"
+pursuant to by: "[following, per, under]"
+take action to: (omit)
+as a means of: to
+comprise form: "[include, make up]"
+identify find: "[name, show]"
+in order that: "[for, so]"
+provided that: if
+advantageous: helpful
+consequently: so
+function act: "[role, work]"
+in regard to: "[concerning, on]"
+provide give: "[offer, say]"
+remuneration: "[pay, payment]"
+set forth in: in
+subsequently: "[after, later, then]"
+the month of: (omit)
+a number of: some
+accordingly: so
+adjacent to: next to
 appreciable: many
 appropriate: "[(omit), proper, right]"
 approximate: about
-arrive onboard: arrive
-as a means of: to
-as prescribed by: "[in, under]"
-ascertain: "[find out, learn]"
-assist: "[aid, help]"
-assistance: "[aid, help]"
-at issue: being questioned or challenged
-at present: now
-at the present time: now
-attain: meet
-attempt: try
-be advised: (omit)
-believe: "[consider, think]"
-benefit: help
 by means of: "[by, with]"
-capability: ability
-caveat: warning
-close proximity: near
-combat environment: combat
-combine: "[join, merge]"
-combined: joint
-commence: "[begin, start]"
 comply with: follow
-component: part
-comprise form: "[include, make up]"
-concerning: "[about, on]"
-consequently: so
 consolidate: "[join, merge]"
-constitutes is: "[forms, makes up]"
-contains: has
-convene: meet
-correct: "[exact, right]"
-currently: "[(omit), now]"
-decide: "[figure, find]"
-deem: "[consider, think]"
-delete: "[cut, drop]"
 demonstrate: "[prove, show]"
-depart: leave
-designate: "[choose, name]"
-designated: "[chose, named]"
-desire: "[want, wish]"
-determine: "[figure, find]"
-disclose: show
 discontinue: "[drop, stop]"
 disseminate: give
-due to the fact that: "[due to, since, because]"
-during the period: during
-effect modifications: "[make changes]"
-elect: "[choose, pick]"
-eliminate: "[cut, drop, end]"
-employ: use
-encounter: meet
-endeavor: try
-ensure: make sure
-enumerate: count
+expeditious: "[fast, quick]"
+immediately: at once
+in addition: "[besides, too]"
+in order to: to
+inasmuch as: since
+methodology: method
+necessitate: "[cause, need]"
+participate: take part
+practicable: practical
+proficiency: skill
+relative to: "[about, on]"
+requirement: need
+shall issue: "[will pass, will send]"
+substantial: "[large, much]"
+time period: time
+utilization: use
+your office: you
+accomplish: "[carry out, do]"
+additional: "[more, other]"
+addressees: you
+anticipate: expect
+assistance: "[aid, help]"
+at present: now
+be advised: (omit)
+capability: ability
+concerning: "[about, on]"
+designated: "[chose, named]"
 equipments: equipment
+expiration: end
+facilitate: "[ease, help]"
+frequently: often
+heretofore: until now
+in lieu of: instead
+in view of: since
+indication: sign
+inter alia: (omit)
+it appears: seems
+must issue: "[will pass, will send]"
+parameters: limits
+previously: before
+prioritize: rank
+proceed do: "[go ahead, try]"
+promulgate: "[issue, publish]"
+represents: is
+similar to: like
+subsequent: "[later, next]"
+sufficient: enough
+the use of: (omit)
+will issue: "[will pass, will send]"
+# address: discuss # Too many false positives
+accompany: go with
+appointed: "[chose, named]"
+ascertain: "[find out, learn]"
+component: part
+currently: "[(omit), now]"
+designate: "[choose, name]"
+determine: "[figure, find]"
+eliminate: "[cut, drop, end]"
+encounter: meet
+enumerate: count
 equitable: fair
 establish: "[prove, show]"
 evidenced: showed
-evident: clear
-exhibit: "[show, exhibit]"
-expedite: "[hasten, speed up]"
-expeditious: "[fast, quick]"
-expend: spend
 expertise: ability
-expiration: end
-facilitate: "[ease, help]"
 failed to: "[didn't]"
-feasible: "[can be done, workable]"
-females: women
-finalize: "[complete, finish]"
 following: "[per, under]"
-for a period of: for
-forfeit: "[give up, lose]"
-forward: "[send, forward]"
-frequently: often
-function act: "[role, work]"
-furnish: "[give, send]"
-greatest: "[largest, most]"
-has a requirement for: needs
-herein: here
-heretofore: until now
-herewith: "[below, here]"
-however: but
 identical: same
-identify find: "[name, show]"
-immediately: at once
-impacted: "[affected, changed]"
 implement: "[carry out, start]"
-in a timely manner: "[on time, promptly]"
-in accordance with: by 
-in addition: "[besides, too]"
-in an effort to: to
-in lieu of: instead
-in order that: "[for, so]"
-in order to: to
-in regard to: "[concerning, on]"
-in relation to: "[with, to]"
-in the amount of: for
-in the event of: if
-in the near future: "[shortly, soon]"
-in the process of: (omit)
-in view of the above: so
-in view of: since
-inasmuch as: since
 inception: start
-incumbent upon: must
-indicate: "[show, write down]"
-indication: sign
-initial: first
-initiate: start
-inter alia: (omit)
 interface: "[meet, work with]"
-interpose no objection: don't object
-is applicable to: "applies to"
-is authorized to: may
-is in consonance with: "[agrees with, follows]"
-is responsible for: "[(omit), handles]"
-shall issue: "[will pass, will send]"
-shall be issued: will be sent # still passive but can't fix in isolation
-must issue: "[will pass, will send]"
-will issue: "[will pass, will send]"
-# issue: "[pass, send]"
-it appears: seems
-it is essential: "[must, need to]"
-it is requested: "[please, we request, I request]"
-it is: (omit)
-liaison: discussion
-limited number: limits
 magnitude: size
-maintain: "[keep, support]"
-maximum: "[largest, most]"
-methodology: method
-minimize: decrease
-minimum: "[least, smallest]"
-modify: change
-monitor: "[check, watch]"
-necessitate: "[cause, need]"
-not later than: "[before, by]"
-notify: "[let know, tell]"
-notwithstanding: "[despite, still]"
-numerous: many
 objective: "[aim, goal]"
+regarding: "[of, on]"
+remainder: rest
+selection: choice
+terminate: "[end, stop]"
+there are: (omit)
+therefore: so
+witnessed: saw
+accorded: given
+accurate: "[exact, right]"
+aircraft: plane
+allocate: divide
+apparent: "[clear, plain]"
+at issue: being questioned or challenged
+combined: joint
+commence: "[begin, start]"
+contains: has
+disclose: show
+endeavor: try
+expedite: "[hasten, speed up]"
+feasible: "[can be done, workable]"
+finalize: "[complete, finish]"
+greatest: "[largest, most]"
+herewith: "[below, here]"
+impacted: "[affected, changed]"
+indicate: "[show, write down]"
+initiate: start
+maintain: "[keep, support]"
+minimize: decrease
+numerous: many
 obligate: "[bind, compel]"
-observe: see
-on a regular basis: (omit)
-operate: "[use, work]"
-optimum: "[greatest, most]"
-option: "[choice, way]"
-parameters: limits
-participate: take part
-perform: do
-permit: let
-pertaining to about: "[of, on]"
-please: (omit)
-portion: part
-possess: "[have, own]"
-practicable: practical
 preclude: prevent
 previous: earlier
-previously: before
 prior to: before
-prioritize: rank
-proceed do: "[go ahead, try]"
-procure: (omit)
-proficiency: skill
-promulgate: "[issue, publish]"
-provide give: "[offer, say]"
-provided that: if
-provides guidance for: guides
 purchase: buy
-pursuant to by: "[following, per, under]"
-reflect: "[say, show]"
-regarding: "[of, on]"
-relative to: "[about, on]"
 relocate: move
-remain: stay
-remainder: rest
-remuneration: "[pay, payment]"
-render: "[give, make]"
-represents: is
+there is: (omit)
+transmit: send
+validate: confirm
+# issue: "[pass, send]"
+appoint: "[choose, name]"
+attempt: try
+believe: "[consider, think]"
+benefit: help
+combine: "[join, merge]"
+convene: meet
+correct: "[exact, right]"
+evident: clear
+exhibit: "[show, exhibit]"
+females: women
+forfeit: "[give up, lose]"
+forward: "[send, forward]"
+furnish: "[give, send]"
+however: but
+initial: first
+liaison: discussion
+maximum: "[largest, most]"
+minimum: "[least, smallest]"
+monitor: "[check, watch]"
+observe: see
+operate: "[use, work]"
+optimum: "[greatest, most]"
+perform: do
+portion: part
+possess: "[have, own]"
+procure: (omit)
+reflect: "[say, show]"
 request: "[document asking for, ask]"
 require: "[must, need]"
-requirement: need
-reside: live
-retain: keep
-selection: choice
-set forth in: in
-set up: "[prove, show]"
-similar to: like
 solicit: "[ask for, request]"
-state of the art: latest
-state-of-the-art: latest
 subject: "[the, this, your]"
-submit: "[give, send]"
-subsequent: "[later, next]"
-subsequently: "[after, later, then]"
-substantial: "[large, much]"
-successfully complete: "[complete, pass]"
-sufficient: enough
-take action to: (omit)
-terminate: "[end, stop]"
-the month of: (omit)
-the undersigned: I
-the use of: (omit)
-there are: (omit)
-there is: (omit)
-therefore: so
 therein: there
 thereof: "[its, their]"
-this activity command: "[us, we]"
-time period: time
-timely: prompt
-transmit: send
-# type: (omit) # ambiguous
-under the provisions of: under
-until such time as: until
-utilization: use
 utilize: use
-validate: confirm
-viable: "[practical, workable]"
-vice: "[instead of, versus]"
 warrant: "[call for, permit]"
 whereas: "[because, since]"
-with reference to: about
-with the exception of: except for
-witnessed: saw
-your office: you
+# type: (omit) # ambiguous
+accrue: "[add, gain]"
+advise: "[recommend, tell]"
+and/or: a or b or both
+assist: "[aid, help]"
+attain: meet
+caveat: warning
+decide: "[figure, find]"
+delete: "[cut, drop]"
+depart: leave
+desire: "[want, wish]"
+employ: use
+ensure: make sure
+expend: spend
+herein: here
+modify: change
+notify: "[let know, tell]"
+option: "[choice, way]"
+permit: let
+please: (omit)
+remain: stay
+render: "[give, make]"
+reside: live
+retain: keep
+set up: "[prove, show]"
+submit: "[give, send]"
+timely: prompt
+viable: "[practical, workable]"
+added: "[more, other]"
+elect: "[choose, pick]"
+it is: (omit)
+deem: "[consider, think]"
+vice: "[instead of, versus]"
+/: "[and, or]"
