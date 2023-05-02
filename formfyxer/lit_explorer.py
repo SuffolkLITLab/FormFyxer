@@ -1095,7 +1095,7 @@ def parse_form(
     except:
         readability = -1
     # Still attempt to re-evaluate if not using openai
-    if (openai_creds and description == "abortthisnow.") or readability > 30:
+    if not original_text or (openai_creds and description == "abortthisnow.") or readability > 30:
         # We do not care what the PDF output is, doesn't add that much time
         ocr_p = [
             "ocrmypdf",
