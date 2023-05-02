@@ -347,7 +347,7 @@ def set_fields(
     if not fields_per_page:
         # Nothing to do, lol
         return
-    in_pdf = Pdf.open(in_file)
+    in_pdf = Pdf.open(in_file, allow_overwriting_input=overwrite)
     if hasattr(in_pdf.Root, "AcroForm") and not overwrite:
         print("Not going to overwrite the existing AcroForm!")
         return None
