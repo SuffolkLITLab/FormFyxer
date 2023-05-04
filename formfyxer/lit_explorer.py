@@ -1004,8 +1004,8 @@ def substitute_phrases(
     # Build the new string and substitutions list
     for start_pos, end_pos, replacement in matches:
         if start_pos >= prev_end_pos:
-            new_string += input_string[prev_end_pos:start_pos] + replacement
-            substitutions.append((len(new_string) - len(replacement), len(new_string)))
+            new_string += input_string[prev_end_pos:start_pos] + str(replacement)
+            substitutions.append((len(new_string) - len(str(replacement)), len(new_string)))
             prev_end_pos = end_pos
 
     new_string += input_string[prev_end_pos:]
