@@ -430,6 +430,25 @@ def _unnest_pdf_fields(
         return []
 
 
+def has_fields(pdf_file: str) -> bool:
+    """
+    Check if a PDF has at least one form field using PikePDF.
+
+    Args:
+        pdf_file (str): The path to the PDF file.
+
+    Returns:
+        bool: True if the PDF has at least one form field, False otherwise.
+    """
+    with pikepdf.open(pdf_file) as pdf:
+        for page in pdf.pages:
+            if '/Annots' in page:
+                for annot in page.Annots:
+                    if annot.Type == '/Annot' and annot.Subtype == '/Widget':
+                        return True
+    return False
+
+
 def get_existing_pdf_fields(
     in_file: Union[str, Path, BinaryIO, Pdf]
 ) -> List[List[FormField]]:
