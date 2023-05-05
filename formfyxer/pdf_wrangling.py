@@ -442,9 +442,9 @@ def has_fields(pdf_file: str) -> bool:
     """
     with pikepdf.open(pdf_file) as pdf:
         for page in pdf.pages:
-            if '/Annots' in page:
-                for annot in page.Annots:
-                    if annot.Type == '/Annot' and annot.Subtype == '/Widget':
+            if "/Annots" in page:
+                for annot in page.Annots:  # type: ignore
+                    if annot.Type == "/Annot" and annot.Subtype == "/Widget":
                         return True
     return False
 
@@ -1348,13 +1348,14 @@ def auto_rename_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, P
         print(old_to_new_names)
     rename_pdf_fields(in_pdf_file, out_pdf_file, old_to_new_names)
 
+
 def is_tagged(in_pdf_file: Union[str, Path, pikepdf.Pdf]) -> bool:
     """
     Determines if the input PDF file is tagged for accessibility.
-    
+
     Args:
         in_pdf_file (Union[str, Path]): The path to the PDF file, as a string or a Path object.
-    
+
     Returns:
         bool: True if the PDF is tagged, False otherwise.
     """
@@ -1363,9 +1364,9 @@ def is_tagged(in_pdf_file: Union[str, Path, pikepdf.Pdf]) -> bool:
     else:
         the_pdf = in_pdf_file
 
-    if '/MarkInfo' in the_pdf.Root:
-        mark_info = the_pdf.Root['/MarkInfo']
-        if '/Marked' in mark_info:
-            return bool(mark_info['/Marked'])
+    if "/MarkInfo" in the_pdf.Root:
+        mark_info = the_pdf.Root["/MarkInfo"]
+        if "/Marked" in mark_info:
+            return bool(mark_info["/Marked"])
 
     return False
