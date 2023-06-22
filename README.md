@@ -4,6 +4,9 @@
 
 A Python package with a collection of functions for learning about and pre-processing pdf forms and associated form fields. This processing is done with an eye towards interoperability with the Suffolk LIT Lab's [Document Assembly Line Project](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/).
 
+This repository is the engine for [RateMyPDF](https://ratemypdf.com). It has been described in a paper published in the proceedings
+of ICAIL '23. You can view it [here](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/complexity/complexity/#download-and-cite-our-paper).
+
 ## Installation and updating
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install FormFyxer.
 Rerun this command to check for and install updates directly from GitHub.
@@ -443,3 +446,14 @@ An object grouping together similar field names.
 
 ## License
 [MIT](https://github.com/SuffolkLITLab/FormFyxer/blob/main/LICENSE)
+
+## Preferred citation format
+
+Please cite this repository as follows:
+
+Quinten Steenhuis, Bryce Willey, and David Colarusso. 2023. Beyond Readability with RateMyPDF: A Combined Rule-based and Machine Learning Approach to Improving Court Forms. In _Proceedings of International Conference on Artificial Intelligence and Law (ICAIL 2023). ACM, New York, NY, USA, 10 pages_. https://doi.org/10.1145/3594536.3595146
+
+Bibtex format:
+```bibtex
+@article{Steenhuis_Willey_Colarusso_2023, title={Beyond Readability with RateMyPDF: A Combined Rule-based and Machine Learning Approach to Improving Court Forms}, DOI={https://doi.org/10.1145/3594536.3595146}, journal={Proceedings of International Conference on Artificial Intelligence and Law (ICAIL 2023)}, author={Steenhuis, Quinten and Willey, Bryce and Colarusso, David}, year={2023}, pages={287–296}}
+```
