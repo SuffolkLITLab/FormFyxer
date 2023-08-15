@@ -99,16 +99,28 @@ passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
 # Load local variables, models, and API key(s).
 
-included_fields = load(
-    os.path.join(os.path.dirname(__file__), "data", "included_fields.joblib")
-)
-jurisdictions = load(
-    os.path.join(os.path.dirname(__file__), "data", "jurisdictions.joblib")
-)
-groups = load(os.path.join(os.path.dirname(__file__), "data", "groups.joblib"))
-clf_field_names = load(
-    os.path.join(os.path.dirname(__file__), "data", "clf_field_names.joblib")
-)
+###############
+# Temporarily replace joblib files with local vars
+included_fields = [
+    "users1_name",
+    "users1_birthdate",
+    "users1_address_line_one",
+    "users1_address_line_two",
+    "users1_address_city",
+    "users1_address_state",
+    "users1_address_zip",
+    "users1_phone_number",
+    "users1_email",
+    "plantiffs1_name",
+    "defendants1_name",
+    "petitioners1_name",
+    "respondents1_name",
+    "docket_number",
+    "trial_court_county",
+    "users1_signature",
+    "signature_date",
+]
+
 with open(
     os.path.join(os.path.dirname(__file__), "keys", "spot_token.txt"), "r"
 ) as in_file:
@@ -397,52 +409,22 @@ def normalize_name(
     this_field: str,
     tools_token: Optional[str] = None,
 ) -> Tuple[str, float]:
-    """Add hard coded conversions maybe by calling a function
-    if returns 0 then fail over to ML or other way around poor prob -> check hard-coded.
-    Retuns the new name and a confidence value between 0 and 1"""
+    """
+    Normalize a field name, if possible to the Assembly Line conventions, and if
+    not, to a snake_case variable name of appropriate length.
+
+    HACK: temporarily all we do is re-case it and normalize it using regex rules.
+    Will be replaced with call to LLM soon.        
+    """
+    
     if this_field not in included_fields:
         this_field = re_case(this_field)
-        out_put = regex_norm_field(this_field)
-        conf = 1.0
-        if out_put == this_field:
-            params = []
-            for item in jurisdictions:
-                if jur == item:
-                    params.append(1)
-                else:
-                    params.append(0)
-            for item in groups:
-                if group == item:
-                    params.append(1)
-                else:
-                    params.append(0)
-            params.append(n)
-            params.append(per)
-            for vec in vectorize(this_field, tools_token=tools_token):
-                params.append(vec)
-            for item in included_fields:
-                if last_field == item:
-                    params.append(1)
-                else:
-                    params.append(0)
-            pred = clf_field_names.predict([params])
-            prob = clf_field_names.predict_proba([params])
-            conf = prob[0].tolist()[prob[0].tolist().index(max(prob[0].tolist()))]
-            out_put = pred[0]
-    else:
-        out_put = this_field
-        conf = 1
-    if out_put in included_fields:
-        if conf >= 0:
-            return (
-                "*" + out_put,
-                conf,
-            )  # this * is a hack to show when something is in the list of known fields later. I need to fix this
-        else:
-            return reformat_field(this_field, tools_token=tools_token), conf
-    else:
-        return reformat_field(this_field, tools_token=tools_token), conf
+        this_field = regex_norm_field(this_field)
 
+    if this_field in included_fields:
+        return f"*{this_field}", 1.0
+    
+    return reformat_field(this_field, tools_token=tools_token), 0.5
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
 #
@@ -464,7 +446,7 @@ def cluster_screens(
       tools_token: the token to tools.suffolklitlab.org, needed of doing
           micro-service vectorization
 
-    returs: a suggested screen grouping, each screen name mapped to the list of fields on it
+    Returns: a suggested screen grouping, each screen name mapped to the list of fields on it
     """
     vec_mat = np.zeros([len(fields), 300])
     vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
