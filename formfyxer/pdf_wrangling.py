@@ -1103,14 +1103,16 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
     doing any semantic analysis yet."""
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
-        img = cv2.imread(img, 0)
-    if isinstance(img, BinaryIO):
-        img = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+        img_mat = cv2.imread(img, 0)
+    elif isinstance(img, BinaryIO):
+        img_mat = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+    else:
+        img_mat = img
 
-    rows = img.shape[0]
+    rows = img_mat.shape[0]
     # TODO(brycew): https://docs.opencv.org/3.4/d4/d70/tutorial_hough_circle.html
     circles = cv2.HoughCircles(
-        img,
+        img_mat,
         cv2.HOUGH_GRADIENT,
         1,
         rows / 8,
@@ -1124,10 +1126,10 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
         for i in circles[0, :]:
             center = (i[0], i[1])
             # circle center
-            cv2.circle(img, center, 1, (0, 100, 100), 3)
+            cv2.circle(img_mat, center, 1, (0, 100, 100), 3)
             # circle outline
             radius = i[2]
-            cv2.circle(img, center, radius, (255, 0, 255), 3)
+            cv2.circle(img_mat, center, radius, (255, 0, 255), 3)
 
     return []
     # cv2.imshow("detected circles", img)
@@ -1151,17 +1153,19 @@ def get_possible_text_fields(
     """
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
-        img = cv2.imread(img, 0)
-    if isinstance(img, BinaryIO):
-        img = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+        img_mat = cv2.imread(img, 0)
+    elif isinstance(img, BinaryIO):
+        img_mat = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+    else:
+        img_mat = img
 
-    height, width = img.shape
+    height, width = img_mat.shape
     # fixed level thresholding, turning a gray scale / multichannel img to a black and white one.
     # OTSU = optimum global thresholding: minimizes the variance of each Thresh "class"
     # for each possible thresh value between 128 and 255, split up pixels, get the within-class variance,
     # and minimize that
     (thresh, img_bin) = cv2.threshold(
-        img, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
+        img_mat, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
     img_bin = 255 - img_bin

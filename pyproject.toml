@@ -81,3 +81,7 @@ ignore_missing_imports=true
 [[tool.mypy.overrides]]
 module="transformers.*"
 ignore_missing_imports=true
+
+[[tool.mypy.overrides]]
+module="eyecite.*"
+ignore_missing_imports=true
