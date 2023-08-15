@@ -9,3 +9,5 @@ dist/**
 dev-testing/.DS_Store
 .DS_Store
 .env
+.venv
+venv
