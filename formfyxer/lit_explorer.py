@@ -422,7 +422,7 @@ def normalize_name(
         this_field = regex_norm_field(this_field)
 
     if this_field in included_fields:
-        return f"*{this_field}", 1.0
+        return f"*{this_field}", 0.01
     
     return reformat_field(this_field, tools_token=tools_token), 0.5
 
