@@ -392,12 +392,23 @@ def rename_pdf_fields(
             if name in mapping:
                 # we aren't changing the parent names at all, so just change the last part of the name
                 if "." in mapping[name]:
-                    field["all"].T = mapping[name].split(".")[-1]
+                    name_to_use = mapping[name].split(".")[-1]
                 else:
-                    field["all"].T = mapping[name]
+                    name_to_use = mapping[name]
+                to_name = _get_named_parent(field["all"])
+                if to_name:
+                    to_name.T = name_to_use
 
     in_pdf.save(out_file)
     in_pdf.close()
+
+
+def _get_named_parent(field) -> Optional[Any]:
+    if hasattr(field, "T"):
+        return field
+    elif hasattr(field, "Parent"):
+        return _get_named_parent(field.Parent)
+    return None
 
 
 def unlock_pdf_in_place(in_file: Union[str, Path, BinaryIO]) -> None:
@@ -411,7 +422,10 @@ def unlock_pdf_in_place(in_file: Union[str, Path, BinaryIO]) -> None:
 
 
 def _unnest_pdf_fields(
-    field, parent_name: Optional[List[str]] = None
+    field,
+    parent_name: Optional[List[str]] = None,
+    parent_type: Optional[str] = None,
+    parent_flags: Optional[int] = None,
 ) -> List[PikeField]:
     if parent_name is None:
         parent_name = []
@@ -424,12 +438,21 @@ def _unnest_pdf_fields(
         if hasattr(field, "Ff") and field.FT == "/Btn" and bool(field.Ff & 0x10000):
             return []
         return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
-    elif hasattr(field, "FT") and hasattr(field, "Kids"):
-        # This happens if all the kids are the same type, i.e. muliple fields in the PDF that are
-        # all named the same. We should return it; it's a singular field for our purposes
-        return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
+    elif parent_type and parent_flags and hasattr(field, "F"):
+        if parent_flags and parent_type == "/Btn" and bool(parent_flags & 0x10000):
+            return []
+        return [{"type": parent_type, "var_name": ".".join(parent_name), "all": field}]
     elif hasattr(field, "Kids"):
-        return [y for x in field.Kids for y in _unnest_pdf_fields(x, copy(parent_name))]
+        return [
+            y
+            for x in field.Kids
+            for y in _unnest_pdf_fields(
+                x,
+                copy(parent_name),
+                str(field.FT) if hasattr(field, "FT") else None,
+                int(field.Ff) if hasattr(field, "Ff") else None,
+            )
+        ]
     else:
         return []
 
