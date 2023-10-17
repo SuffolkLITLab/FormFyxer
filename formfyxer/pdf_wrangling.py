@@ -424,6 +424,10 @@ def _unnest_pdf_fields(
         if hasattr(field, "Ff") and field.FT == "/Btn" and bool(field.Ff & 0x10000):
             return []
         return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
+    elif hasattr(field, "FT") and hasattr(field, "Kids"):
+        # This happens if all the kids are the same type, i.e. muliple fields in the PDF that are
+        # all named the same. We should return it; it's a singular field for our purposes
+        return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
     elif hasattr(field, "Kids"):
         return [y for x in field.Kids for y in _unnest_pdf_fields(x, copy(parent_name))]
     else:
