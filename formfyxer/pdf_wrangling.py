@@ -6,6 +6,7 @@ import tempfile
 from copy import copy
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Optional,
@@ -30,8 +31,22 @@ from pikepdf import Pdf
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
-from pdfminer.converter import PDFLayoutAnalyzer
-from pdfminer.layout import LAParams, LTPage, LTTextBoxHorizontal, LTChar, LTContainer
+from pdfminer.converter import PDFLayoutAnalyzer, TextConverter
+from pdfminer.layout import (
+    LAParams,
+    LTPage,
+    LTTextBoxHorizontal,
+    LTChar,
+    LTContainer,
+    LTAnno,
+    LTText,
+    LTTextBox,
+    LTTextBoxVertical,
+    LTTextGroup,
+    LTTextLine,
+    LTImage,
+    LTItem,
+)
 from pdfminer.pdffont import PDFUnicodeNotDefined
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
@@ -689,6 +704,33 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 
+class PDFPageAndFieldInterpreter(PDFPageInterpreter):
+    # TODO: keep track of all of the fields per page, insert them when rendering the page
+    pass
+
+
+class TextAndFieldConverter(TextConverter):
+    def receive_layout(self, ltpage: LTPage) -> None:
+        def render(item: LTItem) -> None:
+            if isinstance(item, LTContainer):
+                for child in item:
+                    render(child)
+            elif isinstance(item, LTText):
+                self.write_text(item.get_text())
+            if isinstance(item, LTTextBox):
+                self.write_text("\n")
+            elif isinstance(item, LTImage):
+                if self.imagewriter is not None:
+                    self.imagewriter.export_image(item)
+            elif isinstance(item, LTAnnot):
+                self.write_text(item.get_text())
+
+        if self.showpageno:
+            self.write_text("Page %s\n" % ltpage.pageid)
+        render(ltpage)
+        self.write_text("\f")
+
+
 class Textbox(TypedDict):
     textbox: LTTextBoxHorizontal
     bbox: BoundingBoxF
@@ -1039,11 +1081,115 @@ def get_possible_fields(
     return fields
 
 
+class ImproveNameVisitor:
+    def __init__(self):
+        self.used_field_names = set()
+
+    def improve_name_with_surrounding_text(
+        self, field_info: FormField, textboxes: List[Textbox]
+    ) -> FormField:
+        dists = [
+            (
+                bbox_distance(field_info.get_bbox(), textbox["bbox"])[0],
+                textbox["textbox"],
+                textbox["bbox"],
+            )
+            for textbox in textboxes
+        ]
+        if DEBUG:
+            print(f"For {field_info.name}, dists: {dists}")
+        min_textbox = min(dists, key=lambda d: d[0])
+        # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
+        # text_obj_bboxes.remove(min_obj[2])
+        # TODO(brycew): actual regex replacement of lots of underscores
+        label = re.sub("[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
+        label = re.sub("_{3,}", "_", label).strip("_")
+        if label not in self.used_field_names:
+            field_info.name = label
+            self.used_field_names.add(label)
+        elif DEBUG:
+            print(f"avoiding using label {label} more than once")
+        return field_info
+
+
+class AllCloseTextVisitor:
+    def __init__(self):
+        self.field_map = {}
+
+    def all_close_text(self, field_info, textboxes) -> FormField:
+        dists = [
+            (tb["bbox"][0] + tb["bbox"][1] * 1000, tb["textbox"].get_text())
+            for tb in textboxes
+        ] + [
+            (
+                field_info.get_bbox()[0] + field_info.get_bbox()[1] * 1000,
+                "{{ " + field_info.name + "}} ",
+            )
+        ]
+        textbox_order = sorted(dists, key=lambda d: d[0])
+        all_text = "".join([tb[1] for tb in textbox_order])
+        self.field_map[field_info.name] = all_text
+        return field_info
+
+
+class LowestVertVisitor:
+    """Gets just the closest text to the field, and returns that"""
+
+    def __init__(self):
+        self.field_map = {}
+
+    def lowest_vert(fi, tbs):
+        dists = []
+        for tb in tbs:
+            dist = pdf_wrangling.bbox_distance(fi.get_bbox(), tb["bbox"])
+            a_side, b_side = dist[1], dist[2]
+            closest_side_dist = min(
+                pdf_wrangling.get_dist(a_side[0], b_side[0]),
+                pdf_wrangling.get_dist(a_side[1], b_side[1]),
+            )
+            enumm = ("After" if closest_side_dist > 0 else "Before",)
+            tup = (dist[0], enumm, tb["textbox"], tb["bbox"])
+            dists.append(tup)
+        min_tb = min(dists, key=lambda d: d[0])
+        print(f"{fi.name}, {min_tb[2].get_text()}")
+        self.field_map[fi.name] = min_tb
+        return fi
+
+
+def replace_in_original(original_text, field_map):
+    """Given the original text of a PDF (extract_text(...)), adds the field's names in their best places.
+    Doesn't always work, especially with duplicate text.
+    """
+    text = original_text
+    for field_info in field_map.items():
+        try:
+            idx = text.index(field_info[1][2].get_text())
+            print(f"{field_info[0]}, {idx}")
+            if field_info[1][1] == "Before":
+                text = text[:idx] + " {{ " + field_info[0] + " }} " + text[idx:]
+            else:
+                new_idx = idx + len(field_info[1][2].get_text())
+                text = text[:new_idx] + " {{ " + field_info[0] + " }} " + text[new_idx:]
+        except Exception as ex:
+            print(f"EXCEPTION on {field_info[0]}: {ex}")
+    return text
+
+
 def improve_names_with_surrounding_text(
     fields: List[List[FormField]], textboxes: List[List[Textbox]]
-):
+) -> List[List[FormField]]:
+    name_visitor = ImproveNameVisitor()
+    return surrounding_text_traverse(
+        fields,
+        textboxes,
+        lambda fi, tbs: name_visitor.improve_name_with_surrounding_text(fi, tbs),
+    )
+
+
+def surrounding_text_traverse(
+    fields: List[List[FormField]], textboxes: List[List[Textbox]], visitor: Callable
+) -> List[List[FormField]]:
     new_fields = []
-    used_field_names = set()
     for i, (fields_in_page, text_in_page) in enumerate(zip(fields, textboxes)):
         # Get text boxes with more than one character (not including spaces, _, etc.)
         text_in_page = [
@@ -1071,29 +1217,7 @@ def improve_names_with_surrounding_text(
                 if intersect
             ]
             if intersected:
-                dists = [
-                    (
-                        bbox_distance(field_bbox, textbox["bbox"])[0],
-                        textbox["textbox"],
-                        textbox["bbox"],
-                    )
-                    for textbox in intersected
-                ]
-                if DEBUG:
-                    print(f"For {field_info.name}, dists: {dists}")
-                min_textbox = min(dists, key=lambda d: d[0])
-                # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
-                # text_obj_bboxes.remove(min_obj[2])
-                # TODO(brycew): actual regex replacement of lots of underscores
-                label = re.sub(
-                    "[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,.")
-                )
-                label = re.sub("_{3,}", "_", label).strip("_")
-                if label not in used_field_names:
-                    copied_field_info.name = label
-                    used_field_names.add(label)
-                elif DEBUG:
-                    print(f"avoiding using label {label} more than once")
+                copied_field_info = visitor(copied_field_info, intersected)
             page_fields.append(copied_field_info)
 
         new_fields.append(page_fields)
