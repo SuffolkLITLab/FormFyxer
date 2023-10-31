@@ -52,6 +52,10 @@ from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdevice import PDFDevice
+from pdfminer.pdftypes import resolve1
+from pdfminer.psparser import PSLiteral, PSKeyword
+from pdfminer.utils import decode_text, translate_matrix, mult_matrix, MATRIX_IDENTITY
 
 # Change this to true to output lots of images to help understand why a kernel didn't work
 DEBUG = False
@@ -704,9 +708,144 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 
+class JinjaFieldTextConverter(TextConverter):
+    def render_char(
+        self,
+        matrix,
+        font,
+        fontsize: float,
+        scaling: float,
+        rise: float,
+        cid: int,
+        ncs,
+        graphicstate,
+    ) -> float:
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        # Some fonts don't have "{", "}", or "_". Use the right sizes for them,
+        # otherwise they won't get combined into the correct lines
+        if textwidth == 0 and cid == 123 or cid == 125:  # "{" or "}"
+            textwidth = font.char_width(116)  # about the size of a "t"
+        if textwidth == 0 and cid == 95:  # "_"
+            textwidth = font.char_width(77)  # about the size of a "M"
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
+
+
 class PDFPageAndFieldInterpreter(PDFPageInterpreter):
     # TODO: keep track of all of the fields per page, insert them when rendering the page
     pass
+
+    def __init__(self, rsrcmgr: PDFResourceManager, device: PDFDevice, doc) -> None:
+        self.rsrcmgr = rsrcmgr
+        self.device = device
+        self.doc = doc
+        self.field_pages = {}
+        existing_fields = get_existing_pdf_fields(doc)
+
+        for page_fields, page in zip(existing_fields, doc.pages):
+            objid = page.obj.objgen[0]
+            self.field_pages[objid] = []
+            for field in page_fields:
+                self.field_pages[objid].append(field)
+
+    def dup(self) -> "PDFPageInterpreter":
+        return self.__class__(self.rsrcmgr, self.device, self.doc)
+
+    def get_fields_on_page(self, page_id):
+        return self.field_pages.get(page_id, [])
+
+    def process_page(self, page) -> None:
+        (x0, y0, x1, y1) = page.mediabox
+        if page.rotate == 90:
+            ctm = (0, -1, 1, 0, -y0, x1)
+        elif page.rotate == 180:
+            ctm = (-1, 0, 0, -1, x1, y1)
+        elif page.rotate == 270:
+            ctm = (0, 1, -1, 0, y1, -x0)
+        else:
+            ctm = (1, 0, 0, 1, -x0, -y0)
+        self.device.begin_page(page, ctm)
+
+        self.render_contents(page.resources, page.contents, ctm=ctm)
+        # Render all of the fields on the page as {{ field_name }}
+        # print(page.pageid)
+        for field in self.get_fields_on_page(page.pageid):
+            self.do_BT()
+            # set the font, and the font size. Get any font available
+            font = list(self.fontmap.values())[-1]
+            for contender_font in self.fontmap.values():
+                if contender_font.is_vertical():
+                    continue
+                # Make sure that there's widths for A and a
+                if (
+                    contender_font.char_width(65) == 0
+                    or contender_font.char_width(97) == 0
+                ):
+                    continue
+                font = contender_font
+            self.textstate.fontsize = 8
+            x = 0
+            y = 0
+            needcharspace = False
+            # Start a specific position on the page (field.x and field.y)
+            self.do_TD(field.x, field.y)
+            matrix = mult_matrix(self.textstate.matrix, ctm)
+            # print(f"{field.get('T')}, {matrix}")
+            # Manual Tj operation
+            for char in r"{{" + field.name + r"}}":
+                for cid in font.decode(char.encode()):
+                    if needcharspace:
+                        x += 0.1  # charspace
+                    # print(x, cid, font.char_width(cid))
+                    x += self.device.render_char(
+                        translate_matrix(matrix, (x, y)),
+                        font,
+                        self.textstate.fontsize,  # fontsize,
+                        1.0,  # scaling,
+                        0,
+                        cid,
+                        self.ncs,
+                        self.graphicstate.copy(),
+                    )
+                    if cid == 32 and wordspace:
+                        x += 0  # wordspace
+                    needcharspace = True
+            self.do_ET()
+        self.device.end_page(page)
+        return
+
+
+def get_original_text_with_fields(input_file, output_file):
+    """Gets the original text of the document, with the names of the fields in jinja format ({{field_name}})"""
+    with open(input_file, "rb") as fp, open(input_file, "rb") as dup_fp, open(
+        output_file, "wb"
+    ) as output_string:
+        rsrcmgr = PDFResourceManager()
+        device = JinjaFieldTextConverter(
+            rsrcmgr, output_string, codec="utf-8", laparams=LAParams(char_margin=10.0)
+        )
+        interpreter = PDFPageAndFieldInterpreter(rsrcmgr, device, Pdf.open(dup_fp))
+        for page in PDFPage.get_pages(fp, False):
+            interpreter.process_page(page)
+        device.close()
 
 
 class TextAndFieldConverter(TextConverter):
