@@ -3,7 +3,6 @@ import sys
 import os
 from openai import OpenAI
 
-
 import tiktoken
 import json
 from docx.oxml import OxmlElement
@@ -62,65 +61,6 @@ def update_docx(document: docx.Document, modified_runs: Tuple[int,int,str,str,in
     return document
 
 
-def clean_pseudo_json(string:str) -> dict:
-    """Use OpenAI to try to fix a broken JSON string.
-    """
-    try:
-        output = json.loads(string)
-    except:
-        try:
-            # first just try removing newlines
-            string_4_json = re.findall("\{.*\}",re.sub("\n","",string))[0]
-            output = json.loads(string_4_json)
-        except:
-            try:
-                # then try adding curly braces
-                string = "{"+string+"}"
-                string_4_json = re.findall("\{.*\}",re.sub("\n","",string))[0]
-                output = json.loads(string_4_json)
-            except Exception as e:
-                prompt = f"""
-                Invalid JSON string:
-                ```
-                {string}
-                ```
-
-                Error: '{e}'
-                """
-                system_prompt = "You are a JSON fixing robot. You will accept a broken JSON string as input, along with an error message, and return a new parsable JSON string. Your response will only contain JSON and nothing else."
-                encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-                tokens_used = len(encoding.encode(system_prompt + prompt))
-
-                if tokens_used < 2048:
-                    model = "gpt-3.5-turbo"
-                    max_tokens = 4000 - tokens_used
-                else:
-                    model = "gpt-4-1106-preview"
-                    max_tokens = 4096
-                    response = client.chat.completions.create(model=model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": system_prompt
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                        ],
-                    temperature=0.0,
-                    max_tokens=tiktoken,
-                    top_p=1,
-                    frequency_penalty=0.0,
-                    presence_penalty=0.0)
-                    try:
-                        output = json.loads(response.choices[0].message.content)
-                    except:
-                        output = dict()
-
-    return output
-
-
 def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[str, str]] = None) -> List[Tuple[int, int, str]]:
     """Scan the DOCX and return a list of modified text with Jinja2 variable names inserted.
 
@@ -164,7 +104,7 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
         ]
     }
 
-    The reply is in JSON format with no other reply, and ONLY contains the runs that have modified text.
+    The reply ONLY contains the runs that have modified text.
     """
 
     custom_name_text = ""
@@ -290,16 +230,15 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
         "content": repr(items)
         }
     ],
+    response_format={ "type": "json_object" },
     temperature=.5,
     max_tokens=4096,
     top_p=1,
     frequency_penalty=0,
     presence_penalty=0)
 
-    try:
-        guesses = json.loads(response.choices[0].message.content)
-    except:
-        guesses = clean_pseudo_json(response.choices[0].message.content)
+    guesses = json.loads(response.choices[0].message.content)
+    return guesses
 
 
 def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
