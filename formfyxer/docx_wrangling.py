@@ -33,7 +33,7 @@ def add_paragraph_before(paragraph, text):
     paragraph._element.addprevious(p)
 
 
-def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,str,int]] ) -> docx.Document:
+def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,int]] ) -> docx.Document:
     """Update the document with the modified runs.
 
     Args:
@@ -49,7 +49,7 @@ def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,s
     ## also sort each run in the modified_runs so that the runs are in the correct order
     #modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
 
-    for paragraph_number, run_number, modified_text, question, new_paragraph in modified_runs:
+    for paragraph_number, run_number, modified_text, new_paragraph in modified_runs:
         paragraph = document.paragraphs[paragraph_number]
         run = paragraph.runs[run_number]
         #if new_paragraph == 1:
@@ -80,10 +80,9 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
     Steps:
     1. Analyze the document. Identify placeholder text and repeated _____ that should be replaced with a variable name.
     2. Insert jinja2 tags around a new variable name that represents the placeholder text.
-    3. Add a draft of a short question to go with the variable.
     3. Mark optional paragraphs with conditional Jinja2 tags.
     4. Text intended for verbatim output in the final document will remain unchanged.
-    6. The result will be a JSON structure that indicates which paragraphs and runs in the DOCX require modifications,
+    5. The result will be a JSON structure that indicates which paragraphs and runs in the DOCX require modifications,
     the new text of the modified run with Jinja2 inserted, and a draft question to provide a definition of the variable.
 
     Example input, with paragraph and run numbers indicated:
@@ -93,13 +92,13 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
         [2, 0, "[Optional: if you are a tenant, include this paragraph]"],
     ]
 
-    Example reply, indicating paragraph, run, the new text, a question, and a number indicating if this changes the 
+    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the 
     current paragraph, adds one before, or adds one after (-1, 0, 1):
 
     {
         "results": [
-            [0, 1, "Dear {{ other_parties[0] }}:", "Recipient name", 0],
-            [2, 0, "{%p if is_tenant %}", "Are you a tenant?", -1],
+            [0, 1, "Dear {{ other_parties[0] }}:", 0],
+            [2, 0, "{%p if is_tenant %}", -1],
             [3, 0, "{%p endif %}", "", 1],
         ]
     }
@@ -259,7 +258,7 @@ def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
 # Accept the filename from the commandline
 if __name__ == "__main__":
     new_doc = modify_docx_with_openai_guesses(sys.argv[1])
-    new_doc.save(sys.argv[1] + ".new.docx")
+    new_doc.save(sys.argv[1] + ".output.docx")
 
 # new_doc = modify_docx_with_openai_guesses("../test_documents/Nondisclosure_Agreement.docx")
 # new_doc.save("../test_documents/Nondisclosure_Agreement.docx.new.docx")
