@@ -8,7 +8,7 @@ import json
 from docx.oxml import OxmlElement
 import re
 
-# os.environ["OPENAI_API_KEY"] = "sk-..."
+os.environ["OPENAI_API_KEY"] = "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"
 
 client = OpenAI()
 
@@ -33,7 +33,7 @@ def add_paragraph_before(paragraph, text):
     paragraph._element.addprevious(p)
 
 
-def update_docx(document: docx.Document, modified_runs: Tuple[int,int,str,str,int] ) -> docx.Document:
+def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,str,int]] ) -> docx.Document:
     """Update the document with the modified runs.
 
     Args:
@@ -43,21 +43,21 @@ def update_docx(document: docx.Document, modified_runs: Tuple[int,int,str,str,in
     Returns:
         The modified document.
     """
-    # Sort modified_runs in reverse order so inserted paragraphs are in the correct order
-    modified_runs = sorted(modified_runs, key=lambda x: x[0], reverse=True)
-
-    # also sort each run in the modified_runs so that the runs are in the correct order
-    modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
+    ## Sort modified_runs in reverse order so inserted paragraphs are in the correct order
+    #modified_runs = sorted(modified_runs, key=lambda x: x[0], reverse=True)
+#
+    ## also sort each run in the modified_runs so that the runs are in the correct order
+    #modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
 
     for paragraph_number, run_number, modified_text, question, new_paragraph in modified_runs:
         paragraph = document.paragraphs[paragraph_number]
         run = paragraph.runs[run_number]
-        if new_paragraph == 1:
-            add_paragraph_after(paragraph, modified_text)
-        elif new_paragraph == -1:
-            add_paragraph_before(paragraph, modified_text)
-        else:
-            run.text = modified_text
+        #if new_paragraph == 1:
+        #    add_paragraph_after(paragraph, modified_text)
+        #elif new_paragraph == -1:
+        #    add_paragraph_before(paragraph, modified_text)
+        #else:
+        run.text = modified_text
     return document
 
 
@@ -237,7 +237,8 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
     frequency_penalty=0,
     presence_penalty=0)
 
-    guesses = json.loads(response.choices[0].message.content)
+    assert isinstance(response.choices[0].message.content, str)
+    guesses = json.loads(response.choices[0].message.content)["results"]
     return guesses
 
 
@@ -252,10 +253,13 @@ def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
     """
     guesses = get_labeled_docx_runs(docx_path)
 
-    return update_docx(docx_path, guesses)
+    return update_docx(docx.Document(docx_path), guesses)
 
 
 # Accept the filename from the commandline
 if __name__ == "__main__":
     new_doc = modify_docx_with_openai_guesses(sys.argv[1])
     new_doc.save(sys.argv[1] + ".new.docx")
+
+# new_doc = modify_docx_with_openai_guesses("../test_documents/Nondisclosure_Agreement.docx")
+# new_doc.save("../test_documents/Nondisclosure_Agreement.docx.new.docx")
