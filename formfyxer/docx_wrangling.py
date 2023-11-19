@@ -8,7 +8,7 @@ import json
 from docx.oxml import OxmlElement
 import re
 
-os.environ["OPENAI_API_KEY"] = "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"
+#os.environ["OPENAI_API_KEY"] = "sk-xxx"
 
 client = OpenAI()
 
