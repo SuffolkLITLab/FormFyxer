@@ -1,11 +1,13 @@
+import json
 import unittest
+from unittest import mock
 from typing import Dict
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from formfyxer.lit_explorer import substitute_phrases
+from formfyxer.lit_explorer import spot, substitute_phrases
 
 
 class TestSubstitutePhrases(unittest.TestCase):
@@ -108,6 +110,50 @@ class TestSubstitutePhrases(unittest.TestCase):
             )
             self.assertEqual(new_string, expected_output)
             self.assertEqual(actual_positions, expected_positions)
+
+
+class TestSpot(unittest.TestCase):
+    def setUp(self) -> None:
+        self.request_args = {
+            'url': 'https://spot.suffolklitlab.org/v0/entities-nested/',
+            'headers': {
+                'Authorization': 'Bearer your_SPOT_API_token goes here',
+                'Content-Type': 'application/json'
+            },
+            'data': {
+                'text': '',
+                'save-text': 0,
+                'cutoff-lower': 0.25,
+                'cutoff-pred': 0.5,
+                'cutoff-upper': 0.6,
+            }
+        }
+        return super().setUp()
+
+
+    @mock.patch('requests.post')
+    def test_calls_spot(self, mock_post):
+        text = 'The quick brown fox jumps over the lazy dog.'
+        self.request_args['data']['text'] = text
+        spot(text)
+        mock_post.assert_called_with(
+            self.request_args['url'],
+            headers=self.request_args['headers'],
+            data=json.dumps(self.request_args['data'])
+        )
+
+
+    @mock.patch('requests.post')
+    def test_calls_spot_with_reduced_character_count(self, mock_post):
+        text = 'a' * 5001
+        reduced_text = 'a' * 5000
+        self.request_args['data']['text'] = reduced_text
+        spot(text)
+        mock_post.assert_called_with(
+            self.request_args['url'],
+            headers=self.request_args['headers'],
+            data=json.dumps(self.request_args['data'])
+        )
 
 
 if __name__ == "__main__":
