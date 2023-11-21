@@ -207,7 +207,7 @@ def spot(
     }
 
     body = {
-        "text": text,
+        "text": text[:5000],
         "save-text": 0,
         "cutoff-lower": lower,
         "cutoff-pred": pred,
