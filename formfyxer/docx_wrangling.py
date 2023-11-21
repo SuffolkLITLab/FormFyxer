@@ -8,10 +8,7 @@ import json
 from docx.oxml import OxmlElement
 import re
 
-#os.environ["OPENAI_API_KEY"] = "sk-xxx"
-
-client = OpenAI()
-
+# os.environ["OPENAI_API_KEY"] = "sk-xxx"
 
 from typing import List, Tuple, Optional
 
@@ -21,19 +18,22 @@ __all__ = [
     "modify_docx_with_openai_guesses",
 ]
 
+
 def add_paragraph_after(paragraph, text):
-    p = OxmlElement('w:p')
+    p = OxmlElement("w:p")
     p.text = text
     paragraph._element.addnext(p)
 
 
 def add_paragraph_before(paragraph, text):
-    p = OxmlElement('w:p')
+    p = OxmlElement("w:p")
     p.text = text
     paragraph._element.addprevious(p)
 
 
-def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,int]] ) -> docx.Document:
+def update_docx(
+    document: docx.Document, modified_runs: List[Tuple[int, int, str, int]]
+) -> docx.Document:
     """Update the document with the modified runs.
 
     Args:
@@ -44,24 +44,28 @@ def update_docx(document: docx.Document, modified_runs: List[Tuple[int,int,str,i
         The modified document.
     """
     ## Sort modified_runs in reverse order so inserted paragraphs are in the correct order
-    #modified_runs = sorted(modified_runs, key=lambda x: x[0], reverse=True)
-#
+    # modified_runs = sorted(modified_runs, key=lambda x: x[0], reverse=True)
+    #
     ## also sort each run in the modified_runs so that the runs are in the correct order
-    #modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
+    # modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
 
     for paragraph_number, run_number, modified_text, new_paragraph in modified_runs:
         paragraph = document.paragraphs[paragraph_number]
         run = paragraph.runs[run_number]
-        #if new_paragraph == 1:
+        # if new_paragraph == 1:
         #    add_paragraph_after(paragraph, modified_text)
-        #elif new_paragraph == -1:
+        # elif new_paragraph == -1:
         #    add_paragraph_before(paragraph, modified_text)
-        #else:
+        # else:
         run.text = modified_text
     return document
 
 
-def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[str, str]] = None) -> List[Tuple[int, int, str]]:
+def get_labeled_docx_runs(
+    docx_path: str,
+    custom_people_names: Optional[Tuple[str, str]] = None,
+    openai_client: Optional[OpenAI] = None,
+) -> List[Tuple[int, int, str, int]]:
     """Scan the DOCX and return a list of modified text with Jinja2 variable names inserted.
 
     Args:
@@ -71,6 +75,8 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
     Returns:
         A list of tuples, each containing a paragraph number, run number, and the modified text of the run.
     """
+    if not openai_client:
+        openai_client = OpenAI()
 
     role_description = """
     You will process a DOCX document and return a JSON structure that turns the DOCX file into a template 
@@ -108,6 +114,7 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
 
     custom_name_text = ""
     if custom_people_names:
+        assert isinstance(custom_people_names, list)
         for name, description in custom_people_names:
             custom_name_text += f"    {name} ({description}), \n"
 
@@ -218,23 +225,19 @@ def get_labeled_docx_runs(docx_path: str, custom_people_names: Optional[Tuple[st
     encoding = tiktoken.encoding_for_model("gpt-4")
     token_count = len(encoding.encode(role_description + rules + repr(items)))
 
-    response = client.chat.completions.create(model="gpt-4-1106-preview",
-    messages=[
-        {
-            "role": "system",
-            "content": role_description + rules
-        },
-        {
-        "role": "user",
-        "content": repr(items)
-        }
-    ],
-    response_format={ "type": "json_object" },
-    temperature=.5,
-    max_tokens=4096,
-    top_p=1,
-    frequency_penalty=0,
-    presence_penalty=0)
+    response = openai_client.chat.completions.create(
+        model="gpt-4-1106-preview",
+        messages=[
+            {"role": "system", "content": role_description + rules},
+            {"role": "user", "content": repr(items)},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.5,
+        max_tokens=4096,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+    )
 
     assert isinstance(response.choices[0].message.content, str)
     guesses = json.loads(response.choices[0].message.content)["results"]
@@ -246,7 +249,7 @@ def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
 
     Args:
         docx_path (str): Path to the DOCX file to modify.
-    
+
     Returns:
         docx.Document: The modified document, ready to be saved to the same or a new path
     """
@@ -255,10 +258,6 @@ def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
     return update_docx(docx.Document(docx_path), guesses)
 
 
-# Accept the filename from the commandline
 if __name__ == "__main__":
     new_doc = modify_docx_with_openai_guesses(sys.argv[1])
     new_doc.save(sys.argv[1] + ".output.docx")
-
-# new_doc = modify_docx_with_openai_guesses("../test_documents/Nondisclosure_Agreement.docx")
-# new_doc.save("../test_documents/Nondisclosure_Agreement.docx.new.docx")
