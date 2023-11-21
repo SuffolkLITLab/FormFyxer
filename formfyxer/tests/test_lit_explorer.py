@@ -115,7 +115,7 @@ class TestSubstitutePhrases(unittest.TestCase):
 class TestSpot(unittest.TestCase):
     def setUp(self) -> None:
         self.request_args = {
-            'url': "https://spot.suffolklitlab.org/v0/entities-nested/",
+            'url': 'https://spot.suffolklitlab.org/v0/entities-nested/',
             'headers': {
                 'Authorization': 'Bearer your_SPOT_API_token goes here',
                 'Content-Type': 'application/json'
@@ -136,7 +136,11 @@ class TestSpot(unittest.TestCase):
         text = 'The quick brown fox jumps over the lazy dog.'
         self.request_args['data']['text'] = text
         spot(text)
-        mock_post.assert_called_with(self.request_args['url'], headers=self.request_args['headers'], data=json.dumps(self.request_args['data']))
+        mock_post.assert_called_with(
+            self.request_args['url'],
+            headers=self.request_args['headers'],
+            data=json.dumps(self.request_args['data'])
+        )
 
 
     @mock.patch('requests.post')
@@ -145,7 +149,11 @@ class TestSpot(unittest.TestCase):
         reduced_text = 'a' * 5000
         self.request_args['data']['text'] = reduced_text
         spot(text)
-        mock_post.assert_called_with(self.request_args['url'], headers=self.request_args['headers'], data=json.dumps(self.request_args['data']))
+        mock_post.assert_called_with(
+            self.request_args['url'],
+            headers=self.request_args['headers'],
+            data=json.dumps(self.request_args['data'])
+        )
 
 
 if __name__ == "__main__":
