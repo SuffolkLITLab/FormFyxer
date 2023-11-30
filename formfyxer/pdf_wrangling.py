@@ -1231,7 +1231,7 @@ def get_possible_text_fields(
         # handle sorting against the y-coord rather than the x-coord of the bounding box
         if method == "top-to-bottom" or method == "bottom-to-top":
             coord = 1
-        # construct list of bounding boxes and sort them top to bottom
+        # construct tuple of bounding boxes and sort them top to bottom
         boundingBoxes = tuple(cv2.boundingRect(c) for c in cnts)
         if not boundingBoxes:
             return (),()
@@ -1239,11 +1239,10 @@ def get_possible_text_fields(
         # Sort the contours and bounding boxes
         sorted_zip = sorted(zip(cnts, boundingBoxes), key=lambda b: b[1][coord], reverse=reverse)
 
-        # If sorted_zip is empty, return empty lists
         if not sorted_zip:
             return (), ()
 
-        # Unpack the sorted contours and bounding boxes, and convert to lists
+        # Unpack the sorted contours and bounding boxes
         cnts, boundingBoxes = zip(*sorted_zip)
 
         return (cnts, boundingBoxes)
