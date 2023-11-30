@@ -131,18 +131,18 @@ try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
     ) as in_file:
-        default_key = OpenAI(api_key=in_file.read().rstrip())
+        default_key:Optional[str] = in_file.read().rstrip()
 except:
     default_key = None
 try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
     ) as in_file:
-        default_org = in_file.read().rstrip()
+        default_org:Optional[str] = in_file.read().rstrip()
 except:
     default_org = None
 if default_key:
-    client = OpenAI(api_key=default_key, organization=default_org or None)
+    client:Optional[OpenAI] = OpenAI(api_key=default_key, organization=default_org or None)
 elif os.getenv("OPENAI_API_KEY"):
     client = OpenAI()
 else:
@@ -828,7 +828,10 @@ def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] =
     if creds:
         openai_client = OpenAI(api_key=creds["key"], organization=creds["org"])
     else:
-        openai_client = client
+        if client:
+            openai_client = client
+        else:
+            raise Exception("No OpenAI credentials provided")
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -844,7 +847,7 @@ def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] =
             frequency_penalty=0.0,
             presence_penalty=0.0
         )
-        return str(response.choices[0].message.content.strip())
+        return str((response.choices[0].message.content or "").strip())
     except Exception as ex:
         print(f"{ex}")
         return "ApiError"
