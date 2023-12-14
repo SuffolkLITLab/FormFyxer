@@ -258,7 +258,7 @@ def get_modified_docx_runs(
         custom_example:str = "",
         instructions:str = "",
         openai_client: Optional[OpenAI] = None, 
-        api_key:str=None
+        api_key:Optional[str]=None
 ) -> List[Tuple[int, int, str, int]]:
     """Use GPT to rewrite the contents of a DOCX file paragraph by paragraph. Does not handle tables, footers, or
     other structures yet.
