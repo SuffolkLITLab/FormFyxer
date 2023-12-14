@@ -8,9 +8,7 @@ import json
 from docx.oxml import OxmlElement
 import re
 
-# os.environ["OPENAI_API_KEY"] = "sk-xxx"
-
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 
 __all__ = [
     "get_labeled_docx_runs",
@@ -21,23 +19,33 @@ __all__ = [
 
 def add_paragraph_after(paragraph, text):
     p = OxmlElement("w:p")
-    p.text = text
+    r = OxmlElement('w:r')
+    t = OxmlElement('w:t')
+    t.text = text
+
+    r.append(t)
+    p.append(r)
     paragraph._element.addnext(p)
 
 
 def add_paragraph_before(paragraph, text):
     p = OxmlElement("w:p")
-    p.text = text
+    r = OxmlElement('w:r')
+    t = OxmlElement('w:t')
+    t.text = text
+
+    r.append(t)
+    p.append(r)
     paragraph._element.addprevious(p)
 
 
 def update_docx(
-    document: docx.Document, modified_runs: List[Tuple[int, int, str, int]]
+    document: Union[docx.Document, str], modified_runs: List[Tuple[int, int, str, int]]
 ) -> docx.Document:
     """Update the document with the modified runs.
 
     Args:
-        document: the docx.Document object
+        document: the docx.Document object, or the path to the DOCX file
         modified_runs: a tuple of paragraph number, run number, the modified text, a question (not used), and whether a new paragraph should be inserted (for conditional text)
 
     Returns:
@@ -49,67 +57,62 @@ def update_docx(
     ## also sort each run in the modified_runs so that the runs are in the correct order
     # modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
 
-    for paragraph_number, run_number, modified_text, new_paragraph in modified_runs:
+    if isinstance(document, str):
+        document = docx.Document(document)
+
+    for item in modified_runs:
+        if len(item) == 4:
+            paragraph_number, run_number, modified_text, new_paragraph = item
+        else:
+            # Sometimes the format is wrong, we can't process other sizes of lists correctly
+            continue
         paragraph = document.paragraphs[paragraph_number]
         run = paragraph.runs[run_number]
-        # if new_paragraph == 1:
-        #    add_paragraph_after(paragraph, modified_text)
-        # elif new_paragraph == -1:
-        #    add_paragraph_before(paragraph, modified_text)
-        # else:
-        run.text = modified_text
+        if new_paragraph == 1:
+           add_paragraph_after(paragraph, modified_text)
+        elif new_paragraph == -1:
+           add_paragraph_before(paragraph, modified_text)
+        else:
+            run.text = modified_text
     return document
 
+def get_docx_repr(docx_path: str):
+    """Return a JSON representation of the paragraphs and runs in the DOCX file.
+
+    Args:
+        docx_path: path to the DOCX file
+    
+    Returns:
+        A JSON representation of the paragraphs and runs in the DOCX file.
+    """
+    items = []
+    for pnum, paragraph in enumerate(docx.Document(docx_path).paragraphs):
+        for rnum, run in enumerate(paragraph.runs):
+            items.append(
+                [
+                    pnum,
+                    rnum,
+                    run.text,
+                ]
+            )
+    return repr(items)
 
 def get_labeled_docx_runs(
-    docx_path: str,
+    docx_path: Optional[str] = None,
+    docx_repr = Optional[str],
     custom_people_names: Optional[Tuple[str, str]] = None,
     openai_client: Optional[OpenAI] = None,
+    api_key: Optional[str] = None,
 ) -> List[Tuple[int, int, str, int]]:
     """Scan the DOCX and return a list of modified text with Jinja2 variable names inserted.
 
     Args:
         docx_path: path to the DOCX file
+        docx_repr: a string representation of the paragraphs and runs in the DOCX file, if docx_path is not provided. This might be useful if you want
         custom_people_names: a tuple of custom names and descriptions to use in addition to the default ones. Like: ("clients", "the person benefiting from the form")
 
     Returns:
         A list of tuples, each containing a paragraph number, run number, and the modified text of the run.
-    """
-    if not openai_client:
-        openai_client = OpenAI()
-
-    role_description = """
-    You will process a DOCX document and return a JSON structure that turns the DOCX file into a template 
-    based on the following guidelines and examples. The DOCX will be provided as an annotated series of
-    paragraphs and runs.
-
-    Steps:
-    1. Analyze the document. Identify placeholder text and repeated _____ that should be replaced with a variable name.
-    2. Insert jinja2 tags around a new variable name that represents the placeholder text.
-    3. Mark optional paragraphs with conditional Jinja2 tags.
-    4. Text intended for verbatim output in the final document will remain unchanged.
-    5. The result will be a JSON structure that indicates which paragraphs and runs in the DOCX require modifications,
-    the new text of the modified run with Jinja2 inserted, and a draft question to provide a definition of the variable.
-
-    Example input, with paragraph and run numbers indicated:
-    [
-        [0, 1, "Dear John Smith:"],
-        [1, 0, "This sentence can stay as is in the output and will not be in the reply."],
-        [2, 0, "[Optional: if you are a tenant, include this paragraph]"],
-    ]
-
-    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the 
-    current paragraph, adds one before, or adds one after (-1, 0, 1):
-
-    {
-        "results": [
-            [0, 1, "Dear {{ other_parties[0] }}:", 0],
-            [2, 0, "{%p if is_tenant %}", -1],
-            [3, 0, "{%p endif %}", "", 1],
-        ]
-    }
-
-    The reply ONLY contains the runs that have modified text.
     """
 
     custom_name_text = ""
@@ -118,7 +121,33 @@ def get_labeled_docx_runs(
         for name, description in custom_people_names:
             custom_name_text += f"    {name} ({description}), \n"
 
-    rules = f"""
+    custom_example = """Example input, with paragraph and run numbers indicated:
+    [
+        [0, 1, "Dear John Smith:"],
+        [1, 0, "This sentence can stay as is in the output and will not be in the reply."],
+        [2, 0, "[Optional: if you are a tenant, include this paragraph]"],
+    ]"""
+
+    instructions = """The purpose of the resulting document is to be used as a template within a Docassemble interview, with Jinja2 markup.
+    Steps:
+    1. Analyze the document. Identify placeholder text and repeated _____ that should be replaced with a variable name.
+    2. Insert jinja2 tags around a new variable name that represents the placeholder text.
+    3. Mark optional paragraphs with conditional Jinja2 tags.
+    4. Text intended for verbatim output in the final document will remain unchanged.
+
+    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the 
+    current paragraph, adds one before, or adds one after (-1, 0, 1):
+
+    {"results":
+    [
+        [0, 1, "Dear {{ other_parties[0] }}:", 0],
+        [2, 0, "{%p if is_tenant %}", -1],
+        [3, 0, "{%p endif %}", "", 1],
+    ]
+    }
+    """
+
+    instructions += f"""
     Rules for variable names:
         1. Variables usually refer to people or their attributes.
         2. People are stored in lists.
@@ -149,7 +178,8 @@ def get_labeled_docx_runs(
 
         Name Forms:
             users (full name of all users)
-            users[0] (Full name)
+            users[0] (full name of first user)
+            users[0].name.full() (Alternate full name of first user)
             users[0].name.first (First name only)
             users[0].name.middle (Middle name only)
             users[0].name.middle_initial() (First letter of middle name)
@@ -213,23 +243,130 @@ def get_labeled_docx_runs(
         Examples: 
         "(State the reason for eviction)" transforms into `{{ eviction_reason }}`.
     """
+    return get_modified_docx_runs(
+        docx_path = docx_path,
+        docx_repr = docx_repr,
+        custom_example=custom_example,
+        instructions=instructions,
+        openai_client=openai_client,
+        api_key=api_key,
+    )
+
+def get_modified_docx_runs(
+        docx_path: Optional[str] = None,
+        docx_repr: Optional[str] = None,
+        custom_example:str = "",
+        instructions:str = "",
+        openai_client: Optional[OpenAI] = None, 
+        api_key:str=None
+) -> List[Tuple[int, int, str, int]]:
+    """Use GPT to rewrite the contents of a DOCX file paragraph by paragraph. Does not handle tables, footers, or
+    other structures yet.
+
+    This is a light wrapper that provides the structure of DOCX paragraphs and runs to your prompt
+    to OpenAI to facilitate the rewriting of the document without disrupting formatting.
+
+    For example, this could be used to:
+    * Remove any passive voice
+    * Replace placeholder text with variable names
+    * Rewrite to a 6th grade reading level
+    * Do an advanced search and replace, without requiring you to use a regex
+
+    By default, the example prompt includes a sample like this:
+
+    [
+        [0, 0, "Dear "],
+        [0, 1, "John Smith:"],
+        [1, 0, "I hope this letter finds you well."],
+    ]
+
+    Your custom instructions should include an example of how the sample will be modified, like the one below: 
+    
+    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the 
+    current paragraph, adds one before, or adds one after (-1, 0, 1):
+
+    {"results":
+        [
+            [0, 1, "Dear {{ other_parties[0] }}:", 0],
+            [2, 0, "{%p if is_tenant %}", -1],
+            [3, 0, "{%p endif %}", "", 1],
+        ]
+    }
+
+    You may also want to customize the input example to better match your use case.
+
+    Args:
+        docx_path (str): path to the DOCX file
+        custom_example (Optional[str]): a string containing the purpose and overview of the task
+        instructions (str) a string containing specific instructions for the task
+        openai_client (Optional[OpenAI]): an OpenAI client object. If not provided a new one will be created.
+        api_key (Optional[str]): an OpenAI API key. If not provided, it will be obtained from the environment
+
+    Returns:
+        A list of tuples, each containing a paragraph number, run number, and the modified text of the run.
+    """
+    if docx_path:
+        docx_repr = get_docx_repr(docx_path)
+    elif not docx_repr:
+        raise Exception("Either docx_path or docx_repr must be provided.")
+
+    assert isinstance(docx_repr, str)
+
+    if not openai_client:
+        openai_client = OpenAI(
+            api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        )
+
+    if not custom_example:
+        custom_example = """[
+        [0, 0, "Dear"],
+        [0, 1, "John Smith:"],
+        [1, 0, "I hope this letter finds you well."],
+    ]"""
+
+    if not "[" in instructions: # Make sure we have at least a minimal example of the output
+        instructions += """The result will look like this:
+
+    {"results":
+        [
+            [0, 1, "modified run", 0],
+            [1, 0, "another modified run, skipping the run that should be left alone", 0],
+        ]
+    }
+    """
+        
+    role_description = f"""
+    You will process a DOCX document and return a JSON structure that transforms the DOCX file
+    based on the following guidelines and examples. The DOCX will be provided as an annotated series of
+    paragraphs and runs in JSON structure, like this:
+
+    { custom_example }
+
+    The result will be a JSON structure that includes a list of modified runs, each run represented as a list with exactly 4 items:
+    1. The paragraph number
+    2. The run number
+    3. The modified text of the run
+    4. A number indicating if this changes the current paragraph, adds one before, or adds one after (-1, 0, 1)
+    
+    {instructions}
+
+    The reply ONLY contains the runs that have modified text.
+    """
+
     encoding = tiktoken.encoding_for_model("gpt-4")
 
-    doc = docx.Document(docx_path)
-
-    items = []
-    for pnum, para in enumerate(doc.paragraphs):
-        for rnum, run in enumerate(para.runs):
-            items.append([pnum, rnum, run.text])
-
     encoding = tiktoken.encoding_for_model("gpt-4")
-    token_count = len(encoding.encode(role_description + rules + repr(items)))
+    token_count = len(encoding.encode(role_description + docx_repr))
+    if token_count > 128000:
+        raise Exception(
+            f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
+        )
 
     response = openai_client.chat.completions.create(
         model="gpt-4-1106-preview",
         messages=[
-            {"role": "system", "content": role_description + rules},
-            {"role": "user", "content": repr(items)},
+            {"role": "system", "content": role_description},
+            {"role": "user", "content": docx_repr},
         ],
         response_format={"type": "json_object"},
         temperature=0.5,
@@ -240,9 +377,38 @@ def get_labeled_docx_runs(
     )
 
     assert isinstance(response.choices[0].message.content, str)
+
+    print(response.choices[0].message.content)
+
     guesses = json.loads(response.choices[0].message.content)["results"]
     return guesses
 
+def make_docx_plain_language(docx_path: str) -> docx.Document:
+    """
+    Convert a DOCX file to plain language with the help of OpenAI.
+    """
+    guesses = get_modified_docx_runs(
+        docx_path,
+        custom_example="""[
+        [0, 0, "If the location of the land is in a state other than the state in which the tribe’s reservation is located, the tribe’s justification of anticipated benefits from the acquisition will be subject to greater scrutiny."],
+        [1, 0, "When the process of freeing a vehicle that has been stuck results in ruts or holes, the operator will fill the rut or hole created by such activity before removing the vehicle from the immediate area."],
+    ]""",
+        instructions="""        
+        You are a plain language expert whose goal is to rewrite the document at a 6th grade reading level, without changing the meaning of the document.
+        You will rewrite passive voice sentences in the active voice. You will use simple vocabulary words to replace complex ones. You will use short sentences and short paragraphs.
+
+        The result will look like this:
+
+    {"results":
+        [
+            [0, 0, "If the land is in a different State than the tribe’s reservation, we will scrutinize the tribe’s justification of anticipated benefits more thoroughly.", 0],
+            [1, 0, "If you make a hole while freeing a stuck vehicle, you must fill the hole before you drive away.", 0],
+        ]
+    }
+    """,
+    
+    )
+    return update_docx(docx.Document(docx_path), guesses)
 
 def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
     """Uses OpenAI to guess the variable names for a document and then modifies the document with the guesses.
