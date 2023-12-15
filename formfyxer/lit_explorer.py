@@ -29,6 +29,7 @@ import eyecite
 from enum import Enum
 import sigfig
 import yaml
+import tiktoken
 from .pdf_wrangling import (
     get_existing_pdf_fields,
     FormField,
@@ -463,21 +464,83 @@ class Screen:
     fields: List[Field] = None
 
 
+def gpt_4_turbo(
+    role_description: str,
+    user_message: str,
+    openai_client: OpenAI = None,
+    openai_api: str = None,
+    temperature: float = 0.5,
+) -> str:
+    if openai_api:
+        openai_client = OpenAI(api_key=openai_api)
+    else:
+        if openai_client is None:
+            if client:
+                openai_client = client
+            else:
+                raise Exception(
+                    "You need to pass an OpenAI client or API key to use this function, or the API key needs to be set in the environment."
+                )
+    
+    encoding = tiktoken.encoding_for_model("gpt-4")
+
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    token_count = len(encoding.encode(role_description + user_message))
+
+    if token_count > 128000:
+        raise Exception(
+            f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
+        )
+
+    moderation_response = openai_client.moderations.create(input=role_description + user_message)
+    if moderation_response.results[0].flagged:
+        raise Exception(
+            f"OpenAI moderation error: {moderation_response.results[0]}"
+        )
+
+    response = openai_client.chat.completions.create(
+        model="gpt-4-1106-preview",
+        messages=[
+            {"role": "system", "content": role_description},
+            {"role": "user", "content": user_message},
+        ],
+        response_format={"type": "json_object"},
+        temperature=temperature,
+        max_tokens=4096,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+    )
+
+    # check finish reason
+    if response.choices[0].finish_reason != "stop":
+        raise Exception(
+            f"OpenAI did not finish processing the document. Finish reason: {response.choices[0].finish_reason}"
+        )
+
+    assert isinstance(response.choices[0].message.content, str)
+    return response.choices[0].message.content
+
+
 def llm_draft_questions_and_order(
     fields: List[Union[str, Dict]],
     document_text: Optional[str],
     openai_client: OpenAI = None,
     openai_api: str = None,
+    temperature: float = 0.5,
 ) -> Dict[str, Union[str, List[Screen]]]:
     """Take the text of a document and a list of fields in the document
     and come up with a list of screens and questions to ask the user.
     """
+
+    # Maybe we want some pseudo field types, like AL_ADDRESS, AL_NAME, etc.
+    # We would need to handle them in the Weaver though
     system_role = """
     You are an author of a helpful interactive Docassemble tool for a self-represented court participant.
 
     You will be given a list of fields which may include their datatypes, and the full
     text of the document that they appear in. The fields may appear in the document
-    marked with Jinja2 syntax, like {{ field_name }}
+    marked with Jinja2 syntax, like {{ field_name }}.
 
     Your response will be a JSON object with a list of screens and questions to ask the user,
     in a format that mirrors a Docassemble interview's structure and in a logical and easy
@@ -512,7 +575,7 @@ def llm_draft_questions_and_order(
         min: Optional[int] = None
         max: Optional[int] = None
         step: Optional[int] = None
-        required: Optional[bool] = None
+        required: Optional[bool] = None # Defaults to True
 
     @dataclass
     class Screen:
@@ -555,7 +618,26 @@ def llm_draft_questions_and_order(
     is helpful to the user. You will use language that is accessible and easy to understand
     for someone at no more than a 6th grade reading level.
     """
-    pass
+    
+    user_message = """The fields in this document are:"""
+    for field in fields:
+        user_message += f"\n- { field}"
+    if document_text:
+        user_message += f"""\n\nThe text of this document is:
+        
+        ```{ document_text }
+        ```
+        """
+    
+    content = gpt_4_turbo(
+        role_description=system_role,
+        user_message=user_message,
+        openai_client=openai_client,
+        openai_api=openai_api,
+    )
+    interview = json.loads(content)
+    return interview
+            
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `re_case` the variable text
