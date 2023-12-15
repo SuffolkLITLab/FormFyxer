@@ -38,11 +38,26 @@ def add_paragraph_before(paragraph, text):
     p.append(r)
     paragraph._element.addprevious(p)
 
+def add_run_after(run, text):
+    r = OxmlElement('w:r')
+    t = OxmlElement('w:t')
+    t.text = text
+
+    r.append(t)
+    run._element.addnext(r)
+
 
 def update_docx(
     document: Union[docx.Document, str], modified_runs: List[Tuple[int, int, str, int]]
 ) -> docx.Document:
     """Update the document with the modified runs.
+
+    Note: OpenAI is probabilistic, so the modified run indices may not be correct. 
+    When the index of a run or paragraph is out of range, a new paragraph 
+    will be inserted at the end of the document or a new run at the end of the
+    paragraph's runs.
+
+    Take a careful look at the output document to make sure it is still correct.
 
     Args:
         document: the docx.Document object, or the path to the DOCX file
@@ -52,21 +67,22 @@ def update_docx(
         The modified document.
     """
     ## Sort modified_runs in reverse order so inserted paragraphs are in the correct order
-    # modified_runs = sorted(modified_runs, key=lambda x: x[0], reverse=True)
-    #
-    ## also sort each run in the modified_runs so that the runs are in the correct order
-    # modified_runs = sorted(modified_runs, key=lambda x: x[1], reverse=True)
+    modified_runs.sort(key=lambda x: x[0], reverse=True)
 
     if isinstance(document, str):
         document = docx.Document(document)
 
     for item in modified_runs:
-        if len(item) == 4:
-            paragraph_number, run_number, modified_text, new_paragraph = item
-        else:
-            # Sometimes the format is wrong, we can't process other sizes of lists correctly
+        if len(item) > 4:
+            continue
+        paragraph_number, run_number, modified_text, new_paragraph = item
+        if paragraph_number >= len(document.paragraphs):
+            add_paragraph_after(document.paragraphs[-1], modified_text)
             continue
         paragraph = document.paragraphs[paragraph_number]
+        if run_number >= len(paragraph.runs):
+            add_run_after(paragraph.runs[-1], modified_text)
+            continue
         run = paragraph.runs[run_number]
         if new_paragraph == 1:
            add_paragraph_after(paragraph, modified_text)
@@ -76,7 +92,7 @@ def update_docx(
             run.text = modified_text
     return document
 
-def get_docx_repr(docx_path: str):
+def get_docx_repr(docx_path: str, paragraph_start:int=0, paragraph_end:Optional[int]=None):
     """Return a JSON representation of the paragraphs and runs in the DOCX file.
 
     Args:
@@ -86,7 +102,8 @@ def get_docx_repr(docx_path: str):
         A JSON representation of the paragraphs and runs in the DOCX file.
     """
     items = []
-    for pnum, paragraph in enumerate(docx.Document(docx_path).paragraphs):
+    paragraphs = docx.Document(docx_path).paragraphs[paragraph_start:paragraph_end]
+    for pnum, paragraph in enumerate(paragraphs):
         for rnum, run in enumerate(paragraph.runs):
             items.append(
                 [
@@ -142,7 +159,7 @@ def get_labeled_docx_runs(
     [
         [0, 1, "Dear {{ other_parties[0] }}:", 0],
         [2, 0, "{%p if is_tenant %}", -1],
-        [3, 0, "{%p endif %}", "", 1],
+        [3, 0, "{%p endif %}", 1],
     ]
     }
     """
@@ -289,7 +306,7 @@ def get_modified_docx_runs(
         [
             [0, 1, "Dear {{ other_parties[0] }}:", 0],
             [2, 0, "{%p if is_tenant %}", -1],
-            [3, 0, "{%p endif %}", "", 1],
+            [3, 0, "{%p endif %}", 1],
         ]
     }
 
@@ -297,6 +314,7 @@ def get_modified_docx_runs(
 
     Args:
         docx_path (str): path to the DOCX file
+        docx_repr (str): a string representation of the paragraphs and runs in the DOCX file, if docx_path is not provided.
         custom_example (Optional[str]): a string containing the purpose and overview of the task
         instructions (str) a string containing specific instructions for the task
         openai_client (Optional[OpenAI]): an OpenAI client object. If not provided a new one will be created.
@@ -357,9 +375,16 @@ def get_modified_docx_runs(
 
     encoding = tiktoken.encoding_for_model("gpt-4")
     token_count = len(encoding.encode(role_description + docx_repr))
+
     if token_count > 128000:
         raise Exception(
             f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
+        )
+
+    moderation_response = openai_client.moderations.create(input=role_description + docx_repr)
+    if moderation_response.results[0]["flagged"]:
+        raise Exception(
+            f"OpenAI moderation error: {moderation_response.results[0]}"
         )
 
     response = openai_client.chat.completions.create(
@@ -378,8 +403,11 @@ def get_modified_docx_runs(
 
     assert isinstance(response.choices[0].message.content, str)
 
-    print(response.choices[0].message.content)
-
+    # check finish reason
+    if response.choices[0].finish_reason != "stop":
+        raise Exception(
+            f"OpenAI did not finish processing the document. Finish reason: {response.choices[0].finish_reason}"
+        )
     guesses = json.loads(response.choices[0].message.content)["results"]
     return guesses
 
