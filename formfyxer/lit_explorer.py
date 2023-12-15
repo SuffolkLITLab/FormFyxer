@@ -1,5 +1,6 @@
 # Updated on 2022-12-12
 
+from dataclasses import dataclass
 import os
 import re
 import subprocess
@@ -408,12 +409,159 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
             return [norm(nlp(indiv_text).vector) for indiv_text in text]
 
 
+def llm_normalize_field_names(
+    fields: List[str],
+    context: Optional[str],
+    openai_client: OpenAI = None,
+    openai_api: str = None,
+) -> List[str]:
+    """Take the text of a document and a list of fields in the document
+    and come up with names for the fields that match the Assembly Line naming
+    conventions
+    """
+    pass
+
+class DADataType(Enum):
+    TEXT = "text"
+    AREA = "area"
+    YESNO = "yesno"
+    NOYES = "noyes"
+    YESNORADIO = "yesnoradio"
+    NOYESRADIO = "noyesradio"
+    YESNOWIDE = "yesnowide"
+    NOYESWIDE = "noyeswide"
+    NUMBER = "number"
+    INTEGER = "integer"
+    CURRENCY = "currency"
+    EMAIL = "email"
+    DATE = "date"
+    FILE = "file"
+    RADIO = "radio"
+    COMBOBOX = "combobox"
+    CHECKBOXES = "checkboxes"
+
+
+@dataclass
+class Field:
+    label: Optional[str] = None
+    field: Optional[str] = None
+    datatype: Optional[DADataType] = None
+    input_type: Optional[str] = None
+    maxlength: Optional[int] = None
+    choices: Optional[List[str]] = None
+    min: Optional[int] = None
+    max: Optional[int] = None
+    step: Optional[int] = None
+    required: Optional[bool] = None
+
+
+@dataclass
+class Screen:
+    continue_button_field: Optional[str] = None
+    question: Optional[str] = None
+    subquestion: Optional[str] = None
+    fields: List[Field] = None
+
+
+def llm_draft_questions_and_order(
+    fields: List[Union[str, Dict]],
+    document_text: Optional[str],
+    openai_client: OpenAI = None,
+    openai_api: str = None,
+) -> Dict[str, Union[str, List[Screen]]]:
+    """Take the text of a document and a list of fields in the document
+    and come up with a list of screens and questions to ask the user.
+    """
+    system_role = """
+    You are an author of a helpful interactive Docassemble tool for a self-represented court participant.
+
+    You will be given a list of fields which may include their datatypes, and the full
+    text of the document that they appear in. The fields may appear in the document
+    marked with Jinja2 syntax, like {{ field_name }}
+
+    Your response will be a JSON object with a list of screens and questions to ask the user,
+    in a format that mirrors a Docassemble interview's structure and in a logical and easy
+    to follow order.
+
+    Here is the specification for the screen format:
+
+    class DADataType(Enum):
+        TEXT = "text" # Default if unspecified
+        AREA = "area"
+        YESNO = "yesno"
+        YESNORADIO = "yesnoradio"
+        NUMBER = "number"
+        INTEGER = "integer"
+        CURRENCY = "currency"
+        EMAIL = "email"
+        DATE = "date"
+        FILE = "file"
+        RADIO = "radio"
+        COMBOBOX = "combobox"
+        CHECKBOXES = "checkboxes"
+        AL_INTERNATIONAL_PHONE = "al_international_phone"
+
+    @dataclass
+    class Field:
+        label: Optional[str] = None
+        field: Optional[str] = None
+        datatype: Optional[DADataType] = None
+        input_type: Optional[str] = None
+        maxlength: Optional[int] = None
+        choices: Optional[List[str]] = None
+        min: Optional[int] = None
+        max: Optional[int] = None
+        step: Optional[int] = None
+        required: Optional[bool] = None
+
+    @dataclass
+    class Screen:
+        continue_button_field: Optional[str] = None
+        question: Optional[str] = None
+        subquestion: Optional[str] = None
+        fields: List[Field] = None
+
+    Here is an example JSON response:
+
+    {
+        "questions": [ // list of Screens
+            {
+                "question": "Before you get started",
+                "subquestion": "Before you fill this in, you will need the fax number for the hospital and your own contact details.",
+                "continue button field": "before_you_start"
+            },
+            {
+                "question": "Hospital Information",
+                "fields": [
+                    {"label": "Hospital Name", "field": "hospital_name"},
+                    {"label": "Hospital Fax Number", "field": "hospital_fax", "datatype": "al_international_phone"},
+                    {"label": "Hospital Phone Number", "field": "hospital_phone", "datatype": "al_international_phone", "required": False}
+                ]
+            },
+            {
+                "question": "Sender Information",
+                "subquestion": "Include contact information so you can be reached with questions about this fax.",
+                "fields": [
+                    {"label": "Your Name", "field": "student_attorney"},
+                    {"label": "Your email", "field": "student_email", "datatype": "email"},
+                    {"label": "Your Fax Number", "field": "from_fax", "datatype": "al_international_phone"},
+                    {"label": "Your Phone Number", "field": "from_phone", "datatype": "al_international_phone", "required": false}
+                ]
+            },
+        ]
+    }
+
+    You will use short, actionable prompts and provide context on question screens where it
+    is helpful to the user. You will use language that is accessible and easy to understand
+    for someone at no more than a 6th grade reading level.
+    """
+    pass
+
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`
-
 
 def normalize_name(
     jur: str,
