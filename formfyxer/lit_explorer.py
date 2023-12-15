@@ -56,6 +56,7 @@ from contextlib import contextmanager
 import threading
 import _thread
 from typing import (
+    Any,
     Optional,
     Union,
     Iterable,
@@ -413,14 +414,166 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
 def llm_normalize_field_names(
     fields: List[str],
     context: Optional[str],
-    openai_client: OpenAI = None,
-    openai_api: str = None,
+    custom_people_names: Optional[List[str]] = None,
+    openai_client: Optional[OpenAI] = None,
+    openai_api: Optional[str] = None,
 ) -> List[str]:
     """Take the text of a document and a list of fields in the document
     and come up with names for the fields that match the Assembly Line naming
-    conventions
+    conventions.
+
+    Args:
+        fields (List[str]): A list of current field names
+        context (str): The full text of the documen, plus any additional context 
+            if needed (such as title and purpose)
+        custom_people_names (List[str]): Any names in addition to Assembly Line convention
+            should be used for variables.
+        openai_client (OpenAI): Optional, an OpenAI client. If not provided will fall back to
+            making a new client that uses the API key in the environment variable.
+        openai_api (str): Optional. If provided, will be used to create a new OpenAI client
+    
+    Returns:
+        A list of new field names, in the same order as provided.
     """
-    pass
+    role_description = """You are the author of a Docassemble interview that will help a self-represented 
+    court participant fill out a form.
+
+    Your task is to come up with names for the fields in the document that match the Assembly Line naming
+    conventions. The names must be valid Python variable names that are short, descriptive, and easy to understand. 
+    They should be in snake_case and should not include any special characters or spaces.
+    """
+    if custom_people_names:
+        formatted_people_names = "\n".join(custom_people_names)
+    else:
+        formatted_people_names = ""
+    role_description += f"""
+
+    Rules for variable names:
+        1. Variables usually refer to people or their attributes.
+        2. People are stored in lists.
+        3. We use Docassemble objects and conventions.
+        4. Use variable names and patterns from the list below. Invent new variable names when it is appropriate.
+
+    List names for people:
+        {formatted_people_names}
+        users (for the person benefiting from the form, especially when for a pro se filer)
+        other_parties (the opposing party in a lawsuit or transactional party)
+        plaintiffs
+        defendants
+        petitioners
+        respondents
+        children
+        spouses
+        parents
+        caregivers
+        attorneys
+        translators
+        debt_collectors
+        creditors
+        witnesses
+        guardians_ad_litem
+        guardians
+        decedents
+        interested_parties
+
+        Name Forms: (indexed on 1, not 0)
+            users (full name of all users)
+            users1 (full name of first user)
+            users1_name_full (Alternate full name of first user)
+            users1_name_first (First name only)
+            users1_name_middle (Middle name only)
+            users1_name_middle_initial (First letter of middle name)
+            users1_name_last (Last name only)
+            users1_name_suffix (Suffix of user's name only)
+
+    Attribute names (replace `users` with the appropriate list name):
+        Demographic Data:
+            users1_birthdate (Birthdate)
+            users1_age_in_years (Calculated age based on birthdate)
+            users1_gender (Gender)
+            users1_gender_female (User is female, for checkbox field)
+            users1_gender_male (User is male, for checkbox field)
+            users1_gender_other (User is not male or female, for checkbox field)
+            users1_gender_nonbinary (User identifies as nonbinary, for checkbox field)
+            users1_gender_undisclosed (User chose not to disclose gender, for checkbox field)
+            users1_gender_self_described (User chose to self-describe gender, for checkbox field)
+            user_needs_interpreter (User needs an interpreter, for checkbox field)
+            user_preferred_language (User's preferred language)
+
+        Addresses:
+            users1_address_block (Full address, on multiple lines)
+            users1_address.on_one_line (Full address on one line)
+            users1_address_line_one (Line one of the address, including unit or apartment number)
+            users1_address_line_two (Line two of the address, usually city, state, and Zip/postal code)
+            users1_address_address (Street address)
+            users1_address_unit (Apartment, unit, or suite)
+            users1_address_city (City or town)
+            users1_address_state (State, province, or sub-locality)
+            users1_address_zip (Zip or postal code)
+            users1_address_county (County or parish)
+            users1_address_country (Country)
+
+        Other Contact Information:
+            users1_phone_number (Phone number)
+            users1_mobile_number (A phone number explicitly labeled as the "mobile" number)
+            users1_phone_numbers() (A list of both mobile and other phone numbers)
+            users1_email (Email)
+
+        Signatures:
+            users1_signature (Signature)
+            signature_date (Date the form is completed)
+
+        Information about Court and Court Processes:
+            trial_court (Court's full name)
+            trial_court_address_county (County where court is located)
+            trial_court_division (Division of court)
+            trial_court_department (Department of court)
+            docket_number (Case or docket number)
+            docket_numbers (A comma-separated list of docket numbers)
+            
+    When No Existing Variable Name Exists:
+        1. Craft short, readable variable names in python snake_case.
+        2. Represent people with lists, even if only one person.
+        3. Use valid Python variable names within complete Jinja2 tags, like: `new_variable_name`.
+
+        Special endings:
+            Suffix _date for date values.
+            Suffix _value or _amount for currency values.
+
+        Examples: 
+        If the text near the field is "(State the reason for eviction)" a good label is `eviction_reason`.
+
+    The response will be a JSON object that maps the original field name to the new field name.
+    Example:
+
+    {{
+        "field0": "users1_name_full",
+        "field1": "other_parties1_name_full"
+    }}
+    """
+
+    user_message = f"""
+    The list of current field names is:
+    ```
+    { repr(fields) }
+    ```
+
+    The full text of the document is:
+
+    ```
+    { context }
+    ```
+    """
+    results = chat_completion_with_json(
+        role_description=role_description,
+        user_message=user_message,
+        openai_client=openai_client,
+        openai_api=openai_api
+    )
+    assert isinstance(results, list)
+    assert len(results) == len(fields)
+
+    return results
 
 class DADataType(Enum):
     TEXT = "text"
@@ -461,16 +614,30 @@ class Screen:
     continue_button_field: Optional[str] = None
     question: Optional[str] = None
     subquestion: Optional[str] = None
-    fields: List[Field] = None
+    fields: Optional[List[Field]] = None
 
 
-def gpt_4_turbo(
+def chat_completion_with_json(
     role_description: str,
     user_message: str,
-    openai_client: OpenAI = None,
-    openai_api: str = None,
+    openai_client: Optional[OpenAI] = None,
+    openai_api: Optional[str] = None,
     temperature: float = 0.5,
-) -> str:
+) -> Union[List[Any],Dict[str,Any]]:
+    """A light wrapper on the GPT-4-turbo API.
+
+    Handles basics of using GPT-4-turbo with JSON mode,
+    including token limits, error handling, and moderation queue.
+
+    Args:
+        role_description (str): The role the chat engine should play
+        user_message (str): The message (data) from the user
+        openai_client (Optional[OpenAI]): An OpenAI client object, optional. If omitted, will fall back to creating a new OpenAI client with the API key provided as an environment variable
+        openai_api (Optional[str]): the API key for an OpenAI client, optional. If provided, a new OpenAI client will be created.
+
+    Returns:
+        A string with the response from the API endpoint. You must convert to JSON
+    """
     if openai_api:
         openai_client = OpenAI(api_key=openai_api)
     else:
@@ -489,13 +656,13 @@ def gpt_4_turbo(
 
     if token_count > 128000:
         raise Exception(
-            f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
+            f"Input to OpenAI is too long ({ token_count } tokens). Maximum is 128000 tokens."
         )
 
     moderation_response = openai_client.moderations.create(input=role_description + user_message)
     if moderation_response.results[0].flagged:
         raise Exception(
-            f"OpenAI moderation error: {moderation_response.results[0]}"
+            f"OpenAI moderation error: { moderation_response.results[0] }"
         )
 
     response = openai_client.chat.completions.create(
@@ -519,14 +686,14 @@ def gpt_4_turbo(
         )
 
     assert isinstance(response.choices[0].message.content, str)
-    return response.choices[0].message.content
+    return json.loads(response.choices[0].message.content)
 
 
-def llm_draft_questions_and_order(
+def draft_interview_questions(
     fields: List[Union[str, Dict]],
     document_text: Optional[str],
-    openai_client: OpenAI = None,
-    openai_api: str = None,
+    openai_client: Optional[OpenAI] = None,
+    openai_api: Optional[str] = None,
     temperature: float = 0.5,
 ) -> Dict[str, Union[str, List[Screen]]]:
     """Take the text of a document and a list of fields in the document
@@ -629,14 +796,18 @@ def llm_draft_questions_and_order(
         ```
         """
     
-    content = gpt_4_turbo(
+    result = chat_completion_with_json(
         role_description=system_role,
         user_message=user_message,
         openai_client=openai_client,
         openai_api=openai_api,
+        temperature=temperature
     )
-    interview = json.loads(content)
-    return interview
+
+    assert isinstance(result, dict)
+    assert isinstance(result.get("questions"), list)
+
+    return result
             
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
