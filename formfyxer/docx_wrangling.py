@@ -278,7 +278,8 @@ def get_modified_docx_runs(
         custom_example:str = "",
         instructions:str = "",
         openai_client: Optional[OpenAI] = None, 
-        api_key:Optional[str]=None
+        api_key:Optional[str]=None,
+        temperature=0.5,
 ) -> List[Tuple[int, int, str, int]]:
     """Use GPT to rewrite the contents of a DOCX file paragraph by paragraph. Does not handle tables, footers, or
     other structures yet.
@@ -322,6 +323,7 @@ def get_modified_docx_runs(
         instructions (str) a string containing specific instructions for the task
         openai_client (Optional[OpenAI]): an OpenAI client object. If not provided a new one will be created.
         api_key (Optional[str]): an OpenAI API key. If not provided, it will be obtained from the environment
+        temperature (float): the temperature to use when generating text. Lower temperatures are more conservative.
 
     Returns:
         A list of tuples, each containing a paragraph number, run number, and the modified text of the run.
@@ -397,7 +399,7 @@ def get_modified_docx_runs(
             {"role": "user", "content": docx_repr},
         ],
         response_format={"type": "json_object"},
-        temperature=0.5,
+        temperature=temperature,
         max_tokens=4096,
         top_p=1,
         frequency_penalty=0,
