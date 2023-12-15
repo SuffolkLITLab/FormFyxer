@@ -382,7 +382,7 @@ def get_modified_docx_runs(
         )
 
     moderation_response = openai_client.moderations.create(input=role_description + docx_repr)
-    if moderation_response.results[0]["flagged"]:
+    if moderation_response.results[0].flagged:
         raise Exception(
             f"OpenAI moderation error: {moderation_response.results[0]}"
         )
