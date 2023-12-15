@@ -14,6 +14,9 @@ __all__ = [
     "get_labeled_docx_runs",
     "update_docx",
     "modify_docx_with_openai_guesses",
+    "get_docx_repr",
+    "get_modified_docx_runs",
+    "make_docx_plain_language",
 ]
 
 
