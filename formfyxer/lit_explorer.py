@@ -36,7 +36,7 @@ from .pdf_wrangling import (
     FieldType,
     unlock_pdf_in_place,
     is_tagged,
-)   
+)
 
 try:
     from nltk.corpus import stopwords
@@ -134,18 +134,20 @@ try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
     ) as in_file:
-        default_key:Optional[str] = in_file.read().rstrip()
+        default_key: Optional[str] = in_file.read().rstrip()
 except:
     default_key = None
 try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
     ) as in_file:
-        default_org:Optional[str] = in_file.read().rstrip()
+        default_org: Optional[str] = in_file.read().rstrip()
 except:
     default_org = None
 if default_key:
-    client:Optional[OpenAI] = OpenAI(api_key=default_key, organization=default_org or None)
+    client: Optional[OpenAI] = OpenAI(
+        api_key=default_key, organization=default_org or None
+    )
 elif os.getenv("OPENAI_API_KEY"):
     client = OpenAI()
 else:
@@ -162,6 +164,7 @@ GENDERED_TERMS_PATH = os.path.join(CURRENT_DIRECTORY, "data", "gendered_terms.ym
 PLAIN_LANGUAGE_TERMS_PATH = os.path.join(
     CURRENT_DIRECTORY, "data", "simplified_words.yml"
 )
+
 
 # This creates a timeout exception that can be triggered when something hangs too long.
 class TimeoutException(Exception):
@@ -424,14 +427,14 @@ def llm_normalize_field_names(
 
     Args:
         fields (List[str]): A list of current field names
-        context (str): The full text of the documen, plus any additional context 
+        context (str): The full text of the documen, plus any additional context
             if needed (such as title and purpose)
         custom_people_names (List[str]): Any names in addition to Assembly Line convention
             should be used for variables.
         openai_client (OpenAI): Optional, an OpenAI client. If not provided will fall back to
             making a new client that uses the API key in the environment variable.
         openai_api (str): Optional. If provided, will be used to create a new OpenAI client
-    
+
     Returns:
         A list of new field names, in the same order as provided.
     """
@@ -568,12 +571,13 @@ def llm_normalize_field_names(
         role_description=role_description,
         user_message=user_message,
         openai_client=openai_client,
-        openai_api=openai_api
+        openai_api=openai_api,
     )
     assert isinstance(results, list)
     assert len(results) == len(fields)
 
     return results
+
 
 class DADataType(Enum):
     TEXT = "text"
@@ -623,7 +627,7 @@ def chat_completion_with_json(
     openai_client: Optional[OpenAI] = None,
     openai_api: Optional[str] = None,
     temperature: float = 0.5,
-) -> Union[List[Any],Dict[str,Any]]:
+) -> Union[List[Any], Dict[str, Any]]:
     """A light wrapper on the GPT-4-turbo API.
 
     Handles basics of using GPT-4-turbo with JSON mode,
@@ -648,7 +652,7 @@ def chat_completion_with_json(
                 raise Exception(
                     "You need to pass an OpenAI client or API key to use this function, or the API key needs to be set in the environment."
                 )
-    
+
     encoding = tiktoken.encoding_for_model("gpt-4")
 
     encoding = tiktoken.encoding_for_model("gpt-4")
@@ -659,11 +663,11 @@ def chat_completion_with_json(
             f"Input to OpenAI is too long ({ token_count } tokens). Maximum is 128000 tokens."
         )
 
-    moderation_response = openai_client.moderations.create(input=role_description + user_message)
+    moderation_response = openai_client.moderations.create(
+        input=role_description + user_message
+    )
     if moderation_response.results[0].flagged:
-        raise Exception(
-            f"OpenAI moderation error: { moderation_response.results[0] }"
-        )
+        raise Exception(f"OpenAI moderation error: { moderation_response.results[0] }")
 
     response = openai_client.chat.completions.create(
         model="gpt-4-1106-preview",
@@ -785,7 +789,7 @@ def draft_interview_questions(
     is helpful to the user. You will use language that is accessible and easy to understand
     for someone at no more than a 6th grade reading level.
     """
-    
+
     user_message = """The fields in this document are:"""
     for field in fields:
         user_message += f"\n- { field}"
@@ -795,26 +799,27 @@ def draft_interview_questions(
         ```{ document_text }
         ```
         """
-    
+
     result = chat_completion_with_json(
         role_description=system_role,
         user_message=user_message,
         openai_client=openai_client,
         openai_api=openai_api,
-        temperature=temperature
+        temperature=temperature,
     )
 
     assert isinstance(result, dict)
     assert isinstance(result.get("questions"), list)
 
     return result
-            
+
 
 # Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
 # 1. It will `re_case` the variable text
 # 2. Then it will run the output through `regex_norm_field`
 # 3. If it doesn't find anything, it will use the ML model `clf_field_names`
 # 4. If the prediction isn't very confident, it will run it through `reformat_field`
+
 
 def normalize_name(
     jur: str,
@@ -830,17 +835,18 @@ def normalize_name(
     not, to a snake_case variable name of appropriate length.
 
     HACK: temporarily all we do is re-case it and normalize it using regex rules.
-    Will be replaced with call to LLM soon.        
+    Will be replaced with call to LLM soon.
     """
-    
+
     if this_field not in included_fields:
         this_field = re_case(this_field)
         this_field = regex_norm_field(this_field)
 
     if this_field in included_fields:
         return f"*{this_field}", 0.01
-    
+
     return reformat_field(this_field, tools_token=tools_token), 0.5
+
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
 #
@@ -1053,23 +1059,21 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     return AnswerType.GATHERED
 
 
-def get_adjusted_character_count(
-        field: FieldInfo
-)-> float:
+def get_adjusted_character_count(field: FieldInfo) -> float:
     """
-    Determines the bracketed length of an input field based on its max_length attribute, 
-    returning a float representing the approximate length of the field content. 
+    Determines the bracketed length of an input field based on its max_length attribute,
+    returning a float representing the approximate length of the field content.
 
     The function chunks the answers into 5 different lengths (checkboxes, 2 words, short, medium, and long)
     instead of directly using the character count, as forms can allocate different spaces
     for the same data without considering the space the user actually needs.
 
     Args:
-        field (FieldInfo): An object containing information about the input field, 
+        field (FieldInfo): An object containing information about the input field,
                            including the "max_length" attribute.
 
     Returns:
-        float: The approximate length of the field content, categorized into checkboxes, 2 words, short, 
+        float: The approximate length of the field content, categorized into checkboxes, 2 words, short,
                medium, or long based on the max_length attribute.
 
     Examples:
@@ -1095,10 +1099,8 @@ def get_adjusted_character_count(
     )  # Anything over 10 lines probably needs a full page but form author skimped on space
     if field["type"] != InputType.TEXT:
         return ONE_WORD
-    
-    if field["max_length"] <= ONE_LINE or (
-        field["max_length"] <= ONE_LINE * 2
-    ):
+
+    if field["max_length"] <= ONE_LINE or (field["max_length"] <= ONE_LINE * 2):
         return ONE_WORD * 2
     elif field["max_length"] <= SHORT_ANSWER:
         return SHORT_ANSWER
@@ -1217,7 +1219,12 @@ class OpenAiCreds(TypedDict):
     key: str
 
 
-def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] = None, temperature:float=0) -> str:
+def text_complete(
+    prompt: str,
+    max_tokens: int = 500,
+    creds: Optional[OpenAiCreds] = None,
+    temperature: float = 0,
+) -> str:
     """Run a prompt via openAI's API and return the result.
 
     Args:
@@ -1237,16 +1244,13 @@ def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] =
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system", 
-                    "content": prompt
-                },
+                {"role": "system", "content": prompt},
             ],
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=1.0,
             frequency_penalty=0.0,
-            presence_penalty=0.0
+            presence_penalty=0.0,
         )
         return str((response.choices[0].message.content or "").strip())
     except Exception as ex:
@@ -1405,7 +1409,9 @@ def substitute_phrases(
 
     # Find all matches for the substitution phrases
     for original, replacement in sorted_phrases:
-        for match in re.finditer(r"\b" + re.escape(original) + r"\b", input_string, re.IGNORECASE):
+        for match in re.finditer(
+            r"\b" + re.escape(original) + r"\b", input_string, re.IGNORECASE
+        ):
             matches.append((match.start(), match.end(), replacement))
 
     # Sort the matches based on their starting position
@@ -1509,7 +1515,11 @@ def parse_form(
     except:
         readability = -1
     # Still attempt to re-evaluate if not using openai
-    if not original_text or (openai_creds and description == "abortthisnow.") or readability > 30:
+    if (
+        not original_text
+        or (openai_creds and description == "abortthisnow.")
+        or readability > 30
+    ):
         # We do not care what the PDF output is, doesn't add that much time
         ocr_p = [
             "ocrmypdf",
@@ -1646,7 +1656,12 @@ def parse_form(
         "citations per field": citation_count / field_count if field_count > 0 else 0,
         "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
-        "normalized characters per field": sum(get_adjusted_character_count(field) for field in field_types ) / field_count if ff else 0,
+        "normalized characters per field": sum(
+            get_adjusted_character_count(field) for field in field_types
+        )
+        / field_count
+        if ff
+        else 0,
         "difficult words": difficult_words,
         "difficult word count": difficult_word_count,
         "difficult word percent": difficult_word_count / word_count,
@@ -1705,7 +1720,7 @@ def _form_complexity_per_metric(stats):
         {"name": "pages", "weight": 2},
         {"name": "citations per field", "weight": 1.2},
         {"name": "avg fields per page", "weight": 1 / 8},
-        {"name": "normalized characters per field", "weight": 1/8},
+        {"name": "normalized characters per field", "weight": 1 / 8},
         {"name": "sentences per page", "weight": 0.05},
         # percents will have a higher weight, because they are between 0 and 1
         {"name": "slotin percent", "weight": 2},
@@ -1723,11 +1738,11 @@ def _form_complexity_per_metric(stats):
         weight = metric.get("weight") or 1
         val = 0
         if "clip" in metric:
-            val = min(max(stats.get(name,0), metric["clip"][0]), metric["clip"][1])
+            val = min(max(stats.get(name, 0), metric["clip"][0]), metric["clip"][1])
         elif isinstance(stats.get(name), bool):
             val = 1 if stats.get(name) else 0
         else:
-            val = stats.get(name,0)
+            val = stats.get(name, 0)
         if "intercept" in metric:
             val -= metric["intercept"]
         return val * weight
