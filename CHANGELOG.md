@@ -1,5 +1,19 @@
 # CHANGELOG
 
+
+## Version v0.2.0
+
+### Added
+* Add warning when sensitive fields are detected by @codestronger in https://github.com/SuffolkLITLab/RateMyPDF/issues/25
+
+### Changed
+N/A
+
+### Fixed
+N/A
+
+**Full Changelog**: https://github.com/SuffolkLITLab/FormFyxer/compare/v0.2.0...v0.3.0a2
+
 ## Version v0.2.0
 
 ### Added
@@ -22,7 +36,7 @@
 
 ### Fixed
 
-* If GPT-3 says the readability is too high (i.e. high likelyhood we have garabage), we will use ocrmypydf to re-evaluate the text in a PDF (https://github.com/SuffolkLITLab/FormFyxer/commit/a6dcd9872d2d0a6542f687aa46b1b9b00f16d3e5)
+* If GPT-3 says the readability is too high (i.e. high likelihood we have garbage), we will use ocrmypydf to re-evaluate the text in a PDF (https://github.com/SuffolkLITLab/FormFyxer/commit/a6dcd9872d2d0a6542f687aa46b1b9b00f16d3e5)
 * Adds more actionable information to the stats returned from `parse_form` (https://github.com/SuffolkLITLab/FormFyxer/pull/83):
     * Gives more context for citations in found in the text: https://github.com/SuffolkLITLab/FormFyxer/pull/83/commits/b62bd41958fc1bd0373b7698adde1a234779f77a
 

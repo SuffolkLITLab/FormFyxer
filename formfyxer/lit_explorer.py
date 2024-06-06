@@ -972,6 +972,39 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
+def get_sensitive_fields(fields: List[str]) -> List[str]:
+    """
+    Given a list of fields, identify those related to sensitive information. Sensitive fields include 
+    Social Security Number(SSN)), Driver's License (DL), and account numbers.
+    """
+    # NOTE: omitting CID since it has a lot of false positives.
+    field_patterns = {
+        "Social Security Number": [
+            "social[\W_]*security[\W_]*number",
+            "SSN",
+            "TIN$"
+        ],
+        "Bank Account Number": [
+            "account[\W_]*number",
+            "ABA$",
+            "routing[\W_]*number",
+            "checking"
+        ],
+        "Credit Card Number": [
+            "credit[\W_]*card",
+            "(CV[CDV]2?|CCV|CSC)"
+        ],
+        "Driver's License": [
+            "drivers[\W_]*license",
+            ".?DL$"
+        ]
+    }
+    text = "\n".join(fields)
+    field_regexes = {name: re.compile("|".join(patterns), re.IGNORECASE | re.MULTILINE) for name, patterns in field_patterns.items()}
+    sensitive_fields = [name for name, regex in field_regexes.items() if re.search(regex, text)]
+
+    return sensitive_fields
+
 def substitute_phrases(
     input_string: str, substitution_phrases: Dict[str, str]
 ) -> Tuple[str, List[Tuple[int, int]]]:
@@ -1198,6 +1231,10 @@ def parse_form(
         classify_field(field, new_names[index])
         for index, field in enumerate(field_types)
     ]
+    # NOTE: we send both the original and the cleaned up field names. There are cases where one or the other is cleaner.
+    # Since the sensitive fields are tagged as a group name rather than individual field names, it does no harm to send
+    # more variations to help detection.
+    sensitive_fields = get_sensitive_fields(field_names + new_names)
 
     slotin_count = sum(1 for c in classified if c == AnswerType.SLOT_IN)
     gathered_count = sum(1 for c in classified if c == AnswerType.GATHERED)
@@ -1224,6 +1261,7 @@ def parse_form(
         "fields": new_names,
         "fields_conf": new_names_conf,
         "fields_old": field_names,
+        "sensitive fields": sensitive_fields,
         "text": text,
         "original_text": original_text,
         "number of sentences": sentence_count,
