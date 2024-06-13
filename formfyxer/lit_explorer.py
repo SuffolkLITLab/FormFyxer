@@ -994,7 +994,7 @@ def get_sensitive_fields(fields: List[str]) -> List[str]:
             "credit[\W_]*card",
             "(CV[CDV]2?|CCV|CSC)"
         ],
-        "Driver's License": [
+        "Driver's License Number": [
             "drivers[\W_]*license",
             ".?DL$"
         ]
