@@ -757,7 +757,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
         self.rsrcmgr = rsrcmgr
         self.device = device
         self.doc = doc
-        self.field_pages = {}
+        self.field_pages: Dict[Any, List[FormField]] = {}
         existing_fields = get_existing_pdf_fields(doc)
 
         for page_fields, page in zip(existing_fields, doc.pages):
@@ -802,20 +802,18 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                     continue
                 font = contender_font
             self.textstate.fontsize = 8
-            x = 0
-            y = 0
+            x = 0.0
+            y = 0.0
             needcharspace = False
             # Start a specific position on the page (field.x and field.y)
             self.do_TD(field.x, field.y)
             matrix = mult_matrix(self.textstate.matrix, ctm)
-            # print(f"{field.get('T')}, {matrix}")
             # Manual Tj operation
             for char in r"{{" + field.name + r"}}":
                 for cid in font.decode(char.encode()):
                     if needcharspace:
                         x += 0.1  # charspace
-                    # print(x, cid, font.char_width(cid))
-                    x += self.device.render_char(
+                    x += self.device.render_char( # type: ignore
                         translate_matrix(matrix, (x, y)),
                         font,
                         self.textstate.fontsize,  # fontsize,
@@ -825,8 +823,8 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                         self.ncs,
                         self.graphicstate.copy(),
                     )
-                    if cid == 32 and wordspace:
-                        x += 0  # wordspace
+                    # if cid == 32 and wordspace:
+                    #     x += 0  # wordspace
                     needcharspace = True
             self.do_ET()
         self.device.end_page(page)
@@ -861,7 +859,7 @@ class TextAndFieldConverter(TextConverter):
             elif isinstance(item, LTImage):
                 if self.imagewriter is not None:
                     self.imagewriter.export_image(item)
-            elif isinstance(item, LTAnnot):
+            elif isinstance(item, LTAnno):
                 self.write_text(item.get_text())
 
         if self.showpageno:
