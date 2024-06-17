@@ -1152,8 +1152,8 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
         maxRadius=50,
     )
     if circles is not None:
-        circles = np.uint16(np.around(circles))
-        for i in circles[0, :]:
+        rounded_circles = np.around(circles)
+        for i in rounded_circles[0, :]:
             center = (i[0], i[1])
             # circle center
             cv2.circle(img_mat, center, 1, (0, 100, 100), 3)
