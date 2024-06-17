@@ -51,8 +51,8 @@ def add_run_after(run, text):
 
 
 def update_docx(
-    document: Union[docx.Document, str], modified_runs: List[Tuple[int, int, str, int]]
-) -> docx.Document:
+    document: Union[docx.document.Document, str], modified_runs: List[Tuple[int, int, str, int]]
+) -> docx.document.Document:
     """Update the document with the modified runs.
 
     Note: OpenAI is probabilistic, so the modified run indices may not be correct. 
@@ -416,7 +416,7 @@ def get_modified_docx_runs(
     guesses = json.loads(response.choices[0].message.content)["results"]
     return guesses
 
-def make_docx_plain_language(docx_path: str) -> docx.Document:
+def make_docx_plain_language(docx_path: str) -> docx.document.Document:
     """
     Convert a DOCX file to plain language with the help of OpenAI.
     """
@@ -443,7 +443,7 @@ def make_docx_plain_language(docx_path: str) -> docx.Document:
     )
     return update_docx(docx.Document(docx_path), guesses)
 
-def modify_docx_with_openai_guesses(docx_path: str) -> docx.Document:
+def modify_docx_with_openai_guesses(docx_path: str) -> docx.document.Document:
     """Uses OpenAI to guess the variable names for a document and then modifies the document with the guesses.
 
     Args:
