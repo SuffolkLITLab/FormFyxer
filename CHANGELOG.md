@@ -1,7 +1,7 @@
 # CHANGELOG
 
 
-## Version v0.2.0
+## Version v0.3.0
 
 ### Added
 * Add warning when sensitive fields are detected by @codestronger in https://github.com/SuffolkLITLab/RateMyPDF/issues/25
@@ -12,7 +12,7 @@ N/A
 ### Fixed
 N/A
 
-**Full Changelog**: https://github.com/SuffolkLITLab/FormFyxer/compare/v0.2.0...v0.3.0a2
+**Full Changelog**: https://github.com/SuffolkLITLab/FormFyxer/compare/v0.2.0...v0.3.0
 
 ## Version v0.2.0
 

@@ -448,8 +448,10 @@ An object grouping together similar field names.
 
 
 
-### formfyxer.get_sensitive_fields(fields)
-Given a list of fields, identify those related to sensitive information. Sensitive fields include Social Security Number(SSN)), Driver's License (DL), and account numbers.
+### formfyxer.get_sensitive_data_types(fields, fields_old)
+Given a list of fields, identify those related to sensitive information and return a dictionary with the sensitive fields grouped by type. A list of the old field names can also be provided. These fields should be in the same order. Passing the old field names allows the sensitive field algorithm to match more accurately. The return value will not contain the old field name, only the corresponding field name from the first parameter.
+
+The sensitive field types are: Bank Account Number, Credit Card Number, Driver's License Number, and Social Security Number.
 #### Parameters:
 * **fields : List[str]** List of field names.
 #### Returns: 
@@ -457,8 +459,10 @@ List of sensitive fields found within the fields passed in.
 #### Example:
 ```python
 >>> import formfyxer
->>> formfyxer.get_sensitive_fields(["users1_name", "users1_address", "users1_ssn", "users1_routing_number"])
-['Social Security Number', 'Bank Account Number']
+>>> formfyxer.get_sensitive_data_types(["users1_name", "users1_address", "users1_ssn", "users1_routing_number"])
+{'Social Security Number': ['users1_ssn'], 'Bank Account Number': ['users1_routing_number']}
+>>> formfyxer.get_sensitive_data_types(["user_ban1", "user_credit_card_number", "user_cvc", "user_cdl", "user_social_security"], ["old_bank_account_number", "old_credit_card_number", "old_cvc", "old_drivers_license", "old_ssn"])
+{'Bank Account Number': ['user_ban1'], 'Credit Card Number': ['user_credit_card_number', 'user_cvc'], "Driver's License Number": ['user_cdl'], 'Social Security Number': ['user_social_security']}
 ```
 [back to top](#formfyxer)
 

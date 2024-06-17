@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from formfyxer.lit_explorer import spot, substitute_phrases
+from formfyxer.lit_explorer import spot, substitute_phrases, get_sensitive_data_types
 
 
 class TestSubstitutePhrases(unittest.TestCase):
@@ -115,45 +115,91 @@ class TestSubstitutePhrases(unittest.TestCase):
 class TestSpot(unittest.TestCase):
     def setUp(self) -> None:
         self.request_args = {
-            'url': 'https://spot.suffolklitlab.org/v0/entities-nested/',
-            'headers': {
-                'Authorization': 'Bearer your_SPOT_API_token goes here',
-                'Content-Type': 'application/json'
+            "url": "https://spot.suffolklitlab.org/v0/entities-nested/",
+            "headers": {
+                "Authorization": "Bearer your_SPOT_API_token goes here",
+                "Content-Type": "application/json",
             },
-            'data': {
-                'text': '',
-                'save-text': 0,
-                'cutoff-lower': 0.25,
-                'cutoff-pred': 0.5,
-                'cutoff-upper': 0.6,
-            }
+            "data": {
+                "text": "",
+                "save-text": 0,
+                "cutoff-lower": 0.25,
+                "cutoff-pred": 0.5,
+                "cutoff-upper": 0.6,
+            },
         }
         return super().setUp()
 
-
-    @mock.patch('requests.post')
+    @mock.patch("requests.post")
     def test_calls_spot(self, mock_post):
-        text = 'The quick brown fox jumps over the lazy dog.'
-        self.request_args['data']['text'] = text
+        text = "The quick brown fox jumps over the lazy dog."
+        self.request_args["data"]["text"] = text
         spot(text)
         mock_post.assert_called_with(
-            self.request_args['url'],
-            headers=self.request_args['headers'],
-            data=json.dumps(self.request_args['data'])
+            self.request_args["url"],
+            headers=self.request_args["headers"],
+            data=json.dumps(self.request_args["data"]),
         )
 
-
-    @mock.patch('requests.post')
+    @mock.patch("requests.post")
     def test_calls_spot_with_reduced_character_count(self, mock_post):
-        text = 'a' * 5001
-        reduced_text = 'a' * 5000
-        self.request_args['data']['text'] = reduced_text
+        text = "a" * 5001
+        reduced_text = "a" * 5000
+        self.request_args["data"]["text"] = reduced_text
         spot(text)
         mock_post.assert_called_with(
-            self.request_args['url'],
-            headers=self.request_args['headers'],
-            data=json.dumps(self.request_args['data'])
+            self.request_args["url"],
+            headers=self.request_args["headers"],
+            data=json.dumps(self.request_args["data"]),
         )
+
+
+class TestGetSensitiveDataTypes(unittest.TestCase):
+    def test_without_fields_old(self):
+        actual_output = get_sensitive_data_types(
+            ["users1_name", "users1_address", "users1_ssn", "users1_routing_number"],
+            None,
+        )
+        self.assertEqual(
+            actual_output,
+            {
+                "Social Security Number": ["users1_ssn"],
+                "Bank Account Number": ["users1_routing_number"],
+            },
+        )
+
+    def test_merge_of_fields_from_both(self):
+        actual_output = get_sensitive_data_types(
+            [
+                "user_ban1",
+                "user_credit_card_number",
+                "user_cvc",
+                "user_cdl",
+                "user_social_security",
+            ],
+            [
+                "old_bank_account_number",
+                "old_credit_card_number",
+                "old_cvc",
+                "old_drivers_license",
+                "old_ssn",
+            ],
+        )
+        self.assertEqual(
+            actual_output,
+            {
+                "Bank Account Number": ["user_ban1"],
+                "Credit Card Number": ["user_credit_card_number", "user_cvc"],
+                "Driver's License Number": ["user_cdl"],
+                "Social Security Number": ["user_social_security"],
+            },
+        )
+
+    def test_no_sensitive_data_types(self):
+        actual_output = get_sensitive_data_types(
+            ["name", "address", "zip", "signature"]
+        )
+        self.assertEqual(actual_output, {})
 
 
 if __name__ == "__main__":
