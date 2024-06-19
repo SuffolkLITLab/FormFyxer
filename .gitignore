@@ -11,3 +11,4 @@ dev-testing/.DS_Store
 .env
 .venv
 venv
+formfyxer/keys/**

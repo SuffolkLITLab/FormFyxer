@@ -80,8 +80,11 @@ Functions from `pdf_wrangling` are found on [our documentation site](https://suf
       - [Parameters:](#parameters-10)
       - [Returns:](#returns-10)
       - [Example:](#example-10)
+    - [formfyxer.get\_sensitive\_fields(fields)](#formfyxerget_sensitive_fieldsfields)
+      - [Parameters:](#parameters-11)
+      - [Returns:](#returns-11)
+      - [Example:](#example-11)
   - [License](#license)
-
 
 ### formfyxer.re_case(text)
 Reformats snake_case, camelCase, and similarly-formatted text into individual words.
@@ -99,9 +102,9 @@ A string where words combined by cases like snake_case are split back into indiv
 
 
 ### formfyxer.regex_norm_field(text)
-Given an auto-generated field name (e.g., those applied by a PDF editor's find form feilds function), this function uses regular expressions to replace common auto-generated field names for those found in our [standard field names](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/). 
+Given an auto-generated field name (e.g., those applied by a PDF editor's find form fields function), this function uses regular expressions to replace common auto-generated field names for those found in our [standard field names](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/label_variables/). 
 #### Parameters:
-* **text : str** A string of words, such as that found in an auto-generated field name (e.g., those applied by a PDF editor's find form feilds function).
+* **text : str** A string of words, such as that found in an auto-generated field name (e.g., those applied by a PDF editor's find form fields function).
 #### Returns: 
 Either the original string/field name, or if a standard field name is found, the standard field name.
 #### Example:
@@ -124,7 +127,7 @@ A snake_case string summarizing the input sentence.
 #### Example:
 ```python
 >>> import formfyxer
->>> reformat_field("this is a variable where you fill out your name")
+>>> formfyxer.reformat_field("this is a variable where you fill out your name")
 'variable_fill_name'
 ```
 [back to top](#formfyxer)
@@ -345,7 +348,7 @@ A string with a proposed plain language rewrite.
 ### formfyxer.describe_form(text)
 An OpenAI-enabled tool that will write a draft plain language description for a form. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
 
-Given a string conataining the full text of a court form, this function will return its a draft description of the form written in plain language. 
+Given a string containing the full text of a court form, this function will return its a draft description of the form written in plain language. 
 
 #### Parameters:
 * **text : str** text.
@@ -442,6 +445,27 @@ An object grouping together similar field names.
  'screen_4': ['signature_date']}
 ```
 [back to top](#formfyxer)
+
+
+
+### formfyxer.get_sensitive_data_types(fields, fields_old)
+Given a list of fields, identify those related to sensitive information and return a dictionary with the sensitive fields grouped by type. A list of the old field names can also be provided. These fields should be in the same order. Passing the old field names allows the sensitive field algorithm to match more accurately. The return value will not contain the old field name, only the corresponding field name from the first parameter.
+
+The sensitive field types are: Bank Account Number, Credit Card Number, Driver's License Number, and Social Security Number.
+#### Parameters:
+* **fields : List[str]** List of field names.
+#### Returns: 
+List of sensitive fields found within the fields passed in.
+#### Example:
+```python
+>>> import formfyxer
+>>> formfyxer.get_sensitive_data_types(["users1_name", "users1_address", "users1_ssn", "users1_routing_number"])
+{'Social Security Number': ['users1_ssn'], 'Bank Account Number': ['users1_routing_number']}
+>>> formfyxer.get_sensitive_data_types(["user_ban1", "user_credit_card_number", "user_cvc", "user_cdl", "user_social_security"], ["old_bank_account_number", "old_credit_card_number", "old_cvc", "old_drivers_license", "old_ssn"])
+{'Bank Account Number': ['user_ban1'], 'Credit Card Number': ['user_credit_card_number', 'user_cvc'], "Driver's License Number": ['user_cdl'], 'Social Security Number': ['user_social_security']}
+```
+[back to top](#formfyxer)
+
 
 
 ## License
