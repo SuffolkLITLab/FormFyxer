@@ -15,6 +15,9 @@ import json
 import networkx as nx
 import numpy as np
 import pandas as pd
+from langdetect import detect, detect_langs, lang_detect_exception
+import langid
+from lingua import Language, LanguageDetectorBuilder
 from numpy import unique
 from numpy import where
 from sklearn.cluster import AffinityPropagation
@@ -871,6 +874,160 @@ def complete_with_command(
     return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
 
 
+# NOTE: env variables to enable the english only testing.
+def get_env_bool(name: str) -> bool:
+    value = os.getenv(name, "False")
+    return value.lower() in ("true", "1", "t")
+
+
+USE_LANGUAGE_DETECTION = get_env_bool("USE_LANGUAGE_DETECTION")
+DEBUG_LANGUAGE_DETECTION = get_env_bool("DEBUG_LANGUAGE_DETECTION")
+DEBUG_LANGUAGE_DETECTION_PRINT_ALL = get_env_bool("DEBUG_LANGUAGE_DETECTION_PRINT_ALL")
+# Support values are: langdetect, langid, lingua
+LANGUAGE_DETECTION_PRIMARY_LIBRARY = (
+    os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
+    if os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
+    else "langdetect"
+)
+
+# Paragraph Settings for Language Detection.
+# Using more context for the paragraph helps the language detection, but there are trade-offs. If the paragraph is too
+# short, English langugage detection fails more. If the paragraph is too long, non-English words will sneak pass as the
+# majority of the paragraph is English. Text inclusion is on a per paragraph basis right now. Might be able to try some
+# sort of sliding window, but unclear what heuristic to use for rating the sub-paragraph slices of text since they would
+# be in multiple windows. Perhaps a single majority weighting might work...
+
+# Minimum lines to chunk together in a paragraph. The language detection will run when both this and the character
+# minimums are met, or at the end of the text with whatever is leftover.
+LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES = (
+    int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES"))
+    if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES")
+    else 3
+)
+# Minimum characters to be considered a paragraph. The language detection will run when both this and the line minimums
+# are met, or at the end of the text with whatever is leftover.
+LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS = (
+    int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS"))
+    if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS")
+    else 30
+)
+# Threshold percentage of non-English text before using the stripped text. This threshold avoids false positives.
+# 1.0 = 100%
+# 0.05 = 5%
+LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE = (
+    float(os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE"))
+    if os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE")
+    else 0.05
+)
+# Lingua-Py is the only one that requires specifying the language set beforehand, but seems the most accurate w/ this
+# subset on languages. Initial language set was taken from the Venn diagram of common lanagues, the Mass Court
+# Forms & CA Court Forms translation list, intersected with the 75 available languages in Lingua.
+LINGUA_LANGUAGES = [
+    Language.ENGLISH,
+    Language.FRENCH,
+    Language.GERMAN,
+    Language.SPANISH,
+    Language.ARABIC,
+    Language.VIETNAMESE,
+    Language.CHINESE,
+    Language.KOREAN,
+    Language.PORTUGUESE,
+    Language.HINDI,
+    Language.BENGALI,
+    Language.RUSSIAN,
+    Language.JAPANESE,
+]
+LINGUA_DETECTOR = LanguageDetectorBuilder.from_languages(*LINGUA_LANGUAGES).build()
+
+
+# NOTE: testing out langdetect. should be relatively easy to swap other libraries in and experiment with them.
+def extract_english_only_text(original_text: str) -> Tuple[bool, int, float, str]:
+    """
+    Uses langdetect and breaks up the original text into sections. Any sections that are detected not to be English
+    are skipped. The return value is a tuple containing a boolean flag that is true if any non-English text is detected,
+    the number of non-English characters skipped, the percentage of skipped text, and the English-only text.
+
+    Currently, we use linebreaks to define section boundaries. This may be changed in the future to be more
+    coarse-grained, perhaps slicing into paragraph sized sections.
+    """
+
+    lines = original_text.split("\n")
+    english_lines = []
+    chunk_size = LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES
+    min_len = LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS
+    any_skipped = False
+    skipped_count = 0
+    skipped_percentage = 0.0
+    current_lines = []
+    for line in lines:
+        current_lines.append(line)
+        if len(current_lines) >= chunk_size:
+            paragraph = "\n".join(current_lines)
+            if len(paragraph) < min_len:
+                continue
+            current_lines = []
+            is_english = detect_english_only_paragraph(paragraph)
+            if is_english:
+                english_lines.append(paragraph)
+            else:
+                any_skipped = True
+
+    # Handle remaining lines
+    if len(current_lines) > 0:
+        paragraph = "\n".join(current_lines)
+        current_lines = []
+        is_english = detect_english_only_paragraph(paragraph)
+        if is_english:
+            english_lines.append(paragraph)
+        else:
+            any_skipped = True
+
+    english_only_text = "\n".join(english_lines)
+
+    if any_skipped:
+        skipped_count = len(original_text) - len(english_only_text)
+        skipped_percentage = 1.0 - (len(english_only_text) / len(original_text))
+
+        # Don't use the processed text if the minimum threshold is not met.
+        if skipped_percentage < LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE:
+            if DEBUG_LANGUAGE_DETECTION:
+                print(f"\nDiscarding skipped because min threshold was not met. percentage: {skipped_percentage} threshold: {LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE}")
+            return False, 0, 0.0, original_text
+
+    return any_skipped, skipped_count, skipped_percentage, english_only_text
+
+
+def detect_english_only_paragraph(paragraph: List[str]) -> bool:
+    try:
+        langdetect_lang = detect(paragraph)
+        langdetect_confidence = detect_langs(paragraph)
+        langid_langs = langid.classify(paragraph)
+        lingua_lang = LINGUA_DETECTOR.detect_language_of(paragraph)
+        is_english = {}
+        is_english["langdetect"] = langdetect_lang == "en"
+        is_english["langid"] = langid_langs[0] == "en"
+        is_english["lingua"] = lingua_lang == Language.ENGLISH
+        all_english = (
+            is_english["langdetect"] and is_english["langid"] and is_english["lingua"]
+        )
+        primary_is_english = is_english[LANGUAGE_DETECTION_PRIMARY_LIBRARY]
+        if DEBUG_LANGUAGE_DETECTION:
+            if all_english and not DEBUG_LANGUAGE_DETECTION_PRINT_ALL:
+                return primary_is_english
+            print(
+                f"\n\n===== Start Paragraph len: {len(paragraph)}"
+            )
+            print(f"{paragraph}")
+            print(
+                f"===== End Paragraph primary: {primary_is_english} votes: {is_english} langdetect: {langdetect_confidence} langid: {langid_langs} lingua: {lingua_lang}"
+            )
+
+        return primary_is_english
+    except lang_detect_exception.LangDetectException:
+        # Ignore. Treat as English.
+        return True
+
+
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     tokens = len(tokenizer(text)["input_ids"])
     command = "Rewrite the above at a sixth grade reading level."
@@ -1152,7 +1309,20 @@ def parse_form(
     # Our workaround is to ask GPT3 if it looks like a court form, and if not, try running
     # ocrmypdf.
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
-    text = cleanup_text(original_text)
+    # TODO: rewrite. number of items in the tuple is unwieldy now.
+    (
+        non_english_text_detected,
+        non_english_character_count,
+        non_english_percentage,
+        original_text_english_only,
+    ) = extract_english_only_text(original_text)
+
+    # TODO: hack here to swap out for seeing effects of the language detection.
+    if USE_LANGUAGE_DETECTION:
+        text = cleanup_text(original_text_english_only)
+    else:
+        text = cleanup_text(original_text)
+
     description = describe_form(text, creds=openai_creds) if openai_creds else ""
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
@@ -1317,6 +1487,9 @@ def parse_form(
         "plain language suggestions": plain_language_suggestions,
         "neutral gender suggestions": neutral_gender_suggestions,
         "pdf_is_tagged": pdf_is_tagged,
+        "non english text detected": non_english_text_detected,
+        "non english percentage": non_english_percentage,
+        "non english character count": non_english_character_count,
     }
     if debug and ff:
         debug_fields = []

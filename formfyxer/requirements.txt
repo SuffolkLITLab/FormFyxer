@@ -1,5 +1,8 @@
 boxdetect
 joblib
+langdetect
+langid
+lingua-language-detector
 networkx>=3.0
 nltk
 numpy
