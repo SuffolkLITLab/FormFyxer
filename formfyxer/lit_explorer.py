@@ -15,8 +15,8 @@ import json
 import networkx as nx
 import numpy as np
 import pandas as pd
-from langdetect import detect, detect_langs, lang_detect_exception
-import langid
+from langdetect import detect, detect_langs, lang_detect_exception  # type: ignore
+import langid  # type: ignore
 from lingua import Language, LanguageDetectorBuilder
 from numpy import unique
 from numpy import where
@@ -875,6 +875,7 @@ def complete_with_command(
     return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
 
 
+# TODO: revisit. bunch of helper methods for the env to play nicely w/ mypy.
 # NOTE: env variables to enable the english only testing.
 def get_env_bool(name: str) -> bool:
     value = os.getenv(name, "False")
@@ -885,10 +886,8 @@ USE_LANGUAGE_DETECTION = get_env_bool("USE_LANGUAGE_DETECTION")
 DEBUG_LANGUAGE_DETECTION = get_env_bool("DEBUG_LANGUAGE_DETECTION")
 DEBUG_LANGUAGE_DETECTION_PRINT_ALL = get_env_bool("DEBUG_LANGUAGE_DETECTION_PRINT_ALL")
 # Support values are: langdetect, langid, lingua
-LANGUAGE_DETECTION_PRIMARY_LIBRARY: str = (
-    os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
-    if os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
-    else "langdetect"
+LANGUAGE_DETECTION_PRIMARY_LIBRARY: str = os.getenv(
+    "LANGUAGE_DETECTION_PRIMARY_LIBRARY", "langdetect"
 )
 
 # Paragraph Settings for Language Detection.
@@ -900,26 +899,23 @@ LANGUAGE_DETECTION_PRIMARY_LIBRARY: str = (
 
 # Minimum lines to chunk together in a paragraph. The language detection will run when both this and the character
 # minimums are met, or at the end of the text with whatever is leftover.
-LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES: int = (
-    int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES"))
-    if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES")
-    else 3
+LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES: int = int(
+    os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES", "3")
 )
+
 # Minimum characters to be considered a paragraph. The language detection will run when both this and the line minimums
 # are met, or at the end of the text with whatever is leftover.
-LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS: int = (
-    int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS"))
-    if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS")
-    else 30
+LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS: int = int(
+    os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS", "30")
 )
+
 # Threshold percentage of non-English text before using the stripped text. This threshold avoids false positives.
 # 1.0 = 100%
 # 0.05 = 5%
-LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE: float = (
-    float(os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE"))
-    if os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE")
-    else 0.05
+LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE: float = float(
+    os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE", "0.05")
 )
+
 # Lingua-Py is the only one that requires specifying the language set beforehand, but seems the most accurate w/ this
 # subset on languages. Initial language set was taken from the Venn diagram of common lanagues, the Mass Court
 # Forms & CA Court Forms translation list, intersected with the 75 available languages in Lingua.
@@ -953,13 +949,13 @@ def extract_english_only_text(original_text: str) -> Tuple[bool, int, float, str
     """
 
     lines = original_text.split("\n")
-    english_lines:List[str] = []
+    english_lines: List[str] = []
     chunk_size = LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES
     min_len = LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS
     any_skipped = False
     skipped_count = 0
     skipped_percentage = 0.0
-    current_lines:List[str] = []
+    current_lines: List[str] = []
     for line in lines:
         current_lines.append(line)
         if len(current_lines) >= chunk_size:
@@ -1000,13 +996,13 @@ def extract_english_only_text(original_text: str) -> Tuple[bool, int, float, str
     return any_skipped, skipped_count, skipped_percentage, english_only_text
 
 
-def detect_english_only_paragraph(paragraph: List[str]) -> bool:
+def detect_english_only_paragraph(paragraph: str) -> bool:
     try:
         langdetect_lang = detect(paragraph)
         langdetect_confidence = detect_langs(paragraph)
         langid_langs = langid.classify(paragraph)
         lingua_lang = LINGUA_DETECTOR.detect_language_of(paragraph)
-        is_english = {}
+        is_english: Dict[str, bool] = {}
         is_english["langdetect"] = langdetect_lang == "en"
         is_english["langid"] = langid_langs[0] == "en"
         is_english["lingua"] = lingua_lang == Language.ENGLISH
