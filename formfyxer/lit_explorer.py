@@ -30,6 +30,7 @@ from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
 import sigfig
+from typing import Any
 import yaml
 from .pdf_wrangling import (
     get_existing_pdf_fields,
@@ -884,7 +885,7 @@ USE_LANGUAGE_DETECTION = get_env_bool("USE_LANGUAGE_DETECTION")
 DEBUG_LANGUAGE_DETECTION = get_env_bool("DEBUG_LANGUAGE_DETECTION")
 DEBUG_LANGUAGE_DETECTION_PRINT_ALL = get_env_bool("DEBUG_LANGUAGE_DETECTION_PRINT_ALL")
 # Support values are: langdetect, langid, lingua
-LANGUAGE_DETECTION_PRIMARY_LIBRARY = (
+LANGUAGE_DETECTION_PRIMARY_LIBRARY: str = (
     os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
     if os.getenv("LANGUAGE_DETECTION_PRIMARY_LIBRARY")
     else "langdetect"
@@ -899,14 +900,14 @@ LANGUAGE_DETECTION_PRIMARY_LIBRARY = (
 
 # Minimum lines to chunk together in a paragraph. The language detection will run when both this and the character
 # minimums are met, or at the end of the text with whatever is leftover.
-LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES = (
+LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES: int = (
     int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES"))
     if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES")
     else 3
 )
 # Minimum characters to be considered a paragraph. The language detection will run when both this and the line minimums
 # are met, or at the end of the text with whatever is leftover.
-LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS = (
+LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS: int = (
     int(os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS"))
     if os.getenv("LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS")
     else 30
@@ -914,7 +915,7 @@ LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS = (
 # Threshold percentage of non-English text before using the stripped text. This threshold avoids false positives.
 # 1.0 = 100%
 # 0.05 = 5%
-LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE = (
+LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE: float = (
     float(os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE"))
     if os.getenv("LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE")
     else 0.05
@@ -922,7 +923,7 @@ LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE = (
 # Lingua-Py is the only one that requires specifying the language set beforehand, but seems the most accurate w/ this
 # subset on languages. Initial language set was taken from the Venn diagram of common lanagues, the Mass Court
 # Forms & CA Court Forms translation list, intersected with the 75 available languages in Lingua.
-LINGUA_LANGUAGES = [
+LINGUA_LANGUAGES: List[Any] = [
     Language.ENGLISH,
     Language.FRENCH,
     Language.GERMAN,
@@ -952,13 +953,13 @@ def extract_english_only_text(original_text: str) -> Tuple[bool, int, float, str
     """
 
     lines = original_text.split("\n")
-    english_lines = []
+    english_lines:List[str] = []
     chunk_size = LANGUAGE_DETECTION_PARAGRAPH_MIN_LINES
     min_len = LANGUAGE_DETECTION_PARAGRAPH_MIN_CHARS
     any_skipped = False
     skipped_count = 0
     skipped_percentage = 0.0
-    current_lines = []
+    current_lines:List[str] = []
     for line in lines:
         current_lines.append(line)
         if len(current_lines) >= chunk_size:
@@ -991,7 +992,9 @@ def extract_english_only_text(original_text: str) -> Tuple[bool, int, float, str
         # Don't use the processed text if the minimum threshold is not met.
         if skipped_percentage < LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE:
             if DEBUG_LANGUAGE_DETECTION:
-                print(f"\nDiscarding skipped because min threshold was not met. percentage: {skipped_percentage} threshold: {LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE}")
+                print(
+                    f"\nDiscarding skipped because min threshold was not met. percentage: {skipped_percentage} threshold: {LANGUAGE_DETECTION_THRESHOLD_PERCENTAGE}"
+                )
             return False, 0, 0.0, original_text
 
     return any_skipped, skipped_count, skipped_percentage, english_only_text
@@ -1014,9 +1017,7 @@ def detect_english_only_paragraph(paragraph: List[str]) -> bool:
         if DEBUG_LANGUAGE_DETECTION:
             if all_english and not DEBUG_LANGUAGE_DETECTION_PRINT_ALL:
                 return primary_is_english
-            print(
-                f"\n\n===== Start Paragraph len: {len(paragraph)}"
-            )
+            print(f"\n\n===== Start Paragraph len: {len(paragraph)}")
             print(f"{paragraph}")
             print(
                 f"===== End Paragraph primary: {primary_is_english} votes: {is_english} langdetect: {langdetect_confidence} langid: {langid_langs} lingua: {lingua_lang}"
