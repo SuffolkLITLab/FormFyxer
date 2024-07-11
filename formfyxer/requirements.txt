@@ -13,7 +13,7 @@ pikepdf
 reportlab
 requests
 ocrmypdf
-scikit-learn==1.2.2
+scikit-learn
 spacy
 textstat
 transformers
