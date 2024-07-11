@@ -115,44 +115,42 @@ class TestSubstitutePhrases(unittest.TestCase):
 class TestSpot(unittest.TestCase):
     def setUp(self) -> None:
         self.request_args = {
-            'url': 'https://spot.suffolklitlab.org/v0/entities-nested/',
-            'headers': {
-                'Authorization': 'Bearer your_SPOT_API_token goes here',
-                'Content-Type': 'application/json'
+            "url": "https://spot.suffolklitlab.org/v0/entities-nested/",
+            "headers": {
+                "Authorization": "Bearer your_SPOT_API_token goes here",
+                "Content-Type": "application/json",
             },
-            'data': {
-                'text': '',
-                'save-text': 0,
-                'cutoff-lower': 0.25,
-                'cutoff-pred': 0.5,
-                'cutoff-upper': 0.6,
-            }
+            "data": {
+                "text": "",
+                "save-text": 0,
+                "cutoff-lower": 0.25,
+                "cutoff-pred": 0.5,
+                "cutoff-upper": 0.6,
+            },
         }
         return super().setUp()
 
-
-    @mock.patch('requests.post')
+    @mock.patch("requests.post")
     def test_calls_spot(self, mock_post):
-        text = 'The quick brown fox jumps over the lazy dog.'
-        self.request_args['data']['text'] = text
+        text = "The quick brown fox jumps over the lazy dog."
+        self.request_args["data"]["text"] = text
         spot(text)
         mock_post.assert_called_with(
-            self.request_args['url'],
-            headers=self.request_args['headers'],
-            data=json.dumps(self.request_args['data'])
+            self.request_args["url"],
+            headers=self.request_args["headers"],
+            data=json.dumps(self.request_args["data"]),
         )
 
-
-    @mock.patch('requests.post')
+    @mock.patch("requests.post")
     def test_calls_spot_with_reduced_character_count(self, mock_post):
-        text = 'a' * 5001
-        reduced_text = 'a' * 5000
-        self.request_args['data']['text'] = reduced_text
+        text = "a" * 5001
+        reduced_text = "a" * 5000
+        self.request_args["data"]["text"] = reduced_text
         spot(text)
         mock_post.assert_called_with(
-            self.request_args['url'],
-            headers=self.request_args['headers'],
-            data=json.dumps(self.request_args['data'])
+            self.request_args["url"],
+            headers=self.request_args["headers"],
+            data=json.dumps(self.request_args["data"]),
         )
 
 

@@ -34,7 +34,7 @@ from .pdf_wrangling import (
     FieldType,
     unlock_pdf_in_place,
     is_tagged,
-)   
+)
 
 try:
     from nltk.corpus import stopwords
@@ -131,18 +131,20 @@ try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
     ) as in_file:
-        default_key:Optional[str] = in_file.read().rstrip()
+        default_key: Optional[str] = in_file.read().rstrip()
 except:
     default_key = None
 try:
     with open(
         os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
     ) as in_file:
-        default_org:Optional[str] = in_file.read().rstrip()
+        default_org: Optional[str] = in_file.read().rstrip()
 except:
     default_org = None
 if default_key:
-    client:Optional[OpenAI] = OpenAI(api_key=default_key, organization=default_org or None)
+    client: Optional[OpenAI] = OpenAI(
+        api_key=default_key, organization=default_org or None
+    )
 elif os.getenv("OPENAI_API_KEY"):
     client = OpenAI()
 else:
@@ -159,6 +161,7 @@ GENDERED_TERMS_PATH = os.path.join(CURRENT_DIRECTORY, "data", "gendered_terms.ym
 PLAIN_LANGUAGE_TERMS_PATH = os.path.join(
     CURRENT_DIRECTORY, "data", "simplified_words.yml"
 )
+
 
 # This creates a timeout exception that can be triggered when something hangs too long.
 class TimeoutException(Exception):
@@ -429,17 +432,18 @@ def normalize_name(
     not, to a snake_case variable name of appropriate length.
 
     HACK: temporarily all we do is re-case it and normalize it using regex rules.
-    Will be replaced with call to LLM soon.        
+    Will be replaced with call to LLM soon.
     """
-    
+
     if this_field not in included_fields:
         this_field = re_case(this_field)
         this_field = regex_norm_field(this_field)
 
     if this_field in included_fields:
         return f"*{this_field}", 0.01
-    
+
     return reformat_field(this_field, tools_token=tools_token), 0.5
+
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
 #
@@ -652,23 +656,21 @@ def classify_field(field: FieldInfo, new_name: str) -> AnswerType:
     return AnswerType.GATHERED
 
 
-def get_adjusted_character_count(
-        field: FieldInfo
-)-> float:
+def get_adjusted_character_count(field: FieldInfo) -> float:
     """
-    Determines the bracketed length of an input field based on its max_length attribute, 
-    returning a float representing the approximate length of the field content. 
+    Determines the bracketed length of an input field based on its max_length attribute,
+    returning a float representing the approximate length of the field content.
 
     The function chunks the answers into 5 different lengths (checkboxes, 2 words, short, medium, and long)
     instead of directly using the character count, as forms can allocate different spaces
     for the same data without considering the space the user actually needs.
 
     Args:
-        field (FieldInfo): An object containing information about the input field, 
+        field (FieldInfo): An object containing information about the input field,
                            including the "max_length" attribute.
 
     Returns:
-        float: The approximate length of the field content, categorized into checkboxes, 2 words, short, 
+        float: The approximate length of the field content, categorized into checkboxes, 2 words, short,
                medium, or long based on the max_length attribute.
 
     Examples:
@@ -694,10 +696,8 @@ def get_adjusted_character_count(
     )  # Anything over 10 lines probably needs a full page but form author skimped on space
     if field["type"] != InputType.TEXT:
         return ONE_WORD
-    
-    if field["max_length"] <= ONE_LINE or (
-        field["max_length"] <= ONE_LINE * 2
-    ):
+
+    if field["max_length"] <= ONE_LINE or (field["max_length"] <= ONE_LINE * 2):
         return ONE_WORD * 2
     elif field["max_length"] <= SHORT_ANSWER:
         return SHORT_ANSWER
@@ -816,7 +816,12 @@ class OpenAiCreds(TypedDict):
     key: str
 
 
-def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] = None, temperature:float=0) -> str:
+def text_complete(
+    prompt: str,
+    max_tokens: int = 500,
+    creds: Optional[OpenAiCreds] = None,
+    temperature: float = 0,
+) -> str:
     """Run a prompt via openAI's API and return the result.
 
     Args:
@@ -836,16 +841,13 @@ def text_complete(prompt:str, max_tokens:int=500, creds: Optional[OpenAiCreds] =
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system", 
-                    "content": prompt
-                },
+                {"role": "system", "content": prompt},
             ],
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=1.0,
             frequency_penalty=0.0,
-            presence_penalty=0.0
+            presence_penalty=0.0,
         )
         return str((response.choices[0].message.content or "").strip())
     except Exception as ex:
@@ -1004,7 +1006,9 @@ def substitute_phrases(
 
     # Find all matches for the substitution phrases
     for original, replacement in sorted_phrases:
-        for match in re.finditer(r"\b" + re.escape(original) + r"\b", input_string, re.IGNORECASE):
+        for match in re.finditer(
+            r"\b" + re.escape(original) + r"\b", input_string, re.IGNORECASE
+        ):
             matches.append((match.start(), match.end(), replacement))
 
     # Sort the matches based on their starting position
@@ -1108,7 +1112,11 @@ def parse_form(
     except:
         readability = -1
     # Still attempt to re-evaluate if not using openai
-    if not original_text or (openai_creds and description == "abortthisnow.") or readability > 30:
+    if (
+        not original_text
+        or (openai_creds and description == "abortthisnow.")
+        or readability > 30
+    ):
         # We do not care what the PDF output is, doesn't add that much time
         ocr_p = [
             "ocrmypdf",
@@ -1216,9 +1224,11 @@ def parse_form(
         "category": cat,
         "pages": pages_count,
         "reading grade level": readability,
-        "time to answer": time_to_answer_form(field_types_and_sizes(ff), new_names)
-        if ff
-        else [-1, -1],
+        "time to answer": (
+            time_to_answer_form(field_types_and_sizes(ff), new_names)
+            if ff
+            else [-1, -1]
+        ),
         "list": nsmi,
         "avg fields per page": f_per_page,
         "fields": new_names,
@@ -1236,16 +1246,21 @@ def parse_form(
         "slotin percent": slotin_count / field_count if field_count > 0 else 0,
         "gathered percent": gathered_count / field_count if field_count > 0 else 0,
         "created percent": created_count / field_count if field_count > 0 else 0,
-        "third party percent": third_party_count / field_count
-        if field_count > 0
-        else 0,
+        "third party percent": (
+            third_party_count / field_count if field_count > 0 else 0
+        ),
         "passive voice percent": (
             passive_sentences_count / sentence_count if sentence_count > 0 else 0
         ),
         "citations per field": citation_count / field_count if field_count > 0 else 0,
         "citation count": citation_count,
         "all caps percent": all_caps_count / word_count,
-        "normalized characters per field": sum(get_adjusted_character_count(field) for field in field_types ) / field_count if ff else 0,
+        "normalized characters per field": (
+            sum(get_adjusted_character_count(field) for field in field_types)
+            / field_count
+            if ff
+            else 0
+        ),
         "difficult words": difficult_words,
         "difficult word count": difficult_word_count,
         "difficult word percent": difficult_word_count / word_count,
@@ -1304,7 +1319,7 @@ def _form_complexity_per_metric(stats):
         {"name": "pages", "weight": 2},
         {"name": "citations per field", "weight": 1.2},
         {"name": "avg fields per page", "weight": 1 / 8},
-        {"name": "normalized characters per field", "weight": 1/8},
+        {"name": "normalized characters per field", "weight": 1 / 8},
         {"name": "sentences per page", "weight": 0.05},
         # percents will have a higher weight, because they are between 0 and 1
         {"name": "slotin percent", "weight": 2},
@@ -1322,11 +1337,11 @@ def _form_complexity_per_metric(stats):
         weight = metric.get("weight") or 1
         val = 0
         if "clip" in metric:
-            val = min(max(stats.get(name,0), metric["clip"][0]), metric["clip"][1])
+            val = min(max(stats.get(name, 0), metric["clip"][0]), metric["clip"][1])
         elif isinstance(stats.get(name), bool):
             val = 1 if stats.get(name) else 0
         else:
-            val = stats.get(name,0)
+            val = stats.get(name, 0)
         if "intercept" in metric:
             val -= metric["intercept"]
         return val * weight
