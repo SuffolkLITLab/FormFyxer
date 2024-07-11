@@ -1234,10 +1234,12 @@ def get_possible_text_fields(
         # construct tuple of bounding boxes and sort them top to bottom
         boundingBoxes = tuple(cv2.boundingRect(c) for c in cnts)
         if not boundingBoxes:
-            return (),()
+            return (), ()
 
         # Sort the contours and bounding boxes
-        sorted_zip = sorted(zip(cnts, boundingBoxes), key=lambda b: b[1][coord], reverse=reverse)
+        sorted_zip = sorted(
+            zip(cnts, boundingBoxes), key=lambda b: b[1][coord], reverse=reverse
+        )
 
         if not sorted_zip:
             return (), ()

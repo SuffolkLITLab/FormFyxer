@@ -22,8 +22,8 @@ __all__ = [
 
 def add_paragraph_after(paragraph, text):
     p = OxmlElement("w:p")
-    r = OxmlElement('w:r')
-    t = OxmlElement('w:t')
+    r = OxmlElement("w:r")
+    t = OxmlElement("w:t")
     t.text = text
 
     r.append(t)
@@ -33,17 +33,18 @@ def add_paragraph_after(paragraph, text):
 
 def add_paragraph_before(paragraph, text):
     p = OxmlElement("w:p")
-    r = OxmlElement('w:r')
-    t = OxmlElement('w:t')
+    r = OxmlElement("w:r")
+    t = OxmlElement("w:t")
     t.text = text
 
     r.append(t)
     p.append(r)
     paragraph._element.addprevious(p)
 
+
 def add_run_after(run, text):
-    r = OxmlElement('w:r')
-    t = OxmlElement('w:t')
+    r = OxmlElement("w:r")
+    t = OxmlElement("w:t")
     t.text = text
 
     r.append(t)
@@ -55,8 +56,8 @@ def update_docx(
 ) -> docx.document.Document:
     """Update the document with the modified runs.
 
-    Note: OpenAI is probabilistic, so the modified run indices may not be correct. 
-    When the index of a run or paragraph is out of range, a new paragraph 
+    Note: OpenAI is probabilistic, so the modified run indices may not be correct.
+    When the index of a run or paragraph is out of range, a new paragraph
     will be inserted at the end of the document or a new run at the end of the
     paragraph's runs.
 
@@ -88,19 +89,22 @@ def update_docx(
             continue
         run = paragraph.runs[run_number]
         if new_paragraph == 1:
-           add_paragraph_after(paragraph, modified_text)
+            add_paragraph_after(paragraph, modified_text)
         elif new_paragraph == -1:
-           add_paragraph_before(paragraph, modified_text)
+            add_paragraph_before(paragraph, modified_text)
         else:
             run.text = modified_text
     return document
 
-def get_docx_repr(docx_path: str, paragraph_start:int=0, paragraph_end:Optional[int]=None):
+
+def get_docx_repr(
+    docx_path: str, paragraph_start: int = 0, paragraph_end: Optional[int] = None
+):
     """Return a JSON representation of the paragraphs and runs in the DOCX file.
 
     Args:
         docx_path: path to the DOCX file
-    
+
     Returns:
         A JSON representation of the paragraphs and runs in the DOCX file.
     """
@@ -117,9 +121,10 @@ def get_docx_repr(docx_path: str, paragraph_start:int=0, paragraph_end:Optional[
             )
     return repr(items)
 
+
 def get_labeled_docx_runs(
     docx_path: Optional[str] = None,
-    docx_repr = Optional[str],
+    docx_repr=Optional[str],
     custom_people_names: Optional[Tuple[str, str]] = None,
     openai_client: Optional[OpenAI] = None,
     api_key: Optional[str] = None,
@@ -264,22 +269,23 @@ def get_labeled_docx_runs(
         "(State the reason for eviction)" transforms into `{{ eviction_reason }}`.
     """
     return get_modified_docx_runs(
-        docx_path = docx_path,
-        docx_repr = docx_repr,
+        docx_path=docx_path,
+        docx_repr=docx_repr,
         custom_example=custom_example,
         instructions=instructions,
         openai_client=openai_client,
         api_key=api_key,
     )
 
+
 def get_modified_docx_runs(
-        docx_path: Optional[str] = None,
-        docx_repr: Optional[str] = None,
-        custom_example:str = "",
-        instructions:str = "",
-        openai_client: Optional[OpenAI] = None, 
-        api_key:Optional[str]=None,
-        temperature=0.5,
+    docx_path: Optional[str] = None,
+    docx_repr: Optional[str] = None,
+    custom_example: str = "",
+    instructions: str = "",
+    openai_client: Optional[OpenAI] = None,
+    api_key: Optional[str] = None,
+    temperature=0.5,
 ) -> List[Tuple[int, int, str, int]]:
     """Use GPT to rewrite the contents of a DOCX file paragraph by paragraph. Does not handle tables, footers, or
     other structures yet.
@@ -301,9 +307,9 @@ def get_modified_docx_runs(
         [1, 0, "I hope this letter finds you well."],
     ]
 
-    Your custom instructions should include an example of how the sample will be modified, like the one below: 
-    
-    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the 
+    Your custom instructions should include an example of how the sample will be modified, like the one below:
+
+    Example reply, indicating paragraph, run, the new text, and a number indicating if this changes the
     current paragraph, adds one before, or adds one after (-1, 0, 1):
 
     {"results":
@@ -336,9 +342,7 @@ def get_modified_docx_runs(
     assert isinstance(docx_repr, str)
 
     if not openai_client:
-        openai_client = OpenAI(
-            api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        )
+        openai_client = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
 
     if not custom_example:
         custom_example = """[
@@ -347,7 +351,9 @@ def get_modified_docx_runs(
         [1, 0, "I hope this letter finds you well."],
     ]"""
 
-    if not "[" in instructions: # Make sure we have at least a minimal example of the output
+    if (
+        not "[" in instructions
+    ):  # Make sure we have at least a minimal example of the output
         instructions += """The result will look like this:
 
     {"results":
@@ -357,7 +363,7 @@ def get_modified_docx_runs(
         ]
     }
     """
-        
+
     role_description = f"""
     You will process a DOCX document and return a JSON structure that transforms the DOCX file
     based on the following guidelines and examples. The DOCX will be provided as an annotated series of
@@ -386,11 +392,11 @@ def get_modified_docx_runs(
             f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
         )
 
-    moderation_response = openai_client.moderations.create(input=role_description + docx_repr)
+    moderation_response = openai_client.moderations.create(
+        input=role_description + docx_repr
+    )
     if moderation_response.results[0].flagged:
-        raise Exception(
-            f"OpenAI moderation error: {moderation_response.results[0]}"
-        )
+        raise Exception(f"OpenAI moderation error: {moderation_response.results[0]}")
 
     response = openai_client.chat.completions.create(
         model="gpt-4-1106-preview",
@@ -416,6 +422,7 @@ def get_modified_docx_runs(
     guesses = json.loads(response.choices[0].message.content)["results"]
     return guesses
 
+
 def make_docx_plain_language(docx_path: str) -> docx.document.Document:
     """
     Convert a DOCX file to plain language with the help of OpenAI.
@@ -439,10 +446,10 @@ def make_docx_plain_language(docx_path: str) -> docx.document.Document:
         ]
     }
     """,
-    
     )
     return update_docx(docx.Document(docx_path), guesses)
 
+  
 def modify_docx_with_openai_guesses(docx_path: str) -> docx.document.Document:
     """Uses OpenAI to guess the variable names for a document and then modifies the document with the guesses.
 
