@@ -974,6 +974,53 @@ def get_citations(text: str, tokenized_sentences: List[str]) -> List[str]:
     return citations_with_context
 
 
+# NOTE: omitting "CID" for Credit Card IDs since it has a lot of false positives.
+FIELD_PATTERNS = {
+    "Bank Account Number": [
+        r"account[\W_]*number",
+        r"ABA$",
+        r"routing[\W_]*number",
+        r"checking",
+    ],
+    "Credit Card Number": [r"credit[\W_]*card", r"(CV[CDV]2?|CCV|CSC)"],
+    "Driver's License Number": [r"drivers[\W_]*license", r".?DL$"],
+    "Social Security Number": [r"social[\W_]*security[\W_]*number", r"SSN", r"TIN$"],
+}
+FIELD_REGEXES = {
+    name: re.compile("|".join(patterns), re.IGNORECASE | re.MULTILINE)
+    for name, patterns in FIELD_PATTERNS.items()
+}
+
+
+def get_sensitive_data_types(
+    fields: List[str], fields_old: Optional[List[str]] = None
+) -> Dict[str, List[str]]:
+    """
+    Given a list of fields, identify those related to sensitive information and return a dictionary with the sensitive
+    fields grouped by type. A list of the old field names can also be provided. These fields should be in the same
+    order. Passing the old field names allows the sensitive field algorithm to match more accurately. The return value
+    will not contain the old field name, only the corresponding field name from the first parameter.
+
+    The sensitive data types are: Bank Account Number, Credit Card Number, Driver's License Number, and Social Security
+    Number.
+    """
+
+    if fields_old is not None and len(fields) != len(fields_old):
+        raise ValueError(
+            "If provided, fields_old must have the same number of items as fields."
+        )
+
+    sensitive_data_types: Dict[str, List[str]] = {}
+    num_fields = len(fields)
+    for i, field in enumerate(fields):
+        for name, regex in FIELD_REGEXES.items():
+            if re.search(regex, field):
+                sensitive_data_types.setdefault(name, []).append(field)
+            elif fields_old is not None and re.search(regex, fields_old[i]):
+                sensitive_data_types.setdefault(name, []).append(field)
+    return sensitive_data_types
+
+
 def substitute_phrases(
     input_string: str, substitution_phrases: Dict[str, str]
 ) -> Tuple[str, List[Tuple[int, int]]]:
@@ -1206,6 +1253,7 @@ def parse_form(
         classify_field(field, new_names[index])
         for index, field in enumerate(field_types)
     ]
+    sensitive_data_types = get_sensitive_data_types(new_names, field_names)
 
     slotin_count = sum(1 for c in classified if c == AnswerType.SLOT_IN)
     gathered_count = sum(1 for c in classified if c == AnswerType.GATHERED)
@@ -1234,6 +1282,7 @@ def parse_form(
         "fields": new_names,
         "fields_conf": new_names_conf,
         "fields_old": field_names,
+        "sensitive data types": sensitive_data_types,
         "text": text,
         "original_text": original_text,
         "number of sentences": sentence_count,
