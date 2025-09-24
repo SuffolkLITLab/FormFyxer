@@ -28,6 +28,16 @@ TOOLS_TOKEN=<your_token_here> ISUNITTEST=True python -m unittest formfyxer.tests
 
 You should test with and without `TOOLS_TOKEN`, and make sure that both pass.
 
+## Configuration
+
+Secrets are now loaded from environment variables. Copy `.env.example` to `.env` and fill in any credentials you need:
+
+```bash
+cp .env.example .env
+```
+
+The library looks for `SPOT_TOKEN` or `TOOLS_TOKEN` for Spot access and `OPENAI_API_KEY` with an optional `OPENAI_ORGANIZATION` for OpenAI features. Any standard environment variable loader that populates those values will work; the package uses [python-dotenv](https://github.com/theskumar/python-dotenv) to read `.env` automatically.
+
 ## Functions
 
 Functions from `pdf_wrangling` are found on [our documentation site](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/reference/formfyxer/pdf_wrangling).
@@ -251,7 +261,7 @@ array([-5.26231120e-04,  2.24983986e-03, -8.35795340e-03,  4.02475413e-03,
 
 
 ### formfyxer.spot(text,lower=0.25,pred=0.5,upper=0.6,verbose=0)
-A simple wrapper for the LIT Lab's NLP issue spotter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). In order to use this feature **you must edit the spot_token.txt file found in this package to contain your API token**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
+A simple wrapper for the LIT Lab's NLP issue spotter [Spot](https://app.swaggerhub.com/apis-docs/suffolklitlab/spot/). To use this feature **configure a `.env` file (see `.env.example`) with your Spot API token in `SPOT_TOKEN` or `TOOLS_TOKEN`**. You can sign up for an account and get your token on the [Spot website](https://spot.suffolklitlab.org/).
 
 Given a string, this function will return a list of LIST entities/issues found in the text. Items are filtered by estimates of how likely they are to be present. The values dictating this filtering are controlled by the optional `lower`, `pred`, and `upper` parameters. These refer to the lower bound of the predicted likelihood that an entity is present, the predicted likelihood it is present, and the upper-bound of this prediction respectively. 
 
@@ -308,7 +318,7 @@ A list of LIST entities/issues found in the text.
 
 
 ### formfyxer.guess_form_name(text)
-An OpenAI-enabled tool that will guess the name of a court form given the full text of the form. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+An OpenAI-enabled tool that will guess the name of a court form given the full text of the form. To use this feature **add your OpenAI credentials to `.env` (see `.env.example`) as `OPENAI_API_KEY` and optionally `OPENAI_ORGANIZATION`**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
 
 Given a string conataining the full text of a court form, this function will return its best guess for the name of the form. 
 
@@ -326,7 +336,7 @@ A string with a proposed name for a court form.
 
 
 ### formfyxer.plain_lang(text)
-An OpenAI-enabled tool that will rewrite a text into a plain language draft. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+An OpenAI-enabled tool that will rewrite a text into a plain language draft. To use this feature **set `OPENAI_API_KEY` (and optionally `OPENAI_ORGANIZATION`) in your `.env` file**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
 
 Given a string, this function will return its attempt at rewriting the srting in plain language. 
 
@@ -346,7 +356,7 @@ A string with a proposed plain language rewrite.
 
 
 ### formfyxer.describe_form(text)
-An OpenAI-enabled tool that will write a draft plain language description for a form. In order to use this feature **you must edit the `openai_org.txt` and `openai_key.txt` files found in this package to contain your OpenAI credentials**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
+An OpenAI-enabled tool that will write a draft plain language description for a form. To use this feature **set `OPENAI_API_KEY` (and optionally `OPENAI_ORGANIZATION`) in your `.env` file**. You can sign up for an account and get your token on the [OpenAI signup](https://beta.openai.com/signup).
 
 Given a string containing the full text of a court form, this function will return its a draft description of the form written in plain language. 
 
