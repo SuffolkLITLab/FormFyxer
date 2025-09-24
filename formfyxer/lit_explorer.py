@@ -3,8 +3,9 @@
 import os
 import re
 import subprocess
-#import spacy
-#from spacy.tokens import Doc
+
+# import spacy
+# from spacy.tokens import Doc
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams
 
@@ -23,7 +24,8 @@ from sklearn.preprocessing import normalize
 from joblib import load
 import nltk
 from nltk.tokenize import sent_tokenize
-#from PassivePySrc import PassivePy
+
+# from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
 import sigfig
@@ -76,12 +78,12 @@ tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
 stop_words = set(stopwords.words("english"))
 
-#try:
-    # this takes a while to load
+# try:
+# this takes a while to load
 #    import en_core_web_lg
 
 #    nlp = en_core_web_lg.load()
-#except:
+# except:
 #    try:
 #        import en_core_web_sm
 
@@ -99,7 +101,7 @@ stop_words = set(stopwords.words("english"))
 #        nlp = en_core_web_sm.load()
 
 
-#passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
+# passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
 
 
 # Load local variables, models, and API key(s).
@@ -374,7 +376,7 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
       text: a string of multiple words to vectorize
       tools_token: the token to tools.suffolklitlab.org, used for micro-service
           to reduce the amount of memory you need on your machine. If
-          not passed, you need to have `en_core_web_lg` installed. NOTE: this 
+          not passed, you need to have `en_core_web_lg` installed. NOTE: this
           last bit is nolonger correct, you have to use the micor-service
           as we have had to remove SpaCY due to a breaking change
     """
@@ -400,9 +402,9 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
             return [np.array(embed) for embed in r.json().get("embeddings", [])]
     else:
         raise Exception("Couldn't access tools.suffolklitlab.org, no token provided")
-        #if isinstance(text, str):
+        # if isinstance(text, str):
         #    return norm(nlp(text).vector)
-        #else:
+        # else:
         #    return [norm(nlp(indiv_text).vector) for indiv_text in text]
 
 
@@ -881,31 +883,33 @@ def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
     command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
     return complete_with_command(text, command, 250, creds=creds)
 
+
 def needs_calculations(text: Union[str]) -> bool:
-# since we reomved SpaCy we can't use Doc, 
-# so I rewrote this to provide similar functionality absent Doc
-# old code is commented out
-#def needs_calculations(text: Union[str, Doc]) -> bool:
+    # since we reomved SpaCy we can't use Doc,
+    # so I rewrote this to provide similar functionality absent Doc
+    # old code is commented out
+    # def needs_calculations(text: Union[str, Doc]) -> bool:
     """A conservative guess at if a given form needs the filler to make math calculations,
     something that should be avoided. If"""
     CALCULATION_WORDS = ["subtract", "total", "minus", "multiply" "divide"]
-    #if isinstance(text, str):
+    # if isinstance(text, str):
     #    doc = nlp(text)
-    #else:
+    # else:
     #    doc = text
-    #for token in doc:
+    # for token in doc:
     #    if token.text.lower() in CALCULATION_WORDS:
     #        return True
     for word in CALCULATION_WORDS:
         if word in text.lower():
             return True
-        
+
     # TODO(brycew): anything better than a binary yes-no value on this?
     return False
 
+
 def tools_passive(input: Union[List[str], str], tools_token: Optional[str] = None):
     """
-        Ping passive voice API for list of sentences using the passive voice
+    Ping passive voice API for list of sentences using the passive voice
     """
     if tools_token:
         headers = {
@@ -921,7 +925,7 @@ def tools_passive(input: Union[List[str], str], tools_token: Optional[str] = Non
         if not r.ok:
             raise Exception("Couldn't access tools.suffolklitlab.org")
         if isinstance(input, str):
-            output = np.array(r.json().get("results", []),dtype=object)
+            output = np.array(r.json().get("results", []), dtype=object)
             if len(output) <= 0:
                 raise Exception("Vector from tools.suffolklitlab.org is empty")
             return output
@@ -932,7 +936,8 @@ def tools_passive(input: Union[List[str], str], tools_token: Optional[str] = Non
 
 
 def get_passive_sentences(
-    text: Union[List, str], tools_token: Optional[str] = None) -> List[Tuple[str, List[Tuple[int, int]]]]:
+    text: Union[List, str], tools_token: Optional[str] = None
+) -> List[Tuple[str, List[Tuple[int, int]]]]:
     """Return a list of tuples, where each tuple represents a
     sentence in which passive voice was detected along with a list of the
     starting and ending position of each fragment that is phrased in the passive voice.
@@ -943,33 +948,35 @@ def get_passive_sentences(
     If provided a single string, it will be tokenized with NTLK and
     sentences containing fewer than 2 words will be ignored.
     """
-    # since we reomoved SpaCy, I rewrote this function to call the passive voice API 
+    # since we reomoved SpaCy, I rewrote this function to call the passive voice API
     # already up and running on tools.suffolklitlab.org
     # old code is commented out
     # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
     # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
     #
-    #if isinstance(text, str):
+    # if isinstance(text, str):
     #    sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
     #    if not sentences:
     #        raise ValueError(
     #            "There are no sentences over 2 words in the provided text."
     #        )
-    #elif isinstance(text, list):
+    # elif isinstance(text, list):
     #    sentences = text
-    #else:
+    # else:
     #    raise ValueError(f"Can't tokenize {type(text)} object into sentences")
 
-    #if not sentences:
+    # if not sentences:
     #    return []
 
-    #passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-    #matching_rows = passive_text_df[passive_text_df["binary"] > 0]
+    # passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
+    # matching_rows = passive_text_df[passive_text_df["binary"] > 0]
 
     sentences_with_highlights = []
-    tools_output = tools_passive(text, tools_token=tools_token) #list(zip(matching_rows["document"], matching_rows["all_passives"]))
+    tools_output = tools_passive(
+        text, tools_token=tools_token
+    )  # list(zip(matching_rows["document"], matching_rows["all_passives"]))
 
-    #for item in list(zip(matching_rows["document"], matching_rows["all_passives"])):
+    # for item in list(zip(matching_rows["document"], matching_rows["all_passives"])):
     for item in tools_output:
         for fragment in item[1]:
             sentences_with_highlights.append(
