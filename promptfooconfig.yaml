@@ -1,0 +1,98 @@
+providers:
+- id: openai:gpt-5-nano
+  config:
+    max_output_tokens: 1024
+    response_format:
+      type: json_schema
+      json_schema:
+        name: passive_voice_analysis
+        schema:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                type: object
+                properties:
+                  sentence:
+                    type: string
+                  fragments:
+                    type: array
+                    items:
+                      type: string
+                required:
+                - sentence
+                - fragments
+          required:
+          - results
+prompts:
+- id: passive-voice-json
+  raw: "Identify passive voice verb phrases in the sentence and output JSON only.\n\
+    \nOutput schema (already enforced separately):\n{\n\t\"results\": [\n\t\t{ \"\
+    sentence\": \"<original sentence>\", \"fragments\": [\"passive verb phrase\",\
+    \ ...] }\n\t]\n}\n\nEvery input sentence must appear exactly once in `results`\
+    \ with its original text and a `fragments` array (use `[]` when no passive fragment\
+    \ exists). If uncertain whether a construction is passive, prefer returning an\
+    \ empty `fragments` array rather than guessing.\n\nDefinition (for this task):\
+    \ PASSIVE VOICE = auxiliary \"be\" (or being / been) + past participle where the\
+    \ subject undergoes the action. Include progressive + passive stacks (e.g. \"\
+    is being repaired\").\n\nExtract the shortest verb phrase span that signals the\
+    \ passive (include all auxiliaries belonging to it):\nPatterns to capture (examples\
+    \ \u2192 fragments):\n1. be + VBN: \"was thrown\" \u2192 \"was thrown\"\n2. be\
+    \ + adverb? + VBN: \"was quickly approved\" \u2192 \"was quickly approved\"\n\
+    3. be + being + VBN: \"is being discussed\" \u2192 \"is being discussed\"\n4.\
+    \ be + been + VBN: \"has been chosen\" \u2192 \"has been chosen\"\n5. get + VBN\
+    \ (causative passive) ONLY if not an idiom: \"got hired\" \u2192 \"got hired\"\
+    \n\nDo NOT mark:\n- be + adjective/state: \"is open\", \"was happy\", \"is ready\"\
+    \n- progressive active: \"was running\", \"is working\"\n- copular + noun: \"\
+    was president\"\n- perfect active: \"has eaten\" (transitive active, no passive\
+    \ morphology)\n\nEdge guidance:\n- If an agent phrase (\"by X\") appears after\
+    \ a valid passive, still mark the passive verb phrase only (do not include \"\
+    by\").\n- Allow intervening adverbs inside the phrase (\"was carefully crafted\"\
+    ).\n- Multiple passives in one sentence => list each fragment separately.\n\n\
+    Return only JSON per schema. If no passive, fragments = [].\n\nExample:\nInput\
+    \ sentences:\n1. The ball was thrown by John.\n\nExpected JSON:\n{\"results\"\
+    : [{\"sentence\": \"The ball was thrown by John.\", \"fragments\": [\"was thrown\"\
+    ]}]}\n\nAnother example (active voice):\nInput sentences:\n1. John threw the ball.\n\
+    \nExpected JSON:\n{\"results\": [{\"sentence\": \"John threw the ball.\", \"fragments\"\
+    : []}]}\n\nYou will be given numbered sentences. Respond with JSON only using\
+    \ the schema described above. Each sentence must appear once with a `fragments`\
+    \ array of passive voice excerpts (empty if none).\n\n1. {{Sentence}}"
+tests: file://formfyxer/tests/passive_voice_test_dataset.csv
+defaultTest:
+  assert:
+  - type: javascript
+    description: Evaluate passive/active voice detection
+    value: "let data;\ntry {\n  // Robust JSON parsing with fallback handling\n  if\
+      \ (typeof output === 'string') {\n    // Try to parse as-is first\n    try {\n\
+      \      data = JSON.parse(output);\n    } catch (e) {\n      // Try to extract\
+      \ JSON from response (handle extra text/formatting)\n      const jsonMatch =\
+      \ output.match(/\\{.*\\}/s);\n      if (jsonMatch) {\n        data = JSON.parse(jsonMatch[0]);\n\
+      \      } else {\n        throw new Error('No valid JSON found in output');\n\
+      \      }\n    }\n  } else {\n    data = output;\n  }\n} catch (parseError) {\n\
+      \  // JSON parsing failed completely - treat as no passive voice detected\n\
+      \  return {\n    pass: false,\n    score: 0,\n    reason: `JSON parsing failed:\
+      \ ${parseError.message}. Raw output: ${output?.substring(0, 100)}...`\n  };\n\
+      }\n\nif (!data || !Array.isArray(data.results)) {\n  return {\n    pass: false,\n\
+      \    score: 0,\n    reason: 'Missing `results` array in model output'\n  };\n\
+      }\n\nif (data.results.length !== 1) {\n  return {\n    pass: false,\n    score:\
+      \ 0,\n    reason: `Expected exactly one result, received ${data.results.length}`\n\
+      \  };\n}\n\nconst sentenceText = (context.vars.Sentence || '').trim();\nconst\
+      \ [resultEntry] = data.results;\n\nif (!resultEntry || typeof resultEntry.sentence\
+      \ !== 'string') {\n  return {\n    pass: false,\n    score: 0,\n    reason:\
+      \ 'Result entry missing `sentence` field'\n  };\n}\n\nif (resultEntry.sentence.trim()\
+      \ !== sentenceText) {\n  return {\n    pass: false,\n    score: 0,\n    reason:\
+      \ `Sentence mismatch. Expected \"${sentenceText}\", got \"${resultEntry.sentence}\"\
+      `\n  };\n}\n\nconst fragmentsArray = Array.isArray(resultEntry.fragments) ?\
+      \ resultEntry.fragments.filter(f => typeof f === 'string' && f.trim().length\
+      \ > 0) : [];\nconst hasFragments = fragmentsArray.length > 0;\n\nconst isPassive\
+      \ = context.vars.human_coding && Number(context.vars.human_coding) > 0;\n\n\
+      if (isPassive) {\n  // Should have fragments for passive sentences\n  return\
+      \ {\n    pass: hasFragments,\n    score: hasFragments ? 1 : 0,\n    reason:\
+      \ hasFragments ? \n      `Correctly identified passive voice: ${fragmentsArray.join(',\
+      \ ')}` :\n      `Failed to identify passive voice in: \"${context.vars.Sentence}\"\
+      `\n  };\n} else {\n  // Should NOT have fragments for active sentences\n  return\
+      \ {\n    pass: !hasFragments,\n    score: !hasFragments ? 1 : 0,\n    reason:\
+      \ !hasFragments ? \n      `Correctly identified active voice (no fragments)`\
+      \ :\n      `Incorrectly identified passive voice in active sentence: \"${context.vars.Sentence}\"\
+      `\n  };\n}\n"

@@ -70,6 +70,8 @@ import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from .passive_voice_detection import detect_passive_voice_segments
+
 from transformers import GPT2TokenizerFast
 
 load_dotenv()
@@ -907,76 +909,42 @@ def needs_calculations(text: Union[str]) -> bool:
     return False
 
 
-def tools_passive(input: Union[List[str], str], tools_token: Optional[str] = None):
+def tools_passive(
+    input: Union[List[str], str],
+    tools_token: Optional[str] = None,
+    *,
+    model: str = "gpt-5-nano",
+):
+    """Detect passive voice fragments using an OpenAI model.
+
+    The ``tools_token`` parameter is retained for backwards compatibility but is no longer
+    required. Detection now relies on OpenAI's Responses API.
     """
-    Ping passive voice API for list of sentences using the passive voice
-    """
+
     if tools_token:
-        headers = {
-            "Authorization": "Bearer " + tools_token,
-            "Content-Type": "application/json",
-        }
-        body = {"input": input}
-        r = requests.post(
-            "https://tools.suffolklitlab.org/passive/",
-            headers=headers,
-            data=json.dumps(body),
-        )
-        if not r.ok:
-            raise Exception("Couldn't access tools.suffolklitlab.org")
-        if isinstance(input, str):
-            output = np.array(r.json().get("results", []), dtype=object)
-            if len(output) <= 0:
-                raise Exception("Vector from tools.suffolklitlab.org is empty")
-            return output
-        else:
-            return [np.array(embed) for embed in r.json().get("results", [])]
-    else:
-        raise Exception("Couldn't access tools.suffolklitlab.org, no token provided")
+        # Legacy callers may still provide this argument; ignore it gracefully.
+        pass
+
+    return detect_passive_voice_segments(
+        input,
+        openai_client=client if client else None,
+        model=model,
+    )
 
 
 def get_passive_sentences(
     text: Union[List, str], tools_token: Optional[str] = None
 ) -> List[Tuple[str, List[Tuple[int, int]]]]:
-    """Return a list of tuples, where each tuple represents a
-    sentence in which passive voice was detected along with a list of the
-    starting and ending position of each fragment that is phrased in the passive voice.
-    The combination of the two can be used in the PDFStats frontend to highlight the
-    passive text in an individual sentence.
+    """Return passive voice fragments for each sentence in ``text``.
 
-    Text can either be a string or a list of strings.
-    If provided a single string, it will be tokenized with NTLK and
-    sentences containing fewer than 2 words will be ignored.
+    The function relies on OpenAI's ``gpt-5-nano`` model (via ``passive_voice_detection``)
+    to detect passive constructions. ``tools_token`` is kept for backward compatibility
+    but is no longer required.
     """
-    # since we reomoved SpaCy, I rewrote this function to call the passive voice API
-    # already up and running on tools.suffolklitlab.org
-    # old code is commented out
-    # Sepehri, A., Markowitz, D. M., & Mir, M. (2022, February 3).
-    # PassivePy: A Tool to Automatically Identify Passive Voice in Big Text Data. Retrieved from psyarxiv.com/bwp3t
-    #
-    # if isinstance(text, str):
-    #    sentences = [s for s in sent_tokenize(text) if len(s.split(" ")) > 2]
-    #    if not sentences:
-    #        raise ValueError(
-    #            "There are no sentences over 2 words in the provided text."
-    #        )
-    # elif isinstance(text, list):
-    #    sentences = text
-    # else:
-    #    raise ValueError(f"Can't tokenize {type(text)} object into sentences")
-
-    # if not sentences:
-    #    return []
-
-    # passive_text_df = passivepy.match_corpus_level(pd.DataFrame(sentences), 0)
-    # matching_rows = passive_text_df[passive_text_df["binary"] > 0]
-
     sentences_with_highlights = []
     tools_output = tools_passive(
         text, tools_token=tools_token
     )  # list(zip(matching_rows["document"], matching_rows["all_passives"]))
-
-    # for item in list(zip(matching_rows["document"], matching_rows["all_passives"])):
     for item in tools_output:
         for fragment in item[1]:
             sentences_with_highlights.append(

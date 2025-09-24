@@ -38,6 +38,16 @@ cp .env.example .env
 
 The library looks for `SPOT_TOKEN` or `TOOLS_TOKEN` for Spot access and `OPENAI_API_KEY` with an optional `OPENAI_ORGANIZATION` for OpenAI features. Any standard environment variable loader that populates those values will work; the package uses [python-dotenv](https://github.com/theskumar/python-dotenv) to read `.env` automatically.
 
+## Passive Voice Evaluation
+
+You can sanity check the LLM-backed passive voice detector with [Promptfoo](https://promptfoo.dev/).
+
+```bash
+promptfoo eval -c promptfooconfig.yaml
+```
+
+The eval uses `formfyxer/tests/passive_voice_test_dataset.csv` to ensure sentences labeled as passive produce a non-empty `fragments` array. If you change the prompt inside `formfyxer/passive_voice_detection.py`, copy the updated text (the `system_prompt` and numbering format) into `promptfooconfig.yaml` so the evaluation mirrors runtime behavior.
+
 ## Functions
 
 Functions from `pdf_wrangling` are found on [our documentation site](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/reference/formfyxer/pdf_wrangling).
