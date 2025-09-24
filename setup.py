@@ -33,7 +33,7 @@ setuptools.setup(
         'nltk', 'boxdetect', 'pdf2image', 'reportlab>=3.6.13', 'pdfminer.six',
         'opencv-python', 'ocrmypdf', 'eyecite', 'passivepy>=0.2.16', 'sigfig',
         'typer>=0.4.1,<0.5.0', # typer pre 0.4.1 was broken by click 8.1.0: https://github.com/explosion/spaCy/issues/10564
-        'openai', 'python-docx', 'tiktoken', 'transformers' 
+        'openai', 'python-dotenv', 'python-docx', 'tiktoken', 'transformers' 
     ],
     #cmdclass={
     #  'install': InstallSpacyModelCommand,

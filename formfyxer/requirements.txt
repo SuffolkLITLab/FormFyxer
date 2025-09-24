@@ -5,6 +5,7 @@ nltk
 numpy
 mypy
 openai
+python-dotenv
 tiktoken
 pandas-stubs
 pdf2image

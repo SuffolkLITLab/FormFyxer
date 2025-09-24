@@ -66,8 +66,11 @@ from typing import (
 
 import openai
 from openai import OpenAI
+from dotenv import load_dotenv
 
 from transformers import GPT2TokenizerFast
+
+load_dotenv()
 
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
@@ -123,24 +126,13 @@ included_fields = [
     "signature_date",
 ]
 
-with open(
-    os.path.join(os.path.dirname(__file__), "keys", "spot_token.txt"), "r"
-) as in_file:
-    default_spot_token = in_file.read().rstrip()
-try:
-    with open(
-        os.path.join(os.path.dirname(__file__), "keys", "openai_key.txt"), "r"
-    ) as in_file:
-        default_key: Optional[str] = in_file.read().rstrip()
-except:
-    default_key = None
-try:
-    with open(
-        os.path.join(os.path.dirname(__file__), "keys", "openai_org.txt"), "r"
-    ) as in_file:
-        default_org: Optional[str] = in_file.read().rstrip()
-except:
-    default_org = None
+default_spot_token = os.getenv("SPOT_TOKEN") or os.getenv("TOOLS_TOKEN")
+default_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+default_org: Optional[str] = (
+    os.getenv("OPENAI_ORGANIZATION")
+    or os.getenv("OPENAI_ORG")
+    or os.getenv("OPENAI_ORG_ID")
+)
 if default_key:
     client: Optional[OpenAI] = OpenAI(
         api_key=default_key, organization=default_org or None
