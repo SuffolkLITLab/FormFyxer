@@ -1,11 +1,7 @@
-# Updated on 2022-12-12
-
 import os
 import re
 import subprocess
 
-# import spacy
-# from spacy.tokens import Doc
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams
 
@@ -23,9 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from joblib import load
 import nltk
-from nltk.tokenize import sent_tokenize
 
-# from PassivePySrc import PassivePy
 import eyecite
 from enum import Enum
 import sigfig
@@ -70,7 +64,7 @@ import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 
-from .passive_voice_detection import detect_passive_voice_segments
+from .passive_voice_detection import detect_passive_voice_segments, split_sentences
 
 from transformers import GPT2TokenizerFast
 
@@ -79,32 +73,6 @@ load_dotenv()
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
 stop_words = set(stopwords.words("english"))
-
-# try:
-# this takes a while to load
-#    import en_core_web_lg
-
-#    nlp = en_core_web_lg.load()
-# except:
-#    try:
-#        import en_core_web_sm
-
-#        nlp = en_core_web_sm.load()
-#    except:
-#        print("Downloading word2vec model en_core_web_sm")
-#        import subprocess
-
-#        bashCommand = "python -m spacy download en_core_web_sm"
-#        process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-#        output, error = process.communicate()
-#        print(f"output of word2vec model download: {str(output)}")
-#        import en_core_web_sm
-
-#        nlp = en_core_web_sm.load()
-
-
-# passivepy = PassivePy.PassivePyAnalyzer(nlp=nlp)
-
 
 # Load local variables, models, and API key(s).
 
@@ -934,7 +902,7 @@ def get_passive_sentences(
     """
     if tools_token:
         pass  # deprecated
-    
+
     sentences_with_highlights = []
         
     passive_voice_results = detect_passive_voice_segments(
@@ -1235,7 +1203,7 @@ def parse_form(
         new_names = field_names
         new_names_conf = []
 
-    tokenized_sentences = sent_tokenize(original_text)
+    tokenized_sentences = split_sentences(original_text)
     # No need to detect passive voice in very short sentences
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 

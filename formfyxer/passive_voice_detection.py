@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from openai import AuthenticationError
 
-__all__ = ["detect_passive_voice_segments"]
+__all__ = ["detect_passive_voice_segments", "split_sentences"]
 
 load_dotenv()
 
@@ -85,7 +85,7 @@ _SENTENCE_REGEX = re.compile(
 )
 
 
-def _split_sentences(text: str) -> List[str]:
+def split_sentences(text: str) -> List[str]:
     """Split text into sentences using regex pattern matching.
     
     It uses a regex to identify sentence boundaries
@@ -134,7 +134,7 @@ def _normalize_input(text: Union[str, Sequence[str]]) -> List[str]:
     if isinstance(text, str):
         sentences = [
             s
-            for s in _split_sentences(text)
+            for s in split_sentences(text)
             if len(s.split()) > 2
         ]
     elif isinstance(text, Sequence):
