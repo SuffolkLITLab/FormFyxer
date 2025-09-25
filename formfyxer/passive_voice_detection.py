@@ -264,7 +264,7 @@ def detect_passive_voice_segments(
             classification = content.strip().lower()
 
             if classification == "passive":
-                # If classified as passive, return the whole sentence as the fragment, to match behavior of passivepy
+                # If classified as passive, return the whole sentence as the fragment, to match return type of passivepy
                 # Note that when we had fragment detection in the prompt, performance dropped significantly
                 fragments = [sentence]
             else:
