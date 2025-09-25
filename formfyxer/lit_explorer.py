@@ -909,43 +909,41 @@ def needs_calculations(text: Union[str]) -> bool:
     return False
 
 
-def tools_passive(
-    input: Union[List[str], str],
-    tools_token: Optional[str] = None,
-    *,
-    model: str = "gpt-5-nano",
-):
-    """Detect passive voice fragments using an OpenAI model.
-
-    The ``tools_token`` parameter is retained for backwards compatibility but is no longer
-    required. Detection now relies on OpenAI's Responses API.
-    """
-
-    if tools_token:
-        # Legacy callers may still provide this argument; ignore it gracefully.
-        pass
-
-    return detect_passive_voice_segments(
-        input,
-        openai_client=client if client else None,
-        model=model,
-    )
-
-
 def get_passive_sentences(
-    text: Union[List, str], tools_token: Optional[str] = None
+    text: Union[List, str], tools_token: Optional[str] = None, model: str = "gpt-5-nano"
 ) -> List[Tuple[str, List[Tuple[int, int]]]]:
     """Return passive voice fragments for each sentence in ``text``.
 
-    The function relies on OpenAI's ``gpt-5-nano`` model (via ``passive_voice_detection``)
+    The function relies on OpenAI's language model (via ``passive_voice_detection``)
     to detect passive constructions. ``tools_token`` is kept for backward compatibility
-    but is no longer required.
+    but is no longer used.
+
+    Args:
+        text (Union[List, str]): The input text or list of texts to analyze.
+        tools_token (Optional[str], optional): Deprecated. Previously used for authentication with
+            tools.suffolklitlab.org. Defaults to None.
+        model (str, optional): The OpenAI model to use for detection. Defaults to "gpt-5-nano".
+    Returns:
+        List[Tuple[str, List[Tuple[int, int]]]]: A list of tuples, each containing the original text
+            and a list of tuples representing the start and end positions of detected passive voice fragments.
+
+    Note:
+        At least for now, the fragment detection is no longer meaningful (except in tokenized sentences) because
+        the LLM detection simply returns the full original sentence if it contains passive voice. We have not reimplemented
+        this behavior of PassivePy.
     """
+    if tools_token:
+        pass  # deprecated
+    
     sentences_with_highlights = []
-    tools_output = tools_passive(
-        text, tools_token=tools_token
-    )  # list(zip(matching_rows["document"], matching_rows["all_passives"]))
-    for item in tools_output:
+        
+    passive_voice_results = detect_passive_voice_segments(
+        text,
+        openai_client=client if client else None,
+        model=model,
+    )
+    
+    for item in passive_voice_results:
         for fragment in item[1]:
             sentences_with_highlights.append(
                 (

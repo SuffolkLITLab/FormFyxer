@@ -202,7 +202,7 @@ def detect_passive_voice_segments(
     """Detect passive voice constructions in text using OpenAI's language model.
     
     This function analyzes sentences to identify passive voice constructions by
-    leveraging OpenAI's Responses API.
+    leveraging OpenAI's Chat Completions API with a simple single-prompt approach.
     
     Args:
         text: Input text as either a single string (which will be split into
@@ -231,140 +231,58 @@ def detect_passive_voice_segments(
         
         >>> detect_passive_voice_segments("John threw the ball.")
         [('John threw the ball.', [])]
+
+    Note:
+        This implementation uses a single prompt per sentence to classify rather
+        than the responses API after testing and finding better performance with this
+        simple approach.
     """
 
-    global _cached_client, _organization
-
     sentences = _normalize_input(text)
-
-    system_prompt = _load_prompt()
-
     client = _ensure_client(openai_client)
     
-    # Define structured output schema for passive voice detection
-    json_schema = {
-        "type": "object",
-        "properties": {
-            "results": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "sentence": {
-                            "type": "string",
-                            "minLength": 1
-                        },
-                        "fragments": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "required": ["sentence", "fragments"],
-                    "additionalProperties": False
-                }
-            }
-        },
-        "required": ["results"],
-        "additionalProperties": False
-    }
-    
-    input_items = [
-        {
-            "role": "system",
-            "content": [{"type": "input_text", "text": system_prompt}],
-        },
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": (
-                        "You will be given numbered sentences. Respond with JSON only "
-                        "using the schema described above. Each sentence must appear once "
-                        "with a `fragments` array of passive voice excerpts (empty if none)."
-                    ),
-                }
-            ],
-        },
-    ]
-
-    for idx, sentence in enumerate(sentences, start=1):
-        input_items.append(
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": f"{idx}. {sentence}",
-                    }
-                ],
-            }
-        )
-
-    try:
-        response = client.responses.create(
-            model=model,
-            input=input_items,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "passive_voice_analysis",
-                    "strict": True,
-                    "schema": json_schema
-                }
-            }
-        )
-    except AuthenticationError as exc:
-        if "mismatched_organization" in str(exc).lower() and _organization:
-            # Retry without the organization header.
-            _organization = None
-            _cached_client = OpenAI(api_key=_api_key)
-            response = _cached_client.responses.create(
-                model=model,
-                input=input_items,
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "passive_voice_analysis",
-                        "strict": True,
-                        "schema": json_schema
-                    }
-                }
-            )
-        else:
-            raise
-
-    output_text = _extract_text_from_response(response)
-    json_text = output_text.strip()
-    if not json_text:
-        return [(sentence, []) for sentence in sentences]
-
-    def _parse_json(raw: str):
-        cleaned = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", " ", raw)
-        return json.loads(cleaned)
-
-    try:
-        payload = _parse_json(json_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", json_text, re.DOTALL)
-        if not match:
-            return [(sentence, []) for sentence in sentences]
-        try:
-            payload = _parse_json(match.group(0))
-        except json.JSONDecodeError:
-            return [(sentence, []) for sentence in sentences]
-
-    extracted = {}
-    for item in payload.get("results", []):
-        sentence = item.get("sentence", "").strip()
-        fragments = [frag for frag in item.get("fragments", []) if frag]
-        if sentence:
-            extracted[sentence] = fragments
-
     ordered_results = []
+    
     for sentence in sentences:
-        ordered_results.append((sentence, extracted.get(sentence, [])))
+        system_prompt = _load_prompt()
+        full_prompt = f"{system_prompt}\n\nSentence: {sentence}" # Mirroring promptfoo format
+            
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": full_prompt}],
+                max_completion_tokens=500,  # We only need one word: "passive" or "active", but leave room for reasoning tokens with gpt-5
+            )
+        except AuthenticationError as exc:
+            global _organization, _cached_client, _api_key
+            if "mismatched_organization" in str(exc).lower() and _organization:
+                # Retry without the organization header.
+                _organization = None
+                new_client = OpenAI(api_key=_api_key)
+                _cached_client = new_client
+                response = new_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": full_prompt}],
+                    max_completion_tokens=500,
+                )
+            else:
+                raise
+
+        content = response.choices[0].message.content
+        if content:
+            classification = content.strip().lower()
+            
+            if classification == "passive":
+                # If classified as passive, return the whole sentence as the fragment, to match behavior of passivepy
+                # Note that when we had fragment detection in the prompt, performance dropped significantly
+                fragments = [sentence]
+            else:
+                # If active or any other response, return empty list
+                fragments = []
+        else:
+            # No response content, assume active
+            fragments = []
+            
+        ordered_results.append((sentence, fragments))
 
     return ordered_results

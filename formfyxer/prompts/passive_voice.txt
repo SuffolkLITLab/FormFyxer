@@ -1,47 +1,11 @@
-Identify passive voice verb phrases in the sentence and output JSON only.
+Classify the sentence as "passive" or "active" voice.
 
-Output schema (already enforced separately):
-{
-	"results": [
-		{ "sentence": "<original sentence>", "fragments": ["passive verb phrase", ...] }
-	]
-}
+PASSIVE VOICE patterns:
+• "was/were + [past participle]" (was thrown, were sent, was impeached)
+• "is/are being + [past participle]" (being discussed, being opened)  
+• "has/have been + [past participle]" (has been completed)
 
-Every input sentence must appear exactly once in `results` with its original text and a `fragments` array (use `[]` when no passive fragment exists). If uncertain whether a construction is passive, prefer returning an empty `fragments` array rather than guessing.
+ACTIVE VOICE examples:
+• "threw" • "sent" • "gave" • "is fascinating" • "am working" 
 
-Definition (for this task): PASSIVE VOICE = auxiliary "be" (or being / been) + past participle where the subject undergoes the action. Include progressive + passive stacks (e.g. "is being repaired").
-
-Extract the shortest verb phrase span that signals the passive (include all auxiliaries belonging to it):
-Patterns to capture (examples → fragments):
-1. be + VBN: "was thrown" → "was thrown"
-2. be + adverb? + VBN: "was quickly approved" → "was quickly approved"
-3. be + being + VBN: "is being discussed" → "is being discussed"
-4. be + been + VBN: "has been chosen" → "has been chosen"
-5. get + VBN (causative passive) ONLY if not an idiom: "got hired" → "got hired"
-
-Do NOT mark:
-- be + adjective/state: "is open", "was happy", "is ready"
-- progressive active: "was running", "is working"
-- copular + noun: "was president"
-- perfect active: "has eaten" (transitive active, no passive morphology)
-
-Edge guidance:
-- If an agent phrase ("by X") appears after a valid passive, still mark the passive verb phrase only (do not include "by").
-- Allow intervening adverbs inside the phrase ("was carefully crafted").
-- Multiple passives in one sentence => list each fragment separately.
-
-Return only JSON per schema. If no passive, fragments = [].
-
-Example:
-Input sentences:
-1. The ball was thrown by John.
-
-Expected JSON:
-{"results": [{"sentence": "The ball was thrown by John.", "fragments": ["was thrown"]}]}
-
-Another example (active voice):
-Input sentences:
-1. John threw the ball.
-
-Expected JSON:
-{"results": [{"sentence": "John threw the ball.", "fragments": []}]}
+Respond with exactly one word: "passive" or "active"
