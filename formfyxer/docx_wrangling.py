@@ -52,7 +52,8 @@ def add_run_after(run, text):
 
 
 def update_docx(
-    document: Union[docx.document.Document, str], modified_runs: List[Tuple[int, int, str, int]]
+    document: Union[docx.document.Document, str],
+    modified_runs: List[Tuple[int, int, str, int]],
 ) -> docx.document.Document:
     """Update the document with the modified runs.
 
@@ -449,7 +450,7 @@ def make_docx_plain_language(docx_path: str) -> docx.document.Document:
     )
     return update_docx(docx.Document(docx_path), guesses)
 
-  
+
 def modify_docx_with_openai_guesses(docx_path: str) -> docx.document.Document:
     """Uses OpenAI to guess the variable names for a document and then modifies the document with the guesses.
 

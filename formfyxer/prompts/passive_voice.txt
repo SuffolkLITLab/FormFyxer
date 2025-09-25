@@ -1,0 +1,11 @@
+Classify the sentence as "passive" or "active" voice.
+
+PASSIVE VOICE patterns:
+• "was/were + [past participle]" (was thrown, were sent, was impeached)
+• "is/are being + [past participle]" (being discussed, being opened)  
+• "has/have been + [past participle]" (has been completed)
+
+ACTIVE VOICE examples:
+• "threw" • "sent" • "gave" • "is fascinating" • "am working" 
+
+Respond with exactly one word: "passive" or "active"

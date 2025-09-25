@@ -1,0 +1,28 @@
+providers:
+- id: openai:gpt-5-nano
+  config:
+    max_output_tokens: 1024
+prompts:
+- id: "passive-voice-simple"
+  raw: |
+    Classify the sentence as "passive" or "active" voice.
+
+    PASSIVE VOICE patterns:
+    • "was/were + [past participle]" (was thrown, were sent, was impeached)
+    • "is/are being + [past participle]" (being discussed, being opened)  
+    • "has/have been + [past participle]" (has been completed)
+
+    ACTIVE VOICE examples:
+    • "threw" • "sent" • "gave" • "is fascinating" • "am working" 
+
+    Respond with exactly one word: "passive" or "active"
+
+    Sentence: {{Sentence}}
+tests: file://formfyxer/tests/passive_voice_test_dataset.csv
+defaultTest:
+  assert:
+  - type: javascript
+    value: |
+      const expected = context.vars.human_coding === '1' ? 'passive' : 'active';
+      const actual = output.trim().toLowerCase();
+      return actual === expected;
