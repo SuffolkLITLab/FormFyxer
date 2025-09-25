@@ -904,13 +904,13 @@ def get_passive_sentences(
         pass  # deprecated
 
     sentences_with_highlights = []
-        
+
     passive_voice_results = detect_passive_voice_segments(
         text,
         openai_client=client if client else None,
         model=model,
     )
-    
+
     for item in passive_voice_results:
         for fragment in item[1]:
             sentences_with_highlights.append(
