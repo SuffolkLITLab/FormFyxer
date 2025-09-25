@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=40.0.0", "pip", "spacy"]
+requires = ["setuptools>=40.0.0", "pip"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
@@ -25,18 +25,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module="networkx.*"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module="en_core_web_lg.*"
-ignore_missing_imports=true
-
-[[tool.mypy.overrides]]
-module="en_core_web_md.*"
-ignore_missing_imports=true
-
-[[tool.mypy.overrides]]
-module="en_core_web_sm.*"
-ignore_missing_imports=true
 
 [[tool.mypy.overrides]]
 module="boxdetect.*"

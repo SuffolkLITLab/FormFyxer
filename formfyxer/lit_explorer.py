@@ -373,10 +373,8 @@ def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
     Args:
       text: a string of multiple words to vectorize
       tools_token: the token to tools.suffolklitlab.org, used for micro-service
-          to reduce the amount of memory you need on your machine. If
-          not passed, you need to have `en_core_web_lg` installed. NOTE: this 
-          last bit is nolonger correct, you have to use the micor-service
-          as we have had to remove SpaCY due to a breaking change
+          to reduce the amount of memory you need on your machine. This token
+          is required as we have removed SpaCY dependencies due to breaking changes.
     """
     if tools_token:
         headers = {
