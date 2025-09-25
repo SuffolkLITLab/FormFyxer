@@ -152,6 +152,8 @@ def _normalize_input(text: Union[str, Sequence[str]]) -> List[str]:
 
 def _extract_text_from_response(response) -> str:
     """Extract text content from OpenAI ChatCompletion API response object.
+    
+    See https://platform.openai.com/docs/api-reference/responses/object?lang=python for more information about the OpenAI's possible return types.
 
     Args:
         response: OpenAI API response object with potentially nested content
