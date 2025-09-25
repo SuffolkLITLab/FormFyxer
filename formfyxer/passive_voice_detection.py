@@ -1,4 +1,4 @@
-"""Passive voice detection utilities backed by OpenAI's Responses API."""
+"""Passive voice detection utilities backed by OpenAI's ChatCompletion API."""
 
 from __future__ import annotations
 
@@ -160,11 +160,7 @@ def _normalize_input(text: Union[str, Sequence[str]]) -> List[str]:
 
 
 def _extract_text_from_response(response) -> str:
-    """Extract text content from OpenAI Responses API response object.
-    
-    This function handles different response formats from the OpenAI Responses API,
-    trying multiple approaches to extract the text content. It checks for various
-    attributes and nested structures that may contain the response text.
+    """Extract text content from OpenAI ChatCompletion API response object.
     
     Args:
         response: OpenAI API response object with potentially nested content
@@ -234,7 +230,7 @@ def detect_passive_voice_segments(
 
     Note:
         This implementation uses a single prompt per sentence to classify rather
-        than the responses API after testing and finding better performance with this
+        than the ChatCompletion API after testing and finding better performance with this
         simple approach.
     """
 
