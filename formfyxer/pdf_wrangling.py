@@ -53,14 +53,14 @@ class FieldType(Enum):
     CHOICE = "choice"  # allows only one selection
     RADIO = "radio"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 
 class PikeField(TypedDict):
     type: str
     var_name: str
-    all: pikepdf.objects.Object
+    all: Any
 
 
 BoundingBox = Tuple[int, int, int, int]
@@ -131,7 +131,7 @@ class FormField:
             self.configs.update(configs)
 
     @classmethod
-    def make_textbox(cls, label: str, field_bbox: BoundingBox, font_size):
+    def make_textbox(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
         return FormField(
             label,
             FieldType.TEXT,
@@ -142,7 +142,7 @@ class FormField:
         )
 
     @classmethod
-    def make_textarea(cls, label: str, field_bbox: BoundingBox, font_size):
+    def make_textarea(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
         return FormField(
             label,
             FieldType.AREA,
@@ -153,7 +153,7 @@ class FormField:
         )
 
     @classmethod
-    def make_checkbox(cls, label: str, bbox: BoundingBox):
+    def make_checkbox(cls, label: str, bbox: BoundingBox) -> "FormField":
         return FormField(
             label,
             FieldType.CHECK_BOX,
@@ -163,7 +163,7 @@ class FormField:
         )
 
     @classmethod
-    def from_pikefield(cls, pike_field: PikeField):
+    def from_pikefield(cls, pike_field: PikeField) -> "FormField":
         if pike_field["type"] == "/Tx":
             var_type = FieldType.TEXT
         elif pike_field["type"] == "/Btn":
@@ -174,10 +174,10 @@ class FormField:
             var_type = FieldType.TEXT
 
         if hasattr(pike_field["all"], "Rect"):
-            x = float(pike_field["all"].Rect[0])  # type: ignore
-            y = float(pike_field["all"].Rect[1])  # type: ignore
-            width = float(pike_field["all"].Rect[2]) - x  # type: ignore
-            height = float(pike_field["all"].Rect[3]) - y  # type: ignore
+            x = float(pike_field["all"].Rect[0])
+            y = float(pike_field["all"].Rect[1])
+            width = float(pike_field["all"].Rect[2]) - x
+            height = float(pike_field["all"].Rect[3]) - y
         else:
             x = 0
             y = 0
@@ -1134,8 +1134,12 @@ def get_possible_radios(img: Union[str, BinaryIO, cv2.Mat]):
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
         img_mat = cv2.imread(img, 0)
+        if img_mat is None:
+            return []
     elif isinstance(img, BinaryIO):
         img_mat = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+        if img_mat is None:
+            return []
     else:
         img_mat = img
 
@@ -1184,8 +1188,12 @@ def get_possible_text_fields(
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
         img_mat = cv2.imread(img, 0)
+        if img_mat is None:
+            return []
     elif isinstance(img, BinaryIO):
         img_mat = cv2.imdecode(np.frombuffer(img.read(), np.uint8), 0)
+        if img_mat is None:
+            return []
     else:
         img_mat = img
 
