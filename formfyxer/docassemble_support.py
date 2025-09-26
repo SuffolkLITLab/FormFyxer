@@ -9,7 +9,7 @@ import os
 
 # Try to import docassemble config function at module level for performance
 try:
-    from docassemble.base.util import get_config  # type: ignore[import-untyped]
+    from docassemble.base.util import get_config  # type: ignore[import-not-found, import-untyped]
     _DOCASSEMBLE_AVAILABLE = True
     _da_get_config = get_config
 except ImportError:
