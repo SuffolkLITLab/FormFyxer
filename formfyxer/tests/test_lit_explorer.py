@@ -134,7 +134,7 @@ class TestSpot(unittest.TestCase):
     def test_calls_spot(self, mock_post):
         text = "The quick brown fox jumps over the lazy dog."
         self.request_args["data"]["text"] = text
-        spot(text)
+        spot(text, token="your_SPOT_API_token goes here")
         mock_post.assert_called_with(
             self.request_args["url"],
             headers=self.request_args["headers"],
@@ -146,7 +146,7 @@ class TestSpot(unittest.TestCase):
         text = "a" * 5001
         reduced_text = "a" * 5000
         self.request_args["data"]["text"] = reduced_text
-        spot(text)
+        spot(text, token="your_SPOT_API_token goes here")
         mock_post.assert_called_with(
             self.request_args["url"],
             headers=self.request_args["headers"],
