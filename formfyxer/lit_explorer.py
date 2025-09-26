@@ -239,29 +239,29 @@ def regex_norm_field(text: str):
     regex_list = [
         # Personal info
         ## Name & Bio
-        ["^((My|Your|Full( legal)?) )?Name$", "users1_name"],
-        ["^(Typed or )?Printed Name\s?\d*$", "users1_name"],
-        ["^(DOB|Date of Birth|Birthday)$", "users1_birthdate"],
+        [r"^((My|Your|Full( legal)?) )?Name$", "users1_name"],
+        [r"^(Typed or )?Printed Name\s?\d*$", "users1_name"],
+        [r"^(DOB|Date of Birth|Birthday)$", "users1_birthdate"],
         ## Address
-        ["^(Street )?Address$", "users1_address_line_one"],
-        ["^City State Zip$", "users1_address_line_two"],
-        ["^City$", "users1_address_city"],
-        ["^State$", "users1_address_state"],
-        ["^Zip( Code)?$", "users1_address_zip"],
+        [r"^(Street )?Address$", "users1_address_line_one"],
+        [r"^City State Zip$", "users1_address_line_two"],
+        [r"^City$", "users1_address_city"],
+        [r"^State$", "users1_address_state"],
+        [r"^Zip( Code)?$", "users1_address_zip"],
         ## Contact
-        ["^(Phone|Telephone)$", "users1_phone_number"],
-        ["^Email( Address)$", "users1_email"],
+        [r"^(Phone|Telephone)$", "users1_phone_number"],
+        [r"^Email( Address)$", "users1_email"],
         # Parties
-        ["^plaintiff\(?s?\)?$", "plaintiff1_name"],
-        ["^defendant\(?s?\)?$", "defendant1_name"],
-        ["^petitioner\(?s?\)?$", "petitioners1_name"],
-        ["^respondent\(?s?\)?$", "respondents1_name"],
+        [r"^plaintiff\(?s?\)?$", "plaintiff1_name"],
+        [r"^defendant\(?s?\)?$", "defendant1_name"],
+        [r"^petitioner\(?s?\)?$", "petitioners1_name"],
+        [r"^respondent\(?s?\)?$", "respondents1_name"],
         # Court info
-        ["^(Court\s)?Case\s?(No|Number)?\s?A?$", "docket_number"],
-        ["^file\s?(No|Number)?\s?A?$", "docket_number"],
+        [r"^(Court\s)?Case\s?(No|Number)?\s?A?$", "docket_number"],
+        [r"^file\s?(No|Number)?\s?A?$", "docket_number"],
         # Form info
-        ["^(Signature|Sign( here)?)\s?\d*$", "users1_signature"],
-        ["^Date\s?\d*$", "signature_date"],
+        [r"^(Signature|Sign( here)?)\s?\d*$", "users1_signature"],
+        [r"^Date\s?\d*$", "signature_date"],
     ]
     for regex in regex_list:
         text = re.sub(regex[0], regex[1], text, flags=re.IGNORECASE)
@@ -275,7 +275,7 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
     h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
     """
     orig_title = text.lower()
-    orig_title = re.sub("[^a-zA-Z]+", " ", orig_title)
+    orig_title = re.sub(r"[^a-zA-Z]+", " ", orig_title)
     orig_title_words = orig_title.split()
     deduped_sentence = []
     for word in orig_title_words:
@@ -321,10 +321,10 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
         except:
             return "_".join(filtered_title_words)
     else:
-        if re.search("^(\d+)$", text):
+        if re.search(r"^(\d+)$", text):
             return "unknown"
         else:
-            return re.sub("\s+", "_", text.lower())
+            return re.sub(r"\s+", "_", text.lower())
 
 
 def norm(row):
@@ -1169,7 +1169,7 @@ def parse_form(
         ):
             title = new_title
         if not title or title == "ApiError" or title.lower() == "abortthisnow.":
-            matches = re.search("(.*)\n", text)
+            matches = re.search(r"(.*)\n", text)
             if matches:
                 title = re_case(matches.group(1).strip())
             else:
@@ -1317,7 +1317,7 @@ def parse_form(
             # print(repr(fields_too))
             for k, field_name in enumerate(new_names):
                 # print(k,field)
-                fields_too[k].T = re.sub("^\*", "", field_name)
+                fields_too[k].T = re.sub(r"^\*", "", field_name)
             my_pdf.save(in_file)
             my_pdf.close()
         except Exception as ex:
