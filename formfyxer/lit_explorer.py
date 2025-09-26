@@ -1146,7 +1146,7 @@ def parse_form(
             any creds or environment variables
         rewrite: whether to rewrite the PDF in place with the new field names
         debug: whether to print debug information
-    
+
     Returns: a dictionary of information about the form
     """
     unlock_pdf_in_place(in_file)
@@ -1166,10 +1166,9 @@ def parse_form(
         ff = None
     # Resolve API key once at the top for consistency
     resolved_api_key = get_openai_api_key_from_sources(
-        openai_api_key, 
-        dict(openai_creds) if openai_creds else None
+        openai_api_key, dict(openai_creds) if openai_creds else None
     )
-    
+
     field_names = [field.name for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
     # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
@@ -1266,9 +1265,7 @@ def parse_form(
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
     try:
-        passive_sentences = get_passive_sentences(
-            sentences, api_key=resolved_api_key
-        )
+        passive_sentences = get_passive_sentences(sentences, api_key=resolved_api_key)
         passive_sentences_count = len(passive_sentences)
     except ValueError:
         passive_sentences_count = 0
