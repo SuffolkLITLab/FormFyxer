@@ -799,7 +799,7 @@ def text_complete(
         api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
     """
     # Resolve the API key using our helper function
-    resolved_key = get_openai_api_key_from_sources(api_key, creds)
+    resolved_key = get_openai_api_key_from_sources(api_key, dict(creds) if creds else None)
 
     if resolved_key:
         openai_client = OpenAI(
