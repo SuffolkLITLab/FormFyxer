@@ -8,6 +8,8 @@ extend-exclude = '(__init__.py|setup.py)'
 [tool.mypy]
 exclude= '''(?x)(
     ^setup.py$
+    | ^test_.*\.py$
+    | ^.*/tests/.*\.py$
   )'''
 
 [[tool.mypy.overrides]]
