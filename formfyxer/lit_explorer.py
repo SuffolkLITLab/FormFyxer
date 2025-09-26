@@ -1130,6 +1130,24 @@ def parse_form(
     in_file with the new fields (if `rewrite=1`). If you pass a spot token, we will guess the
     NSMI code. If you pass openai creds, we will give suggestions for the title and description.
     If you pass openai_api_key, it will be used for passive voice detection (overrides creds and env vars).
+
+    Args:
+        in_file: the path to the PDF file to analyze
+        title: the title of the form, if not provided we will try to guess it
+        jur: the jurisdiction to use for normalization (e.g., "ny" or "ca")
+        cat: the category to use for normalization (e.g., "divorce" or "small_claims")
+        normalize: whether to normalize the field names
+        spot_token: the token to use for spot.suffolklitlab.org, if provided we will
+            attempt to guess the NSMI code
+        tools_token: the token to use for tools.suffolklitlab.org, needed for normalization
+        openai_creds: the OpenAI credentials to use, if provided we will attempt to
+            guess the title and description
+        openai_api_key: an explicit OpenAI API key to use, if provided it will override
+            any creds or environment variables
+        rewrite: whether to rewrite the PDF in place with the new field names
+        debug: whether to print debug information
+    
+    Returns: a dictionary of information about the form
     """
     unlock_pdf_in_place(in_file)
     the_pdf = pikepdf.open(in_file)
@@ -1146,6 +1164,12 @@ def parse_form(
         ff = None
     except AttributeError:
         ff = None
+    # Resolve API key once at the top for consistency
+    resolved_api_key = get_openai_api_key_from_sources(
+        openai_api_key, 
+        dict(openai_creds) if openai_creds else None
+    )
+    
     field_names = [field.name for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
     # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
@@ -1154,13 +1178,9 @@ def parse_form(
     # ocrmypdf.
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
-    # Use either the explicit API key or from creds for description
-    api_key_for_description = openai_api_key or (
-        openai_creds.get("key") if openai_creds else None
-    )
     description = (
-        describe_form(text, creds=openai_creds, api_key=api_key_for_description)
-        if (openai_creds or openai_api_key)
+        describe_form(text, creds=openai_creds, api_key=resolved_api_key)
+        if (openai_creds or resolved_api_key)
         else ""
     )
     try:
@@ -1194,13 +1214,9 @@ def parse_form(
             except:
                 readability = -1
 
-    # Use either the explicit API key or from creds for title guessing
-    api_key_for_title = openai_api_key or (
-        openai_creds.get("key") if openai_creds else None
-    )
     new_title = (
-        guess_form_name(text, creds=openai_creds, api_key=api_key_for_title)
-        if (openai_creds or openai_api_key)
+        guess_form_name(text, creds=openai_creds, api_key=resolved_api_key)
+        if (openai_creds or resolved_api_key)
         else ""
     )
     if not title:
@@ -1250,13 +1266,8 @@ def parse_form(
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
     try:
-        # Determine which API key to use (explicit parameter takes precedence)
-        api_key_to_use = openai_api_key
-        if not api_key_to_use and openai_creds:
-            api_key_to_use = openai_creds.get("key")
-
         passive_sentences = get_passive_sentences(
-            sentences, tools_token=tools_token, api_key=api_key_to_use
+            sentences, api_key=resolved_api_key
         )
         passive_sentences_count = len(passive_sentences)
     except ValueError:
@@ -1368,7 +1379,7 @@ def parse_form(
             # print(repr(fields_too))
             for k, field_name in enumerate(new_names):
                 # print(k,field)
-                fields_too[k].T = re.sub("^\*", "", field_name)
+                fields_too[k].T = re.sub(r"^\*", "", field_name)
             my_pdf.save(in_file)
             my_pdf.close()
         except Exception as ex:
