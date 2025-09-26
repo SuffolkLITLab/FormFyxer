@@ -60,7 +60,7 @@ class FieldType(Enum):
 class PikeField(TypedDict):
     type: str
     var_name: str
-    all: Any
+    all: pikepdf.objects.Object
 
 
 BoundingBox = Tuple[int, int, int, int]
