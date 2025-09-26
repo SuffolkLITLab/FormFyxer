@@ -65,6 +65,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 from .passive_voice_detection import detect_passive_voice_segments, split_sentences
+from .docassemble_support import get_openai_api_key_from_sources
 
 from transformers import GPT2TokenizerFast
 
@@ -786,6 +787,7 @@ def text_complete(
     max_tokens: int = 500,
     creds: Optional[OpenAiCreds] = None,
     temperature: float = 0,
+    api_key: Optional[str] = None,
 ) -> str:
     """Run a prompt via openAI's API and return the result.
 
@@ -794,8 +796,16 @@ def text_complete(
         max_tokens (int, optional): The number of tokens to generate. Defaults to 500.
         creds (Optional[OpenAiCreds], optional): The credentials to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.
+        api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
     """
-    if creds:
+    # Resolve the API key using our helper function
+    resolved_key = get_openai_api_key_from_sources(api_key, dict(creds) if creds else None)
+
+    if resolved_key:
+        openai_client = OpenAI(
+            api_key=resolved_key, organization=creds.get("org") if creds else None
+        )
+    elif creds:
         openai_client = OpenAI(api_key=creds["key"], organization=creds["org"])
     else:
         if client:
@@ -821,7 +831,11 @@ def text_complete(
 
 
 def complete_with_command(
-    text, command, tokens, creds: Optional[OpenAiCreds] = None
+    text,
+    command,
+    tokens,
+    creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
 ) -> str:
     """Combines some text with a command to send to open ai."""
     # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
@@ -833,7 +847,9 @@ def complete_with_command(
         text = tokenizer.decode(
             tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
         )
-    return text_complete(text + "\n\n" + command, max_tokens=tokens, creds=creds)
+    return text_complete(
+        text + "\n\n" + command, max_tokens=tokens, creds=creds, api_key=api_key
+    )
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
@@ -842,14 +858,18 @@ def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
     return complete_with_command(text, command, tokens, creds=creds)
 
 
-def guess_form_name(text, creds: Optional[OpenAiCreds] = None) -> str:
+def guess_form_name(
+    text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
+) -> str:
     command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 20, creds=creds)
+    return complete_with_command(text, command, 20, creds=creds, api_key=api_key)
 
 
-def describe_form(text, creds: Optional[OpenAiCreds] = None) -> str:
+def describe_form(
+    text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
+) -> str:
     command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 250, creds=creds)
+    return complete_with_command(text, command, 250, creds=creds, api_key=api_key)
 
 
 def needs_calculations(text: Union[str]) -> bool:
@@ -876,7 +896,10 @@ def needs_calculations(text: Union[str]) -> bool:
 
 
 def get_passive_sentences(
-    text: Union[List, str], tools_token: Optional[str] = None, model: str = "gpt-5-nano"
+    text: Union[List, str],
+    tools_token: Optional[str] = None,
+    model: str = "gpt-5-nano",
+    api_key: Optional[str] = None,
 ) -> List[Tuple[str, List[Tuple[int, int]]]]:
     """Return passive voice fragments for each sentence in ``text``.
 
@@ -889,6 +912,8 @@ def get_passive_sentences(
         tools_token (Optional[str], optional): Deprecated. Previously used for authentication with
             tools.suffolklitlab.org. Defaults to None.
         model (str, optional): The OpenAI model to use for detection. Defaults to "gpt-5-nano".
+        api_key (Optional[str], optional): OpenAI API key to use. If None, will try docassemble
+            config (if available) then environment variables. Defaults to None.
     Returns:
         List[Tuple[str, List[Tuple[int, int]]]]: A list of tuples, each containing the original text
             and a list of tuples representing the start and end positions of detected passive voice fragments.
@@ -907,6 +932,7 @@ def get_passive_sentences(
         text,
         openai_client=client if client else None,
         model=model,
+        api_key=api_key,
     )
 
     for item in passive_voice_results:
@@ -1095,6 +1121,7 @@ def parse_form(
     spot_token: Optional[str] = None,
     tools_token: Optional[str] = None,
     openai_creds: Optional[OpenAiCreds] = None,
+    openai_api_key: Optional[str] = None,
     rewrite: bool = False,
     debug: bool = False,
 ):
@@ -1102,6 +1129,25 @@ def parse_form(
     Read in a pdf, pull out basic stats, attempt to normalize its form fields, and re-write the
     in_file with the new fields (if `rewrite=1`). If you pass a spot token, we will guess the
     NSMI code. If you pass openai creds, we will give suggestions for the title and description.
+    If you pass openai_api_key, it will be used for passive voice detection (overrides creds and env vars).
+
+    Args:
+        in_file: the path to the PDF file to analyze
+        title: the title of the form, if not provided we will try to guess it
+        jur: the jurisdiction to use for normalization (e.g., "ny" or "ca")
+        cat: the category to use for normalization (e.g., "divorce" or "small_claims")
+        normalize: whether to normalize the field names
+        spot_token: the token to use for spot.suffolklitlab.org, if provided we will
+            attempt to guess the NSMI code
+        tools_token: the token to use for tools.suffolklitlab.org, needed for normalization
+        openai_creds: the OpenAI credentials to use, if provided we will attempt to
+            guess the title and description
+        openai_api_key: an explicit OpenAI API key to use, if provided it will override
+            any creds or environment variables
+        rewrite: whether to rewrite the PDF in place with the new field names
+        debug: whether to print debug information
+
+    Returns: a dictionary of information about the form
     """
     unlock_pdf_in_place(in_file)
     the_pdf = pikepdf.open(in_file)
@@ -1118,6 +1164,11 @@ def parse_form(
         ff = None
     except AttributeError:
         ff = None
+    # Resolve API key once at the top for consistency
+    resolved_api_key = get_openai_api_key_from_sources(
+        openai_api_key, dict(openai_creds) if openai_creds else None
+    )
+
     field_names = [field.name for field in ff] if ff else []
     f_per_page = len(field_names) / pages_count
     # some PDFs (698c6784e6b9b9518e5390fd9ec31050) have vertical text, but it's not detected.
@@ -1126,7 +1177,11 @@ def parse_form(
     # ocrmypdf.
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
-    description = describe_form(text, creds=openai_creds) if openai_creds else ""
+    description = (
+        describe_form(text, creds=openai_creds, api_key=resolved_api_key)
+        if (openai_creds or resolved_api_key)
+        else ""
+    )
     try:
         readability = textstat.text_standard(text, float_output=True) if text else -1
     except:
@@ -1158,7 +1213,11 @@ def parse_form(
             except:
                 readability = -1
 
-    new_title = guess_form_name(text, creds=openai_creds) if openai_creds else ""
+    new_title = (
+        guess_form_name(text, creds=openai_creds, api_key=resolved_api_key)
+        if (openai_creds or resolved_api_key)
+        else ""
+    )
     if not title:
         if hasattr(the_pdf.docinfo, "Title"):
             title = str(the_pdf.docinfo.Title)
@@ -1206,7 +1265,7 @@ def parse_form(
     sentences = [s for s in tokenized_sentences if len(s.split(" ")) > 2]
 
     try:
-        passive_sentences = get_passive_sentences(sentences, tools_token=tools_token)
+        passive_sentences = get_passive_sentences(sentences, api_key=resolved_api_key)
         passive_sentences_count = len(passive_sentences)
     except ValueError:
         passive_sentences_count = 0
