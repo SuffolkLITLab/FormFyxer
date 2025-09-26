@@ -1086,9 +1086,9 @@ def improve_names_with_surrounding_text(
                 # text_obj_bboxes.remove(min_obj[2])
                 # TODO(brycew): actual regex replacement of lots of underscores
                 label = re.sub(
-                    "[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,.")
+                    r"[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,.")
                 )
-                label = re.sub("_{3,}", "_", label).strip("_")
+                label = re.sub(r"_{3,}", "_", label).strip("_")
                 if label not in used_field_names:
                     copied_field_info.name = label
                     used_field_names.add(label)
