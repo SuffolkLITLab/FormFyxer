@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from openai import AuthenticationError
 
+from .docassemble_support import get_openai_api_key
+
 __all__ = ["detect_passive_voice_segments", "split_sentences"]
 
 load_dotenv()
@@ -39,23 +41,26 @@ def _load_prompt() -> str:
     return prompt_file.read_text(encoding="utf-8").strip()
 
 
-def _ensure_client(openai_client: Optional[OpenAI] = None) -> OpenAI:
-    """Return an OpenAI client, lazily creating one from environment variables.
+def _ensure_client(
+    openai_client: Optional[OpenAI] = None, api_key: Optional[str] = None
+) -> OpenAI:
+    """Return an OpenAI client, lazily creating one from various sources.
 
     This function implements a singleton pattern for OpenAI client creation, using
     cached instances to avoid repeated initialization. If no client is provided,
-    it creates one using environment variables OPENAI_API_KEY and optionally
-    OPENAI_ORGANIZATION/OPENAI_ORG
+    it creates one using the provided api_key, docassemble config, or environment variables
+    OPENAI_API_KEY and optionally OPENAI_ORGANIZATION/OPENAI_ORG
 
     Args:
         openai_client: Pre-configured OpenAI client. If provided, this client
             is returned directly without any caching or initialization.
+        api_key: Explicit API key to use for client creation.
 
     Returns:
         An initialized OpenAI client ready for API calls.
 
     Raises:
-        RuntimeError: If OPENAI_API_KEY environment variable is not set and
+        RuntimeError: If no API key can be found from any source and
             no client is provided.
     """
 
@@ -64,12 +69,19 @@ def _ensure_client(openai_client: Optional[OpenAI] = None) -> OpenAI:
 
     global _cached_client, _api_key, _organization
 
+    # If an explicit API key is provided, create a new client (don't cache)
+    if api_key:
+        return OpenAI(api_key=api_key, organization=_organization or None)
+
     if _cached_client is None:
-        if not _api_key:
+        resolved_key = get_openai_api_key()
+        if not resolved_key:
             raise RuntimeError(
-                "OPENAI_API_KEY must be set to use passive voice detection."
+                "OPENAI_API_KEY must be set (environment variable, docassemble config, or passed explicitly) to use passive voice detection."
             )
-        _cached_client = OpenAI(api_key=_api_key, organization=_organization or None)
+        _cached_client = OpenAI(
+            api_key=resolved_key, organization=_organization or None
+        )
 
     return _cached_client
 
@@ -152,7 +164,7 @@ def _normalize_input(text: Union[str, Sequence[str]]) -> List[str]:
 
 def _extract_text_from_response(response) -> str:
     """Extract text content from OpenAI ChatCompletion API response object.
-    
+
     See https://platform.openai.com/docs/api-reference/responses/object?lang=python for more information about the OpenAI's possible return types.
 
     Args:
@@ -187,6 +199,7 @@ def detect_passive_voice_segments(
     text: Union[str, Sequence[str]],
     openai_client: Optional[OpenAI] = None,
     model: str = DEFAULT_MODEL,
+    api_key: Optional[str] = None,
 ) -> List[Tuple[str, List[str]]]:
     """Detect passive voice constructions in text using OpenAI's language model.
 
@@ -197,9 +210,11 @@ def detect_passive_voice_segments(
         text: Input text as either a single string (which will be split into
             sentences) or a sequence of pre-split sentences to analyze.
         openai_client: Pre-configured OpenAI client instance. If None, a client
-            will be created using environment variables (OPENAI_API_KEY required).
+            will be created using the api_key parameter or environment variables.
         model: OpenAI model identifier to use for analysis. Defaults to the
             value of DEFAULT_MODEL constant (currently 'gpt-5-nano').
+        api_key: Explicit OpenAI API key to use. If None, will try docassemble
+            config (if available) then environment variables (OPENAI_API_KEY required).
 
     Returns:
         List of tuples where each tuple contains:
@@ -210,7 +225,7 @@ def detect_passive_voice_segments(
     Raises:
         ValueError: If input text contains no valid sentences (>2 words) or
             if input format is invalid.
-        RuntimeError: If OPENAI_API_KEY is not set and no client provided.
+        RuntimeError: If no API key can be found from any source and no client provided.
         AuthenticationError: If OpenAI API authentication fails (may retry
             once without organization header).
 
@@ -228,7 +243,7 @@ def detect_passive_voice_segments(
     """
 
     sentences = _normalize_input(text)
-    client = _ensure_client(openai_client)
+    client = _ensure_client(openai_client, api_key)
 
     ordered_results = []
 
@@ -249,7 +264,8 @@ def detect_passive_voice_segments(
             if "mismatched_organization" in str(exc).lower() and _organization:
                 # Retry without the organization header.
                 _organization = None
-                new_client = OpenAI(api_key=_api_key)
+                retry_key = api_key or get_openai_api_key() or _api_key
+                new_client = OpenAI(api_key=retry_key)
                 _cached_client = new_client
                 response = new_client.chat.completions.create(
                     model=model,
