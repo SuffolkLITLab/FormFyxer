@@ -1,0 +1,1297 @@
+evaluateOptions:
+  maxConcurrency: 1
+  showProgressBar: true
+prompts:
+- file://formfyxer/prompts/field_labeling.txt
+providers:
+- openai:gpt-4o-mini
+tests:
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"moving party\": \"\
+      plaintiffs1_name\", \"moving party_2\": \"plaintiffs1_address\", \"moving party_3\"\
+      : \"other_parties1_name\", \"judge\": \"judge_name\", \"circuit\": \"circuit\"\
+      , \"address\": \"court_address\", \"telno\": \"court_phone_number\", \"Plaintiffs\
+      \ name address and telephone\": \"plaintiffs1_contact\", \"Defendants name address\
+      \ and telephone\": \"defendants1_contact\", \"Third partys name address and\
+      \ telephone\": \"other_parties1_contact\", \"dated\": \"notice_date\", \"reasons\"\
+      : \"reasons\", \"docket_number\": \"docket_number\", \"trial_court_county\"\
+      : \"trial_court_county\", \"signature_date\": \"signature_date__2\", \"users1_name\"\
+      : \"users1_name\"};\n                            \n                        \
+      \    let correct = 0;\n                            let total = Object.keys(expected).length;\n\
+      \                            let mismatches = [];\n                        \
+      \    \n                            for (const [origField, expectedField] of\
+      \ Object.entries(expected)) {\n                                if (fieldMappings[origField]\
+      \ === expectedField) {\n                                    correct++;\n   \
+      \                             } else {\n                                   \
+      \ mismatches.push(`${origField}: got \"${fieldMappings[origField]}\", expected\
+      \ \"${expectedField}\"`);\n                                }\n             \
+      \               }\n                            \n                          \
+      \  const accuracy = correct / total;\n                            console.log(`PDF\
+      \ 095b9dc651ce47eb8b62e0790974970f.pdf: ${correct}/${total} correct ({(accuracy\
+      \ * 100).toFixed(1)}%)`);\n                            if (mismatches.length\
+      \ > 0) {\n                                console.log(`Mismatches: ${mismatches.slice(0,\
+      \ 5).join(', ')}`);\n                            }\n                       \
+      \     \n                            return accuracy >= 0.7; // 70% accuracy\
+      \ threshold for individual PDFs\n                        } catch (e) {\n   \
+      \                         console.error('JSON parse error:', e.message);\n \
+      \                           return false;\n                        }\n     \
+      \                   "
+  vars:
+    pdf_text: 'Legal Document: 095b9dc651ce47eb8b62e0790974970f.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{moving party}} (personal details section)
+
+      Plaintiff/User information: {{moving party_2}} (personal details section)
+
+      Plaintiff/User information: {{moving party_3}} (personal details section)
+
+      Plaintiff/User information: {{judge}} (personal details section)
+
+      Plaintiff/User information: {{circuit}} (personal details section)
+
+      Defendant/Other party information: {{address}} (opposing party section)
+
+      Defendant/Other party information: {{telno}} (opposing party section)
+
+      Defendant/Other party information: {{Plaintiffs name address and telephone}}
+      (opposing party section)
+
+      Defendant/Other party information: {{Defendants name address and telephone}}
+      (opposing party section)
+
+      Defendant/Other party information: {{Third partys name address and telephone}}
+      (opposing party section)
+
+      Defendant/Other party information: {{dated}} (opposing party section)
+
+      Case details: {{reasons}} (legal proceeding information)
+
+      Case details: {{docket_number}} (legal proceeding information)
+
+      Case details: {{trial_court_county}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{users1_name}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"undefined\": \"users_name\"\
+      , \"Respondent\": \"respondents_name\", \"Judge\": \"judge_name\", \"name\"\
+      : \"examiner_name\", \"who will examine the respondent evaluate the respondents\
+      \ functional\": \"examiner_role_description\", \"I make this request because\
+      \ 1\": \"reason1\", \"I make this request because 2\": \"reason2\", \"I make\
+      \ this request because 3\": \"reason3\", \"I make this request because 4\":\
+      \ \"reason4\", \"Request for Order to Examine Respondent\": \"examine_request_title\"\
+      , \"Approved Board of District Court Judges September 12 2012\": \"approval_notice\"\
+      , \"Page 1 of 3\": \"page_1_of_3\", \"docket_number\": \"docket_number\", \"\
+      users1_address_line_one\": \"users_address_line1\", \"users1_address_line_two\"\
+      : \"users_address_line2\", \"users1_email\": \"users_email\", \"users1_phone_number\"\
+      : \"users_phone_number\", \"Signed at\": \"signature_location\", \"Signature\"\
+      : \"users_signature\", \"Request for Order to Examine Respondent_2\": \"examine_request_title__2\"\
+      , \"Approved Board of District Court Judges September 12 2012_2\": \"approval_notice__2\"\
+      , \"Page 2 of 3\": \"page_2_of_3\", \"signature_date\": \"signature_date\",\
+      \ \"Service Address    Mail     Hand Delivery    Efiled     Email     Left at\
+      \ business With person in charge or in receptacle for deliveries     Left at\
+      \ home With person of suitable age and discretion residing there\": \"service_address\"\
+      , \"Service Date    Mail     Hand Delivery    Efiled     Email     Left at business\
+      \ With person in charge or in receptacle for deliveries     Left at home With\
+      \ person of suitable age and discretion residing there\": \"service_date\",\
+      \ \"Service Address    Mail     Hand Delivery    Efiled    Email     Left at\
+      \ business With person in charge or in receptacle for deliveries     Left at\
+      \ home With person of suitable age and discretion residing there\": \"service_address__2\"\
+      , \"Service Date    Mail     Hand Delivery    Efiled    Email     Left at business\
+      \ With person in charge or in receptacle for deliveries     Left at home With\
+      \ person of suitable age and discretion residing there\": \"service_date__2\"\
+      , \"Respondent or AttorneyRow1\": \"service_party1_name\", \"Service Address\
+      \    Mail     Hand Delivery    Efiled    Email     Left at business With person\
+      \ in charge or in receptacle for deliveries     Left at home With person of\
+      \ suitable age and discretion residing there_2\": \"service_address__3\", \"\
+      Service Date    Mail     Hand Delivery    Efiled    Email     Left at business\
+      \ With person in charge or in receptacle for deliveries     Left at home With\
+      \ person of suitable age and discretion residing there_2\": \"service_date__3\"\
+      , \"Date_2\": \"service_date__4\", \"Signature_2\": \"service_signature__4\"\
+      , \"Printed Name_2\": \"service_printed_name__4\", \"Request for Order to Examine\
+      \ Respondent_3\": \"examine_request_title__3\", \"Approved Board of District\
+      \ Court Judges September 12 2012_3\": \"approval_notice__3\", \"Page 3 of 3\"\
+      : \"page_3_of_3\"};\n                            \n                        \
+      \    let correct = 0;\n                            let total = Object.keys(expected).length;\n\
+      \                            let mismatches = [];\n                        \
+      \    \n                            for (const [origField, expectedField] of\
+      \ Object.entries(expected)) {\n                                if (fieldMappings[origField]\
+      \ === expectedField) {\n                                    correct++;\n   \
+      \                             } else {\n                                   \
+      \ mismatches.push(`${origField}: got \"${fieldMappings[origField]}\", expected\
+      \ \"${expectedField}\"`);\n                                }\n             \
+      \               }\n                            \n                          \
+      \  const accuracy = correct / total;\n                            console.log(`PDF\
+      \ 3902bb0b832b4fa4b20e7635201017aa.pdf: ${correct}/${total} correct ({(accuracy\
+      \ * 100).toFixed(1)}%)`);\n                            if (mismatches.length\
+      \ > 0) {\n                                console.log(`Mismatches: ${mismatches.slice(0,\
+      \ 5).join(', ')}`);\n                            }\n                       \
+      \     \n                            return accuracy >= 0.7; // 70% accuracy\
+      \ threshold for individual PDFs\n                        } catch (e) {\n   \
+      \                         console.error('JSON parse error:', e.message);\n \
+      \                           return false;\n                        }\n     \
+      \                   "
+  vars:
+    pdf_text: 'Legal Document: 3902bb0b832b4fa4b20e7635201017aa.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{undefined}} (personal details section)
+
+      Plaintiff/User information: {{Respondent}} (personal details section)
+
+      Plaintiff/User information: {{Judge}} (personal details section)
+
+      Plaintiff/User information: {{name}} (personal details section)
+
+      Plaintiff/User information: {{who will examine the respondent evaluate the respondents
+      functional}} (personal details section)
+
+      Plaintiff/User information: {{I make this request because 1}} (personal details
+      section)
+
+      Plaintiff/User information: {{I make this request because 2}} (personal details
+      section)
+
+      Plaintiff/User information: {{I make this request because 3}} (personal details
+      section)
+
+      Plaintiff/User information: {{I make this request because 4}} (personal details
+      section)
+
+      Plaintiff/User information: {{Request for Order to Examine Respondent}} (personal
+      details section)
+
+      Plaintiff/User information: {{Approved Board of District Court Judges September
+      12 2012}} (personal details section)
+
+      Plaintiff/User information: {{Page 1 of 3}} (personal details section)
+
+      Defendant/Other party information: {{docket_number}} (opposing party section)
+
+      Defendant/Other party information: {{users1_address_line_one}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_address_line_two}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_email}} (opposing party section)
+
+      Defendant/Other party information: {{users1_phone_number}} (opposing party section)
+
+      Defendant/Other party information: {{Signed at}} (opposing party section)
+
+      Defendant/Other party information: {{Signature}} (opposing party section)
+
+      Defendant/Other party information: {{Request for Order to Examine Respondent_2}}
+      (opposing party section)
+
+      Defendant/Other party information: {{Approved Board of District Court Judges
+      September 12 2012_2}} (opposing party section)
+
+      Defendant/Other party information: {{Page 2 of 3}} (opposing party section)
+
+      Defendant/Other party information: {{signature_date}} (opposing party section)
+
+      Defendant/Other party information: {{Service Address    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (opposing party
+      section)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Service Address    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Respondent or AttorneyRow1}} (legal proceeding information)
+
+      Case details: {{Service Address    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there_2}} (legal proceeding
+      information)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there_2}} (legal proceeding
+      information)
+
+      Case details: {{Date_2}} (legal proceeding information)
+
+      Case details: {{Signature_2}} (legal proceeding information)
+
+      Case details: {{Printed Name_2}} (legal proceeding information)
+
+      Case details: {{Request for Order to Examine Respondent_3}} (legal proceeding
+      information)
+
+      Case details: {{Approved Board of District Court Judges September 12 2012_3}}
+      (legal proceeding information)
+
+      Case details: {{Page 3 of 3}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"casename\": \"case_name\"\
+      , \"adoptname\": \"adoptee_after_name\", \"presentname\": \"adoptee_present_name\"\
+      , \"spname\": \"step_parent_name\", \"bpname\": \"birth_parent_name\", \"adopteename\"\
+      : \"adoptee_first_name\", \"npname\": \"natural_parent_name\", \"npaddress\"\
+      : \"natural_parent_address\", \"npcity\": \"natural_parent_city_zip\", \"nptelno\"\
+      : \"natural_parent_telephone\", \"aspname\": \"adoptive_stepparent_name\", \"\
+      aspaddress\": \"adoptive_stepparent_address\", \"aspcity\": \"adoptive_stepparent_city_zip\"\
+      , \"asptelno\": \"adoptive_stepparent_telephone\", \"paddress\": \"birth_parent_address_line2\"\
+      , \"pcity\": \"birth_parent_city\", \"ptelno\": \"birth_parent_telephone\",\
+      \ \"bpcity\": \"birth_parent_city_alt\", \"bptelno\": \"birth_parent_telephone_alt\"\
+      , \"aname\": \"attorney_name\", \"abarno\": \"attorney_bar_no\", \"aaddress\"\
+      : \"attorney_address\", \"acity\": \"attorney_city\", \"atelno\": \"attorney_telephone\"\
+      , \"Check Box1\": \"check_box1\", \"Text1\": \"signature_line1\", \"Text2\"\
+      : \"signature_line2\", \"Text3\": \"signature_line3\", \"docket_number\": \"\
+      docket_number\", \"trial_court_county\": \"trial_court_county\", \"users1_birthdate\"\
+      : \"users_birthdate\", \"signature_date\": \"signature_date__2\", \"users1_address_line_one\"\
+      : \"users_address_line_one\", \"cirno\": \"cir_code\"};\n                  \
+      \          \n                            let correct = 0;\n                \
+      \            let total = Object.keys(expected).length;\n                   \
+      \         let mismatches = [];\n                            \n             \
+      \               for (const [origField, expectedField] of Object.entries(expected))\
+      \ {\n                                if (fieldMappings[origField] === expectedField)\
+      \ {\n                                    correct++;\n                      \
+      \          } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF 3a09aadafc4a4732b41ad48fd313ffe8.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: 3a09aadafc4a4732b41ad48fd313ffe8.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{casename}} (personal details section)
+
+      Plaintiff/User information: {{adoptname}} (personal details section)
+
+      Plaintiff/User information: {{presentname}} (personal details section)
+
+      Plaintiff/User information: {{spname}} (personal details section)
+
+      Plaintiff/User information: {{bpname}} (personal details section)
+
+      Plaintiff/User information: {{adopteename}} (personal details section)
+
+      Plaintiff/User information: {{npname}} (personal details section)
+
+      Plaintiff/User information: {{npaddress}} (personal details section)
+
+      Plaintiff/User information: {{npcity}} (personal details section)
+
+      Plaintiff/User information: {{nptelno}} (personal details section)
+
+      Plaintiff/User information: {{aspname}} (personal details section)
+
+      Defendant/Other party information: {{aspaddress}} (opposing party section)
+
+      Defendant/Other party information: {{aspcity}} (opposing party section)
+
+      Defendant/Other party information: {{asptelno}} (opposing party section)
+
+      Defendant/Other party information: {{paddress}} (opposing party section)
+
+      Defendant/Other party information: {{pcity}} (opposing party section)
+
+      Defendant/Other party information: {{ptelno}} (opposing party section)
+
+      Defendant/Other party information: {{bpcity}} (opposing party section)
+
+      Defendant/Other party information: {{bptelno}} (opposing party section)
+
+      Defendant/Other party information: {{aname}} (opposing party section)
+
+      Defendant/Other party information: {{abarno}} (opposing party section)
+
+      Defendant/Other party information: {{aaddress}} (opposing party section)
+
+      Defendant/Other party information: {{acity}} (opposing party section)
+
+      Case details: {{atelno}} (legal proceeding information)
+
+      Case details: {{Check Box1}} (legal proceeding information)
+
+      Case details: {{Text1}} (legal proceeding information)
+
+      Case details: {{Text2}} (legal proceeding information)
+
+      Case details: {{Text3}} (legal proceeding information)
+
+      Case details: {{docket_number}} (legal proceeding information)
+
+      Case details: {{trial_court_county}} (legal proceeding information)
+
+      Case details: {{users1_birthdate}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{users1_address_line_one}} (legal proceeding information)
+
+      Case details: {{cirno}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"Plaintiffs address\"\
+      : \"plaintiffs_address\", \"patty\": \"plaintiffs_attorney\", \"Defendants address\"\
+      : \"defendants_address\", \"datty\": \"defendants_attorney\", \"Date of hearing\"\
+      : \"hearing_date\", \"Judge\": \"judge_name\", \"8\": \"title_ivd8\", \"circuit\"\
+      : \"trial_court__2\", \"address\": \"court_address__2\", \"telno\": \"plaintiffs_phone__2\"\
+      , \"Plaintiffs name\": \"plaintiffs_name__2\", \"Defendants name\": \"defendants_name__2\"\
+      , \"10\": \"title_ivd_not_case\", \"bar no\": \"bar_no\", \"trial_court_county\"\
+      : \"trial_court_county__2\", \"docket_number\": \"docket_number__2\", \"13 a\"\
+      : \"ivd_income_withholding_13a\", \"13b\": \"ivd_income_withholding_13b\", \"\
+      signature_date\": \"signature_date__2\"};\n                            \n  \
+      \                          let correct = 0;\n                            let\
+      \ total = Object.keys(expected).length;\n                            let mismatches\
+      \ = [];\n                            \n                            for (const\
+      \ [origField, expectedField] of Object.entries(expected)) {\n              \
+      \                  if (fieldMappings[origField] === expectedField) {\n     \
+      \                               correct++;\n                               \
+      \ } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF 9dda7eb4b8b64f88abd092075ce6245d.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: 9dda7eb4b8b64f88abd092075ce6245d.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{Plaintiffs address}} (personal details section)
+
+      Plaintiff/User information: {{patty}} (personal details section)
+
+      Plaintiff/User information: {{Defendants address}} (personal details section)
+
+      Plaintiff/User information: {{datty}} (personal details section)
+
+      Plaintiff/User information: {{Date of hearing}} (personal details section)
+
+      Plaintiff/User information: {{Judge}} (personal details section)
+
+      Plaintiff/User information: {{8}} (personal details section)
+
+      Plaintiff/User information: {{circuit}} (personal details section)
+
+      Plaintiff/User information: {{address}} (personal details section)
+
+      Defendant/Other party information: {{telno}} (opposing party section)
+
+      Defendant/Other party information: {{Plaintiffs name}} (opposing party section)
+
+      Defendant/Other party information: {{Defendants name}} (opposing party section)
+
+      Defendant/Other party information: {{10}} (opposing party section)
+
+      Defendant/Other party information: {{bar no}} (opposing party section)
+
+      Defendant/Other party information: {{trial_court_county}} (opposing party section)
+
+      Defendant/Other party information: {{docket_number}} (opposing party section)
+
+      Defendant/Other party information: {{circuit}} (opposing party section)
+
+      Defendant/Other party information: {{address}} (opposing party section)
+
+      Case details: {{telno}} (legal proceeding information)
+
+      Case details: {{Plaintiffs name}} (legal proceeding information)
+
+      Case details: {{Defendants name}} (legal proceeding information)
+
+      Case details: {{13 a}} (legal proceeding information)
+
+      Case details: {{13b}} (legal proceeding information)
+
+      Case details: {{trial_court_county}} (legal proceeding information)
+
+      Case details: {{docket_number}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"cirno\": \"circuit_number\"\
+      , \"casename\": \"case_name\", \"lhofcr\": \"local_health_officer_name\", \"\
+      chd\": \"chd_representative_name\", \"individual\": \"subject_name\", \"address\"\
+      : \"subject_address\", \"city\": \"subject_city\", \"state\": \"subject_state\"\
+      , \"zip\": \"subject_zip\", \"location\": \"subject_location\", \"item2\": \"\
+      detention_order_date\", \"odate\": \"detention_order_date_part2\", \"item4\"\
+      : \"warning_date_month_day\", \"ndate\": \"warning_date_year\", \"disease\"\
+      : \"carrier_disease__2\", \"item5a\": \"users1_behavior_evidence_a\", \"item5b\"\
+      : \"users1_behavior_evidence_b\", \"item5c\": \"users1_behavior_evidence_c\"\
+      , \"item5d\": \"users1_behavior_evidence_d\", \"explain1\": \"users1_explain_other1\"\
+      , \"explain2\": \"users1_explain_other2\", \"Check Box4\": \"is_adult_yes\"\
+      , \"Check Box5\": \"is_minor_yes\", \"docket_number\": \"docket_number\", \"\
+      trial_court_county\": \"trial_court_county\", \"users1_name\": \"users1_name\"\
+      , \"item6a\": \"users1_step6a_details\", \"explain3\": \"users1_step6a_explain1\"\
+      , \"item6b\": \"users1_step6b_details\", \"explain4\": \"users1_step6b_explain1\"\
+      , \"item7\": \"users1_step7_details\", \"explain5\": \"users1_step7_explain1\"\
+      , \"explain6\": \"users1_step7_explain2\", \"item9a\": \"order_programs_type\"\
+      , \"edu\": \"education_program_details\", \"treat\": \"treatment_program_details\"\
+      , \"couns\": \"counseling_details\", \"item9b\": \"testing_requirements\", \"\
+      item9c\": \"appearance_facility_name\", \"item9d\": \"cease_desist_details\"\
+      , \"place\": \"supervised_setting_location\", \"item9e\": \"supervised_setting_details\"\
+      , \"item9f\": \"order_other_details\", \"other9\": \"order_other_details2\"\
+      , \"item10\": \"commitment_panel_name\", \"facility\": \"appearance_facility\"\
+      , \"aname\": \"agency_name\", \"aaddress\": \"agency_address\", \"acity\": \"\
+      agency_city\", \"atelno\": \"agency_phone\", \"ptelno\": \"partner_phone\",\
+      \ \"pname\": \"participant_name\", \"pcity\": \"participant_city\", \"Text1\"\
+      : \"text1_note\", \"Text2\": \"text2_note\", \"Text3\": \"commitment_panel_name__2\"\
+      , \"facility1\": \"commitment_facility_name\", \"signature_date\": \"signature_date\"\
+      , \"users1_address_line_one\": \"users1_address_line_one\"};\n             \
+      \               \n                            let correct = 0;\n           \
+      \                 let total = Object.keys(expected).length;\n              \
+      \              let mismatches = [];\n                            \n        \
+      \                    for (const [origField, expectedField] of Object.entries(expected))\
+      \ {\n                                if (fieldMappings[origField] === expectedField)\
+      \ {\n                                    correct++;\n                      \
+      \          } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF 9ec36f386c34421b9da9f9ce6082a5ce.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: 9ec36f386c34421b9da9f9ce6082a5ce.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{cirno}} (personal details section)
+
+      Plaintiff/User information: {{casename}} (personal details section)
+
+      Plaintiff/User information: {{lhofcr}} (personal details section)
+
+      Plaintiff/User information: {{chd}} (personal details section)
+
+      Plaintiff/User information: {{individual}} (personal details section)
+
+      Plaintiff/User information: {{address}} (personal details section)
+
+      Plaintiff/User information: {{city}} (personal details section)
+
+      Plaintiff/User information: {{state}} (personal details section)
+
+      Plaintiff/User information: {{zip}} (personal details section)
+
+      Plaintiff/User information: {{location}} (personal details section)
+
+      Plaintiff/User information: {{item2}} (personal details section)
+
+      Plaintiff/User information: {{odate}} (personal details section)
+
+      Plaintiff/User information: {{item4}} (personal details section)
+
+      Plaintiff/User information: {{ndate}} (personal details section)
+
+      Plaintiff/User information: {{disease}} (personal details section)
+
+      Plaintiff/User information: {{disease}} (personal details section)
+
+      Plaintiff/User information: {{item5a}} (personal details section)
+
+      Plaintiff/User information: {{item5b}} (personal details section)
+
+      Plaintiff/User information: {{item5c}} (personal details section)
+
+      Plaintiff/User information: {{item5d}} (personal details section)
+
+      Defendant/Other party information: {{explain1}} (opposing party section)
+
+      Defendant/Other party information: {{explain2}} (opposing party section)
+
+      Defendant/Other party information: {{Check Box4}} (opposing party section)
+
+      Defendant/Other party information: {{Check Box5}} (opposing party section)
+
+      Defendant/Other party information: {{docket_number}} (opposing party section)
+
+      Defendant/Other party information: {{trial_court_county}} (opposing party section)
+
+      Defendant/Other party information: {{users1_name}} (opposing party section)
+
+      Defendant/Other party information: {{item6a}} (opposing party section)
+
+      Defendant/Other party information: {{explain3}} (opposing party section)
+
+      Defendant/Other party information: {{item6b}} (opposing party section)
+
+      Defendant/Other party information: {{explain4}} (opposing party section)
+
+      Defendant/Other party information: {{item7}} (opposing party section)
+
+      Defendant/Other party information: {{explain5}} (opposing party section)
+
+      Defendant/Other party information: {{explain6}} (opposing party section)
+
+      Defendant/Other party information: {{item9a}} (opposing party section)
+
+      Defendant/Other party information: {{edu}} (opposing party section)
+
+      Defendant/Other party information: {{treat}} (opposing party section)
+
+      Defendant/Other party information: {{couns}} (opposing party section)
+
+      Defendant/Other party information: {{item9b}} (opposing party section)
+
+      Defendant/Other party information: {{item9c}} (opposing party section)
+
+      Case details: {{item9d}} (legal proceeding information)
+
+      Case details: {{place}} (legal proceeding information)
+
+      Case details: {{item9e}} (legal proceeding information)
+
+      Case details: {{item9f}} (legal proceeding information)
+
+      Case details: {{other9}} (legal proceeding information)
+
+      Case details: {{item10}} (legal proceeding information)
+
+      Case details: {{facility}} (legal proceeding information)
+
+      Case details: {{aname}} (legal proceeding information)
+
+      Case details: {{aaddress}} (legal proceeding information)
+
+      Case details: {{acity}} (legal proceeding information)
+
+      Case details: {{atelno}} (legal proceeding information)
+
+      Case details: {{ptelno}} (legal proceeding information)
+
+      Case details: {{pname}} (legal proceeding information)
+
+      Case details: {{pcity}} (legal proceeding information)
+
+      Case details: {{Text1}} (legal proceeding information)
+
+      Case details: {{Text2}} (legal proceeding information)
+
+      Case details: {{Text3}} (legal proceeding information)
+
+      Case details: {{facility1}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{users1_address_line_one}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"Attorney for the GuardianConservator\
+      \ and my Utah Bar number is\": \"attorneys_utah_bar_number\", \"undefined\"\
+      : \"guardians_is_guardian\", \"a minor\": \"children_name\", \"Judge\": \"other_parties_judge_name\"\
+      , \"Name and Address\": \"other_parties_name\", \"Signature\": \"users_signature\"\
+      , \"Printed Name\": \"users_printed_name\", \"Notice of Right to Object\": \"\
+      notice_of_right_to_object\", \"docket_number\": \"docket_number\", \"users1_address_line_one\"\
+      : \"users1_address_line_one\", \"users1_address_line_two\": \"users1_address_line_two\"\
+      , \"users1_email\": \"users1_email\", \"users1_phone_number\": \"users1_phone_number\"\
+      , \"users1_name\": \"users1_name\", \"Persons NameRow1\": \"other_parties_name_row1\"\
+      , \"Served at this Address    Mail     Hand Delivery    Efiled    Email Person\
+      \ agreed to service by email     Left at business With person in charge or in\
+      \ receptacle for deliveries    Left at home With person of suitable age and\
+      \ discretion residing there\": \"other_parties_service_address_row1\", \"Served\
+      \ on this Date    Mail     Hand Delivery    Efiled    Email Person agreed to\
+      \ service by email     Left at business With person in charge or in receptacle\
+      \ for deliveries    Left at home With person of suitable age and discretion\
+      \ residing there\": \"service_date_row1\", \"Persons NameRow2\": \"other_parties_name_row2\"\
+      , \"Served at this Address    Mail     Hand Delivery    Efiled    Email Person\
+      \ agreed to service by email     Left at business With person in charge or in\
+      \ receptacle for deliveries    Left at home With person of suitable age and\
+      \ discretion residing there_2\": \"other_parties_service_address_row2\", \"\
+      Served on this Date    Mail     Hand Delivery    Efiled    Email Person agreed\
+      \ to service by email     Left at business With person in charge or in receptacle\
+      \ for deliveries    Left at home With person of suitable age and discretion\
+      \ residing there_2\": \"service_date_row2\", \"Persons NameRow3\": \"other_parties_name_row3\"\
+      , \"Served at this Address    Mail     Hand Delivery    Efiled    Email Person\
+      \ agreed to service by email     Left at business With person in charge or in\
+      \ receptacle for deliveries     Left at home With person of suitable age and\
+      \ discretion residing there\": \"other_parties_service_address_row3\", \"Served\
+      \ on this Date    Mail     Hand Delivery    Efiled    Email Person agreed to\
+      \ service by email     Left at business With person in charge or in receptacle\
+      \ for deliveries     Left at home With person of suitable age and discretion\
+      \ residing there\": \"service_date_row3\", \"Signature_2\": \"users2_signature\"\
+      , \"Printed Name_2\": \"users2_name\", \"Notice of Right to Object_2\": \"notice_of_right_to_object_2\"\
+      , \"Approved Board of District Court Judges September 11 2013\": \"board_approval_label\"\
+      , \"Page 2 of 2\": \"page_2_of_2\"};\n                            \n       \
+      \                     let correct = 0;\n                            let total\
+      \ = Object.keys(expected).length;\n                            let mismatches\
+      \ = [];\n                            \n                            for (const\
+      \ [origField, expectedField] of Object.entries(expected)) {\n              \
+      \                  if (fieldMappings[origField] === expectedField) {\n     \
+      \                               correct++;\n                               \
+      \ } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF b8dc2bf7b60946f2bbbf45cc3967f78f.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: b8dc2bf7b60946f2bbbf45cc3967f78f.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{Attorney for the GuardianConservator and my Utah
+      Bar number is}} (personal details section)
+
+      Plaintiff/User information: {{undefined}} (personal details section)
+
+      Plaintiff/User information: {{a minor}} (personal details section)
+
+      Plaintiff/User information: {{Judge}} (personal details section)
+
+      Plaintiff/User information: {{Name and Address}} (personal details section)
+
+      Plaintiff/User information: {{Signature}} (personal details section)
+
+      Plaintiff/User information: {{Printed Name}} (personal details section)
+
+      Plaintiff/User information: {{Notice of Right to Object}} (personal details
+      section)
+
+      Plaintiff/User information: {{docket_number}} (personal details section)
+
+      Defendant/Other party information: {{users1_address_line_one}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_address_line_two}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_email}} (opposing party section)
+
+      Defendant/Other party information: {{users1_phone_number}} (opposing party section)
+
+      Defendant/Other party information: {{users1_name}} (opposing party section)
+
+      Defendant/Other party information: {{Persons NameRow1}} (opposing party section)
+
+      Defendant/Other party information: {{Served at this Address    Mail     Hand
+      Delivery    Efiled    Email Person agreed to service by email     Left at business
+      With person in charge or in receptacle for deliveries    Left at home With person
+      of suitable age and discretion residing there}} (opposing party section)
+
+      Defendant/Other party information: {{Served on this Date    Mail     Hand Delivery    Efiled    Email
+      Person agreed to service by email     Left at business With person in charge
+      or in receptacle for deliveries    Left at home With person of suitable age
+      and discretion residing there}} (opposing party section)
+
+      Defendant/Other party information: {{Persons NameRow2}} (opposing party section)
+
+      Case details: {{Served at this Address    Mail     Hand Delivery    Efiled    Email
+      Person agreed to service by email     Left at business With person in charge
+      or in receptacle for deliveries    Left at home With person of suitable age
+      and discretion residing there_2}} (legal proceeding information)
+
+      Case details: {{Served on this Date    Mail     Hand Delivery    Efiled    Email
+      Person agreed to service by email     Left at business With person in charge
+      or in receptacle for deliveries    Left at home With person of suitable age
+      and discretion residing there_2}} (legal proceeding information)
+
+      Case details: {{Persons NameRow3}} (legal proceeding information)
+
+      Case details: {{Served at this Address    Mail     Hand Delivery    Efiled    Email
+      Person agreed to service by email     Left at business With person in charge
+      or in receptacle for deliveries     Left at home With person of suitable age
+      and discretion residing there}} (legal proceeding information)
+
+      Case details: {{Served on this Date    Mail     Hand Delivery    Efiled    Email
+      Person agreed to service by email     Left at business With person in charge
+      or in receptacle for deliveries     Left at home With person of suitable age
+      and discretion residing there}} (legal proceeding information)
+
+      Case details: {{Signature_2}} (legal proceeding information)
+
+      Case details: {{Printed Name_2}} (legal proceeding information)
+
+      Case details: {{Notice of Right to Object_2}} (legal proceeding information)
+
+      Case details: {{Approved Board of District Court Judges September 11 2013}}
+      (legal proceeding information)
+
+      Case details: {{Page 2 of 2}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"Petitioner\": \"petitioners_name\"\
+      , \"Judge\": \"judge_name\", \"on all parties and at which the court considered\
+      \ the pleadings and evidence\": \"hearing_date\", \"Order on Petition to Expunge\
+      \ Records  Cannabis Conviction\": \"expungement_order_title\", \"docket_number\"\
+      : \"docket_number\", \"users1_address_line_one\": \"petitioners_address_line1\"\
+      , \"users1_address_line_two\": \"petitioners_address_line2\", \"users1_email\"\
+      : \"petitioners_email\", \"users1_phone_number\": \"petitioners_phone_number\"\
+      , \"Signature\": \"petitioners_signature\", \"Judge_2\": \"judge_name__2\",\
+      \ \"Order on Petition to Expunge Records  Cannabis Conviction_2\": \"expungement_order_title__2\"\
+      , \"Service Address    Mail     Hand Delivery    Efiled     Email     Left at\
+      \ business With person in charge or in receptacle for deliveries     Left at\
+      \ home With person of suitable age and discretion residing there\": \"service_address\"\
+      , \"Service Date    Mail     Hand Delivery    Efiled     Email     Left at business\
+      \ With person in charge or in receptacle for deliveries     Left at home With\
+      \ person of suitable age and discretion residing there\": \"service_date\",\
+      \ \"Signature_2\": \"attorneys_signature\", \"1024EXF Approved March 9 2020\"\
+      : \"form_code\", \"Order on Petition to Expunge Records  Cannabis Conviction_3\"\
+      : \"expungement_order_title__3\", \"Page 3 of 3\": \"page_number\"};\n     \
+      \                       \n                            let correct = 0;\n   \
+      \                         let total = Object.keys(expected).length;\n      \
+      \                      let mismatches = [];\n                            \n\
+      \                            for (const [origField, expectedField] of Object.entries(expected))\
+      \ {\n                                if (fieldMappings[origField] === expectedField)\
+      \ {\n                                    correct++;\n                      \
+      \          } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF d488e5e1f3d44d3a99c50a4ec5305af8.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: d488e5e1f3d44d3a99c50a4ec5305af8.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{Petitioner}} (personal details section)
+
+      Plaintiff/User information: {{Judge}} (personal details section)
+
+      Plaintiff/User information: {{on all parties and at which the court considered
+      the pleadings and evidence}} (personal details section)
+
+      Plaintiff/User information: {{Order on Petition to Expunge Records  Cannabis
+      Conviction}} (personal details section)
+
+      Plaintiff/User information: {{docket_number}} (personal details section)
+
+      Plaintiff/User information: {{users1_address_line_one}} (personal details section)
+
+      Defendant/Other party information: {{users1_address_line_two}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_email}} (opposing party section)
+
+      Defendant/Other party information: {{users1_phone_number}} (opposing party section)
+
+      Defendant/Other party information: {{Signature}} (opposing party section)
+
+      Defendant/Other party information: {{Judge_2}} (opposing party section)
+
+      Defendant/Other party information: {{Order on Petition to Expunge Records  Cannabis
+      Conviction_2}} (opposing party section)
+
+      Case details: {{Service Address    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Signature_2}} (legal proceeding information)
+
+      Case details: {{1024EXF Approved March 9 2020}} (legal proceeding information)
+
+      Case details: {{Order on Petition to Expunge Records  Cannabis Conviction_3}}
+      (legal proceeding information)
+
+      Case details: {{Page 3 of 3}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"Name of youth\": \"\
+      children_name\", \"Race\": \"children_race\", \"Gender\": \"children_gender\"\
+      , \"Current address\": \"children_current_address\", \"Date\": \"foster_agreement_date\"\
+      , \"legalcustodian\": \"parents_name\", \"youth\": \"caregivers_name\", \"jurisdiction\"\
+      : \"jurisdiction\", \"phone\": \"users1_phone_number\", \"Date_2\": \"jurisdiction_termination_date\"\
+      , \"textbox1\": \"other_remarks\", \"docket_number\": \"docket_number__2\",\
+      \ \"trial_court_county\": \"trial_court_county\", \"users1_birthdate\": \"users1_birth_date\"\
+      , \"signature_date\": \"signature_date\", \"users1_name\": \"users1_name\",\
+      \ \"users1_address_line_one\": \"users1_address_line_one\", \"users1_address_line_two\"\
+      : \"users1_address_line_two\"};\n                            \n            \
+      \                let correct = 0;\n                            let total = Object.keys(expected).length;\n\
+      \                            let mismatches = [];\n                        \
+      \    \n                            for (const [origField, expectedField] of\
+      \ Object.entries(expected)) {\n                                if (fieldMappings[origField]\
+      \ === expectedField) {\n                                    correct++;\n   \
+      \                             } else {\n                                   \
+      \ mismatches.push(`${origField}: got \"${fieldMappings[origField]}\", expected\
+      \ \"${expectedField}\"`);\n                                }\n             \
+      \               }\n                            \n                          \
+      \  const accuracy = correct / total;\n                            console.log(`PDF\
+      \ e5e3527acd804e7581f86e14fd41f86c.pdf: ${correct}/${total} correct ({(accuracy\
+      \ * 100).toFixed(1)}%)`);\n                            if (mismatches.length\
+      \ > 0) {\n                                console.log(`Mismatches: ${mismatches.slice(0,\
+      \ 5).join(', ')}`);\n                            }\n                       \
+      \     \n                            return accuracy >= 0.7; // 70% accuracy\
+      \ threshold for individual PDFs\n                        } catch (e) {\n   \
+      \                         console.error('JSON parse error:', e.message);\n \
+      \                           return false;\n                        }\n     \
+      \                   "
+  vars:
+    pdf_text: 'Legal Document: e5e3527acd804e7581f86e14fd41f86c.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{Name of youth}} (personal details section)
+
+      Plaintiff/User information: {{Race}} (personal details section)
+
+      Plaintiff/User information: {{Gender}} (personal details section)
+
+      Plaintiff/User information: {{Current address}} (personal details section)
+
+      Plaintiff/User information: {{Date}} (personal details section)
+
+      Plaintiff/User information: {{legalcustodian}} (personal details section)
+
+      Defendant/Other party information: {{youth}} (opposing party section)
+
+      Defendant/Other party information: {{jurisdiction}} (opposing party section)
+
+      Defendant/Other party information: {{phone}} (opposing party section)
+
+      Defendant/Other party information: {{Date_2}} (opposing party section)
+
+      Defendant/Other party information: {{textbox1}} (opposing party section)
+
+      Defendant/Other party information: {{docket_number}} (opposing party section)
+
+      Case details: {{docket_number}} (legal proceeding information)
+
+      Case details: {{trial_court_county}} (legal proceeding information)
+
+      Case details: {{users1_birthdate}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{users1_name}} (legal proceeding information)
+
+      Case details: {{users1_address_line_one}} (legal proceeding information)
+
+      Case details: {{users1_address_line_two}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"undefined\": \"users_name\"\
+      , \"undefined_2\": \"users_address_line_one\", \"PlaintiffPetitioner\": \"plaintiff_petitioner\"\
+      , \"DefendantRespondent\": \"defendant_respondent\", \"Judge\": \"judge_name\"\
+      , \"Commissioner domestic cases\": \"commissioner_domestic_cases\", \"A judge\
+      \ of this court signed the judgment in this case on\": \"judgment_signed_date\"\
+      , \"1201DCJ Approved May 21 2018\": \"approval_date\", \"Acknowledgement of\
+      \ Satisfaction of Judgment\": \"acknowledgement_judgment_title\", \"Page 1 of\
+      \ 3\": \"page_1_of_3\", \"docket_number\": \"docket_number\", \"users1_address_line_one\"\
+      : \"users_address_line_one__2\", \"users1_address_line_two\": \"users_address_line_two\"\
+      , \"users1_email\": \"users_email\", \"users1_phone_number\": \"users_phone_number\"\
+      , \"Signed at\": \"signing_location\", \"Signature\": \"users_signature\", \"\
+      Printed Name\": \"signature_printed_name\", \"Signature_2\": \"attorney_signature\"\
+      , \"Acknowledgement of Satisfaction of Judgment_2\": \"acknowledgement_judgment_title_2\"\
+      , \"Persons NameRow1\": \"other_parties1_name\", \"Service Address    Mail \
+      \    Hand Delivery    Efiled     Email     Left at business With person in charge\
+      \ or in receptacle for deliveries     Left at home With person of suitable age\
+      \ and discretion residing there\": \"other_parties1_service_address\", \"Service\
+      \ Date    Mail     Hand Delivery    Efiled     Email     Left at business With\
+      \ person in charge or in receptacle for deliveries     Left at home With person\
+      \ of suitable age and discretion residing there\": \"other_parties1_service_date\"\
+      , \"Persons NameRow2\": \"other_parties2_name\", \"Service Address    Mail \
+      \    Hand Delivery    Efiled    Email     Left at business With person in charge\
+      \ or in receptacle for deliveries     Left at home With person of suitable age\
+      \ and discretion residing there\": \"other_parties2_service_address\", \"Service\
+      \ Date    Mail     Hand Delivery    Efiled    Email     Left at business With\
+      \ person in charge or in receptacle for deliveries     Left at home With person\
+      \ of suitable age and discretion residing there\": \"other_parties2_service_date\"\
+      , \"Persons NameRow3\": \"other_parties3_name\", \"Service Address    Mail \
+      \    Hand Delivery    Efiled    Email     Left at business With person in charge\
+      \ or in receptacle for deliveries     Left at home With person of suitable age\
+      \ and discretion residing there_2\": \"other_parties3_service_address\", \"\
+      Service Date    Mail     Hand Delivery    Efiled    Email     Left at business\
+      \ With person in charge or in receptacle for deliveries     Left at home With\
+      \ person of suitable age and discretion residing there_2\": \"other_parties3_service_date\"\
+      , \"Date_3\": \"service_date3\", \"Signature_3\": \"service_signature3\", \"\
+      Printed Name_3\": \"service_printed_name3\", \"1201DCJ Approved May 21 2018_2\"\
+      : \"approval_date_2\", \"Acknowledgement of Satisfaction of Judgment_3\": \"\
+      acknowledgement_judgment_title_3\", \"Page 3 of 3\": \"page_3_of_3\"};\n   \
+      \                         \n                            let correct = 0;\n \
+      \                           let total = Object.keys(expected).length;\n    \
+      \                        let mismatches = [];\n                            \n\
+      \                            for (const [origField, expectedField] of Object.entries(expected))\
+      \ {\n                                if (fieldMappings[origField] === expectedField)\
+      \ {\n                                    correct++;\n                      \
+      \          } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF ebb2721315f845819b46cf395f956966.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: ebb2721315f845819b46cf395f956966.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{undefined}} (personal details section)
+
+      Plaintiff/User information: {{undefined_2}} (personal details section)
+
+      Plaintiff/User information: {{PlaintiffPetitioner}} (personal details section)
+
+      Plaintiff/User information: {{DefendantRespondent}} (personal details section)
+
+      Plaintiff/User information: {{Judge}} (personal details section)
+
+      Plaintiff/User information: {{Commissioner domestic cases}} (personal details
+      section)
+
+      Plaintiff/User information: {{A judge of this court signed the judgment in this
+      case on}} (personal details section)
+
+      Plaintiff/User information: {{1201DCJ Approved May 21 2018}} (personal details
+      section)
+
+      Plaintiff/User information: {{Acknowledgement of Satisfaction of Judgment}}
+      (personal details section)
+
+      Plaintiff/User information: {{Page 1 of 3}} (personal details section)
+
+      Plaintiff/User information: {{docket_number}} (personal details section)
+
+      Defendant/Other party information: {{users1_address_line_one}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_address_line_two}} (opposing party
+      section)
+
+      Defendant/Other party information: {{users1_email}} (opposing party section)
+
+      Defendant/Other party information: {{users1_phone_number}} (opposing party section)
+
+      Defendant/Other party information: {{Signed at}} (opposing party section)
+
+      Defendant/Other party information: {{Signature}} (opposing party section)
+
+      Defendant/Other party information: {{Printed Name}} (opposing party section)
+
+      Defendant/Other party information: {{Signature_2}} (opposing party section)
+
+      Defendant/Other party information: {{Acknowledgement of Satisfaction of Judgment_2}}
+      (opposing party section)
+
+      Defendant/Other party information: {{Persons NameRow1}} (opposing party section)
+
+      Defendant/Other party information: {{Service Address    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (opposing party
+      section)
+
+      Defendant/Other party information: {{Service Date    Mail     Hand Delivery    Efiled     Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (opposing party
+      section)
+
+      Case details: {{Persons NameRow2}} (legal proceeding information)
+
+      Case details: {{Service Address    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there}} (legal proceeding
+      information)
+
+      Case details: {{Persons NameRow3}} (legal proceeding information)
+
+      Case details: {{Service Address    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there_2}} (legal proceeding
+      information)
+
+      Case details: {{Service Date    Mail     Hand Delivery    Efiled    Email     Left
+      at business With person in charge or in receptacle for deliveries     Left at
+      home With person of suitable age and discretion residing there_2}} (legal proceeding
+      information)
+
+      Case details: {{Date_3}} (legal proceeding information)
+
+      Case details: {{Signature_3}} (legal proceeding information)
+
+      Case details: {{Printed Name_3}} (legal proceeding information)
+
+      Case details: {{1201DCJ Approved May 21 2018_2}} (legal proceeding information)
+
+      Case details: {{Acknowledgement of Satisfaction of Judgment_3}} (legal proceeding
+      information)
+
+      Case details: {{Page 3 of 3}} (legal proceeding information)
+
+      '
+- assert:
+  - type: javascript
+    value: "\n                        try {\n                            const response\
+      \ = JSON.parse(output);\n                            const fieldMappings = response.field_mappings\
+      \ || {};\n                            const expected = {\"Email\": \"users1_email\"\
+      , \"undefined_2\": \"district_county\", \"Judicial District\": \"judicial_district\"\
+      , \"State of Utah in the interest of\": \"interested_parties_name\", \"Case\
+      \ Number\": \"case_number\", \"Incidents\": \"incidents\", \"Parents Names\"\
+      : \"parents_names\", \"I request that the judge waive the age requirement because\
+      \ 1\": \"waive_age_reason_1\", \"I request that the judge waive the age requirement\
+      \ because 2\": \"waive_age_reason_2\", \"I request that the judge waive the\
+      \ age requirement because 3\": \"waive_age_reason_3\", \"Approved Board of Juvenile\
+      \ Court Judges\": \"judges_approval\", \"Petition to Expunge Juvenile Court\
+      \ Records\": \"expungement_petition\", \"Page 1 of 2\": \"page_1_of_2\", \"\
+      docket_number\": \"docket_number\", \"users1_birthdate\": \"users1_birthdate_date\"\
+      , \"trial_court_county\": \"trial_court_county\", \"I request that the court\
+      \ waive the oneyear requirement because 1\": \"waive_one_year_reason_1\", \"\
+      I request that the court waive the oneyear requirement because 2\": \"waive_one_year_reason_2\"\
+      , \"I request that the court waive the oneyear requirement because 3\": \"waive_one_year_reason_3\"\
+      , \"Since my 18th birthday I have resided at the following addresses 1\": \"\
+      address_since_18_1\", \"Since my 18th birthday I have resided at the following\
+      \ addresses 2\": \"address_since_18_2\", \"Since my 18th birthday I have resided\
+      \ at the following addresses 3\": \"address_since_18_3\", \"The court and the\
+      \ following agencies may have records to be expunged 1\": \"expunged_records_1\"\
+      , \"The court and the following agencies may have records to be expunged 2\"\
+      : \"expunged_records_2\", \"The court and the following agencies may have records\
+      \ to be expunged 3\": \"expunged_records_3\", \"names which I have used 1\"\
+      : \"names_used_1\", \"names which I have used 2\": \"names_used_2\", \"names\
+      \ which I have used 3\": \"names_used_3\", \"I declare under criminal penalty\
+      \ under the law of Utah that everything stated in this document is true\": \"\
+      declaration_true\", \"Signature\": \"signature_line\", \"Approved Board of Juvenile\
+      \ Court Judges_2\": \"judges_approval_2\", \"Petition to Expunge Juvenile Court\
+      \ Records_2\": \"expungement_petition_2\", \"Page 2 of 2\": \"page_2_of_2\"\
+      , \"signature_date\": \"signature_date\", \"users1_name\": \"users1_name\"};\n\
+      \                            \n                            let correct = 0;\n\
+      \                            let total = Object.keys(expected).length;\n   \
+      \                         let mismatches = [];\n                           \
+      \ \n                            for (const [origField, expectedField] of Object.entries(expected))\
+      \ {\n                                if (fieldMappings[origField] === expectedField)\
+      \ {\n                                    correct++;\n                      \
+      \          } else {\n                                    mismatches.push(`${origField}:\
+      \ got \"${fieldMappings[origField]}\", expected \"${expectedField}\"`);\n  \
+      \                              }\n                            }\n          \
+      \                  \n                            const accuracy = correct /\
+      \ total;\n                            console.log(`PDF f7e6e67e408c4309b83b8a6fde22b706.pdf:\
+      \ ${correct}/${total} correct ({(accuracy * 100).toFixed(1)}%)`);\n        \
+      \                    if (mismatches.length > 0) {\n                        \
+      \        console.log(`Mismatches: ${mismatches.slice(0, 5).join(', ')}`);\n\
+      \                            }\n                            \n             \
+      \               return accuracy >= 0.7; // 70% accuracy threshold for individual\
+      \ PDFs\n                        } catch (e) {\n                            console.error('JSON\
+      \ parse error:', e.message);\n                            return false;\n  \
+      \                      }\n                        "
+  vars:
+    pdf_text: 'Legal Document: f7e6e67e408c4309b83b8a6fde22b706.pdf
+
+
+      Please analyze the following PDF form text and rename the fields according to
+      Assembly Line conventions:
+
+
+      Plaintiff/User information: {{Email}} (personal details section)
+
+      Plaintiff/User information: {{undefined_2}} (personal details section)
+
+      Plaintiff/User information: {{Judicial District}} (personal details section)
+
+      Plaintiff/User information: {{State of Utah in the interest of}} (personal details
+      section)
+
+      Plaintiff/User information: {{Case Number}} (personal details section)
+
+      Plaintiff/User information: {{Incidents}} (personal details section)
+
+      Plaintiff/User information: {{Parents Names}} (personal details section)
+
+      Plaintiff/User information: {{I request that the judge waive the age requirement
+      because 1}} (personal details section)
+
+      Plaintiff/User information: {{I request that the judge waive the age requirement
+      because 2}} (personal details section)
+
+      Plaintiff/User information: {{I request that the judge waive the age requirement
+      because 3}} (personal details section)
+
+      Plaintiff/User information: {{Approved Board of Juvenile Court Judges}} (personal
+      details section)
+
+      Defendant/Other party information: {{Petition to Expunge Juvenile Court Records}}
+      (opposing party section)
+
+      Defendant/Other party information: {{Page 1 of 2}} (opposing party section)
+
+      Defendant/Other party information: {{docket_number}} (opposing party section)
+
+      Defendant/Other party information: {{users1_birthdate}} (opposing party section)
+
+      Defendant/Other party information: {{trial_court_county}} (opposing party section)
+
+      Defendant/Other party information: {{I request that the court waive the oneyear
+      requirement because 1}} (opposing party section)
+
+      Defendant/Other party information: {{I request that the court waive the oneyear
+      requirement because 2}} (opposing party section)
+
+      Defendant/Other party information: {{I request that the court waive the oneyear
+      requirement because 3}} (opposing party section)
+
+      Defendant/Other party information: {{Since my 18th birthday I have resided at
+      the following addresses 1}} (opposing party section)
+
+      Defendant/Other party information: {{Since my 18th birthday I have resided at
+      the following addresses 2}} (opposing party section)
+
+      Defendant/Other party information: {{Since my 18th birthday I have resided at
+      the following addresses 3}} (opposing party section)
+
+      Defendant/Other party information: {{The court and the following agencies may
+      have records to be expunged 1}} (opposing party section)
+
+      Case details: {{The court and the following agencies may have records to be
+      expunged 2}} (legal proceeding information)
+
+      Case details: {{The court and the following agencies may have records to be
+      expunged 3}} (legal proceeding information)
+
+      Case details: {{names which I have used 1}} (legal proceeding information)
+
+      Case details: {{names which I have used 2}} (legal proceeding information)
+
+      Case details: {{names which I have used 3}} (legal proceeding information)
+
+      Case details: {{I declare under criminal penalty under the law of Utah that
+      everything stated in this document is true}} (legal proceeding information)
+
+      Case details: {{Signature}} (legal proceeding information)
+
+      Case details: {{Approved Board of Juvenile Court Judges_2}} (legal proceeding
+      information)
+
+      Case details: {{Petition to Expunge Juvenile Court Records_2}} (legal proceeding
+      information)
+
+      Case details: {{Page 2 of 2}} (legal proceeding information)
+
+      Case details: {{signature_date}} (legal proceeding information)
+
+      Case details: {{users1_name}} (legal proceeding information)
+
+      '
