@@ -73,6 +73,10 @@ load_dotenv()
 
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
+class OpenAiCreds(TypedDict):
+    org: str
+    key: str
+
 stop_words = set(stopwords.words("english"))
 
 # Load local variables, models, and API key(s).
@@ -420,43 +424,167 @@ def normalize_name(
 
 
 def cluster_screens(
-    fields: List[str] = [], damping: float = 0.7, tools_token: Optional[str] = None
+    fields: List[str] = [],
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+    damping: Optional[float] = None,
+    tools_token: Optional[str] = None,
 ) -> Dict[str, List[str]]:
     """
-    Groups the given fields into screens based on how much they are related.
+    Groups the given fields into screens using an LLM (GPT) for semantic understanding.
 
     Args:
       fields: a list of field names
-      damping: a value >= 0.5 and < 1. Tunes how related screens should be
-      tools_token: the token to tools.suffolklitlab.org, needed of doing
-          micro-service vectorization
+      openai_creds: OpenAI credentials to use for the API call
+      api_key: explicit API key to use (overrides creds and env vars)
+      model: the OpenAI model to use (default: gpt-5-nano, can use gpt-4 variants)
+      damping: deprecated parameter, kept for backward compatibility
+      tools_token: deprecated parameter, kept for backward compatibility
 
     Returns: a suggested screen grouping, each screen name mapped to the list of fields on it
     """
-    vec_mat = np.zeros([len(fields), 300])
-    vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
-    for i in range(len(fields)):
-        vec_mat[i] = vecs[i]
-    # create model
-    # note will have to require newer version to fit the model when running with random_state=4
-    # just on the unit test for now, to make sure `tools.suffolklitlab.org` and local don't differ
-    model = AffinityPropagation(
-        damping=damping, random_state=4 if NEEDS_STABILITY else None
-    )
-    model.fit(vec_mat)
-    # assign a cluster to each example
-    yhat = model.predict(vec_mat)
-    # retrieve unique clusters
-    clusters = unique(yhat)
+    if not fields:
+        return {}
+
+    # Create system and user messages for the LLM to group fields logically
+    system_message = """You are an expert in user experience design and legal forms. 
+Your task is to group form field variable names into logical screens or pages 
+that would make sense for a user filling out a form. Group related fields together.
+
+Guidelines:
+- Group personal information fields together (name, address, contact info)
+- Group party information together (plaintiff, defendant, etc.)
+- Group court/case information together
+- Group signature/date fields together
+- Keep screens reasonably sized (3-8 fields per screen typically)
+- Use descriptive screen names that indicate the content
+
+Return your answer as a JSON object where each key is a descriptive screen name 
+(e.g., "personal_information", "case_details", "signatures") 
+and each value is a list of field names that belong together.
+
+IMPORTANT: Every field from the input must appear exactly once in the output. 
+Do not add, remove, or modify any field names.
+
+Respond only with the JSON object, no other text."""
+
+    user_message = f"""Here are the field names to group:
+{json.dumps(fields, indent=2)}
+
+Please group these fields into logical screens following the guidelines provided."""
+
+    response = ""
+    try:
+        # Use the text_complete function to call the LLM
+        response = text_complete(
+            system_message=system_message,
+            user_message=user_message,
+            max_tokens=1500,
+            creds=openai_creds,
+            api_key=api_key,
+            model=model,
+        )
+
+        # Handle the response (could be dict if JSON was parsed, or str if parsing failed)
+        if isinstance(response, dict):
+            screens = response
+        elif isinstance(response, str):
+            # If we got a string back, the JSON parsing failed - try manual parsing as fallback
+            try:
+                screens = json.loads(response)
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to parse JSON response: {response}")
+        else:
+            raise ValueError(f"Unexpected response type: {type(response)}")
+        
+        # Validate the response
+        if not isinstance(screens, dict):
+            raise ValueError("Response is not a dictionary")
+        
+        # Collect all fields from the response
+        response_fields = []
+        for screen_fields in screens.values():
+            if not isinstance(screen_fields, list):
+                raise ValueError(f"Screen fields must be a list, got {type(screen_fields)}")
+            response_fields.extend(screen_fields)
+        
+        # Check that all input fields are present in the output
+        input_set = set(fields)
+        response_set = set(response_fields)
+        
+        missing_fields = input_set - response_set
+        extra_fields = response_set - input_set
+        
+        if missing_fields or extra_fields:
+            raise ValueError(
+                f"Field validation failed. Missing: {missing_fields}, Extra: {extra_fields}"
+            )
+        
+        # Check for duplicate fields in the response
+        if len(response_fields) != len(response_set):
+            field_counts = {}
+            for field in response_fields:
+                field_counts[field] = field_counts.get(field, 0) + 1
+            duplicates = [field for field, count in field_counts.items() if count > 1]
+            raise ValueError(f"Duplicate fields found in response: {duplicates}")
+        
+        return screens
+        
+    except Exception as ex:
+        print(f"Failed to parse LLM response or validation failed: {ex}")
+        if hasattr(ex, '__context__') and ex.__context__:
+            print(f"Context: {ex.__context__}")
+        print(f"Response: {response}")
+        
+        # Fallback: create a simple grouping based on field name patterns
+        return _fallback_field_grouping(fields)
+
+
+def _fallback_field_grouping(fields: List[str]) -> Dict[str, List[str]]:
+    """
+    Fallback field grouping when LLM fails. Groups fields based on simple heuristics.
+    """
+    if not fields:
+        return {}
+    
     screens = {}
-    # sim = np.zeros([5,300])
-    for i, cluster in enumerate(clusters):
-        this_screen = where(yhat == cluster)[0]
-        vars = []
-        for screen in this_screen:
-            # sim[screen]=vec_mat[screen] # use this spot to add up vectors for compare to list
-            vars.append(fields[screen])
-        screens["screen_%s" % i] = vars
+    personal_info = []
+    party_info = []
+    case_info = []
+    signature_info = []
+    other_fields = []
+    
+    # Simple keyword-based grouping
+    for field in fields:
+        field_lower = field.lower()
+        if any(keyword in field_lower for keyword in ['name', 'address', 'phone', 'email', 'birth']):
+            personal_info.append(field)
+        elif any(keyword in field_lower for keyword in ['plaintiff', 'defendant', 'petitioner', 'respondent']):
+            party_info.append(field)
+        elif any(keyword in field_lower for keyword in ['docket', 'case', 'court', 'trial']):
+            case_info.append(field)
+        elif any(keyword in field_lower for keyword in ['signature', 'date']):
+            signature_info.append(field)
+        else:
+            other_fields.append(field)
+    
+    # Only add non-empty screens
+    if personal_info:
+        screens['personal_information'] = personal_info
+    if party_info:
+        screens['party_information'] = party_info
+    if case_info:
+        screens['case_information'] = case_info
+    if signature_info:
+        screens['signatures_and_dates'] = signature_info
+    if other_fields:
+        screens['other_fields'] = other_fields
+    
+    # If no fields were categorized, put them all in one screen
+    if not screens:
+        screens['screen_1'] = fields
+    
     return screens
 
 
@@ -777,27 +905,38 @@ def all_caps_words(text: str) -> int:
     return 0
 
 
-class OpenAiCreds(TypedDict):
-    org: str
-    key: str
-
-
 def text_complete(
-    prompt: str,
+    system_message: str,
+    user_message: Optional[str] = None,
     max_tokens: int = 500,
     creds: Optional[OpenAiCreds] = None,
     temperature: float = 0,
     api_key: Optional[str] = None,
-) -> str:
+    model: str = "gpt-5-nano",
+    # Legacy parameter for backward compatibility
+    prompt: Optional[str] = None,
+) -> Union[str, Dict]:
     """Run a prompt via openAI's API and return the result.
 
     Args:
-        prompt (str): The prompt to send to the API.
+        system_message (str): The system message that sets the context/role for the AI.
+        user_message (Optional[str]): The user message/question. If None, system_message is used as the prompt.
         max_tokens (int, optional): The number of tokens to generate. Defaults to 500.
         creds (Optional[OpenAiCreds], optional): The credentials to use. Defaults to None.
-        temperature (float, optional): The temperature to use. Defaults to 0.
+        temperature (float, optional): The temperature to use. Defaults to 0. Note: Not supported by GPT-5 family models.
         api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
+        model (str, optional): The model to use. Defaults to "gpt-5-nano".
+        prompt (Optional[str]): Legacy parameter for backward compatibility. If provided, used as system message.
+    
+    Returns:
+        Union[str, Dict]: Returns a parsed dictionary if JSON was requested and successfully parsed, 
+                         otherwise returns the raw string response.
     """
+    # Handle backward compatibility
+    if prompt is not None:
+        system_message = prompt
+        user_message = None
+    
     # Resolve the API key using our helper function
     resolved_key = get_openai_api_key_from_sources(api_key, dict(creds) if creds else None)
 
@@ -812,19 +951,51 @@ def text_complete(
             openai_client = client
         else:
             raise Exception("No OpenAI credentials provided")
+    
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=1.0,
-            frequency_penalty=0.0,
-            presence_penalty=0.0,
-        )
-        return str((response.choices[0].message.content or "").strip())
+        messages = [{"role": "system", "content": system_message}]
+        if user_message:
+            messages.append({"role": "user", "content": user_message})
+        
+        # GPT-5 family models don't support temperature parameter
+        completion_params = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        
+        # Only add temperature for non-GPT-5 models
+        if not model.startswith("gpt-5"):
+            completion_params["temperature"] = temperature
+        
+        # Enable JSON mode if "json" appears in the prompt (case-insensitive)
+        combined_prompt = system_message + (user_message or "")
+        is_json_request = "json" in combined_prompt.lower()
+        if is_json_request:
+            completion_params["response_format"] = {"type": "json_object"}
+        
+        response = openai_client.chat.completions.create(**completion_params)
+        raw_response = str((response.choices[0].message.content or "").strip())
+        
+        # If JSON was requested, try to parse and return the JSON object
+        if is_json_request:
+            try:
+                return json.loads(raw_response)
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, try to extract JSON from the response
+                # Sometimes the model might include extra text around the JSON
+                json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+                if json_match:
+                    try:
+                        return json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        print(f"Failed to parse JSON response: {e}")
+                        return raw_response
+                else:
+                    print(f"No valid JSON found in response: {raw_response}")
+                    return raw_response
+        
+        return raw_response
     except Exception as ex:
         print(f"{ex}")
         return "ApiError"
@@ -847,9 +1018,17 @@ def complete_with_command(
         text = tokenizer.decode(
             tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
         )
-    return text_complete(
-        text + "\n\n" + command, max_tokens=tokens, creds=creds, api_key=api_key
+    result = text_complete(
+        system_message=command,
+        user_message=text,
+        max_tokens=tokens,
+        creds=creds,
+        api_key=api_key
     )
+    # Ensure we always return a string for this function
+    if isinstance(result, dict):
+        return json.dumps(result)
+    return result
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
@@ -872,7 +1051,7 @@ def describe_form(
     return complete_with_command(text, command, 250, creds=creds, api_key=api_key)
 
 
-def needs_calculations(text: Union[str]) -> bool:
+def needs_calculations(text: str) -> bool:
     # since we reomved SpaCy we can't use Doc,
     # so I rewrote this to provide similar functionality absent Doc
     # old code is commented out
