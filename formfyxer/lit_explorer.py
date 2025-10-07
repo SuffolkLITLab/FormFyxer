@@ -415,23 +415,123 @@ def normalize_name(
     last_field: str,
     this_field: str,
     tools_token: Optional[str] = None,
+    context: Optional[str] = None,
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-4o-mini",
 ) -> Tuple[str, float]:
     """
     Normalize a field name, if possible to the Assembly Line conventions, and if
     not, to a snake_case variable name of appropriate length.
 
-    HACK: temporarily all we do is re-case it and normalize it using regex rules.
-    Will be replaced with call to LLM soon.
+    Args:
+        jur: Jurisdiction (legacy parameter, maintained for compatibility)
+        group: Group/category (legacy parameter, maintained for compatibility)  
+        n: Position in field list (legacy parameter, maintained for compatibility)
+        per: Percentage through field list (legacy parameter, maintained for compatibility)
+        last_field: Previous field name (legacy parameter, maintained for compatibility)
+        this_field: The field name to normalize
+        tools_token: Tools API token (legacy parameter, maintained for compatibility)
+        context: Optional PDF text context to help with field naming
+        openai_creds: OpenAI credentials for LLM calls
+        api_key: OpenAI API key (overrides creds and env vars)
+        model: OpenAI model to use (default: gpt-4o-mini)
+    
+    Returns:
+        Tuple of (normalized_field_name, confidence_score)
+    
+    If context and LLM credentials are provided, uses LLM normalization.
+    Otherwise, falls back to traditional regex-based approach for backward compatibility.
     """
-
+    
+    # Check if field is already in included_fields (high confidence match)
     if this_field not in included_fields:
-        this_field = re_case(this_field)
-        this_field = regex_norm_field(this_field)
-
-    if this_field in included_fields:
+        recased_field = re_case(this_field)
+        normalized_field = regex_norm_field(recased_field)
+        if normalized_field in included_fields:
+            return f"*{normalized_field}", 0.01
+    else:
         return f"*{this_field}", 0.01
+    
+    # If context and LLM credentials are provided, use enhanced LLM normalization
+    if context and (openai_creds or api_key or os.getenv("OPENAI_API_KEY")):
+        try:
+            # Use LLM to normalize the field name with context
+            system_message = _load_prompt("normalize_field_name")
+            
+            # Truncate context if too long (keep reasonable size for token limits)
+            max_context_chars = 2000  # Roughly 500 tokens
+            truncated_context = context[:max_context_chars] if len(context) > max_context_chars else context
+            
+            user_message = f"""Field to normalize: "{this_field}"
 
-    return reformat_field(this_field, tools_token=tools_token), 0.5
+Context from PDF form:
+{truncated_context}
+
+Additional information:
+- Field position: {n} out of total fields
+- Previous field: "{last_field}"
+- Jurisdiction: "{jur}" (if relevant)
+- Category: "{group}" (if relevant)
+
+Please normalize this field name following Assembly Line conventions."""
+
+            # Resolve API key
+            resolved_api_key = api_key or (openai_creds["key"] if openai_creds else None) or os.getenv("OPENAI_API_KEY")
+            
+            response = text_complete(
+                system_message=system_message,
+                user_message=user_message,
+                max_tokens=500,  # Small response expected
+                creds=openai_creds,
+                api_key=resolved_api_key,
+                model=model,
+            )
+            
+            # Parse the response
+            if isinstance(response, dict):
+                normalized_name = response.get("normalized_name", "")
+                confidence = response.get("confidence", 0.5)
+            elif isinstance(response, str):
+                try:
+                    parsed_response = json.loads(response)
+                    normalized_name = parsed_response.get("normalized_name", "")
+                    confidence = parsed_response.get("confidence", 0.5)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Failed to parse JSON response: {response}")
+            else:
+                raise ValueError(f"Unexpected response type: {type(response)}")
+            
+            # Validate the response
+            if not normalized_name or not isinstance(normalized_name, str):
+                raise ValueError("No valid normalized_name in response")
+            
+            # Basic validation: ensure it follows snake_case conventions
+            if not re.match(r'^[a-z][a-z0-9_]*$', normalized_name):
+                # If the LLM response doesn't follow conventions, clean it up
+                normalized_name = re.sub(r'[^a-z0-9_]', '_', normalized_name.lower())
+                normalized_name = re.sub(r'_+', '_', normalized_name)  # Remove multiple underscores
+                normalized_name = normalized_name.strip('_')  # Remove leading/trailing underscores
+                if not normalized_name or not normalized_name[0].isalpha():
+                    # Fallback if still invalid
+                    raise ValueError("Invalid field name after cleanup")
+                confidence = max(0.1, confidence - 0.2)  # Reduce confidence for cleaned names
+            
+            # Ensure confidence is in valid range
+            confidence = max(0.1, min(1.0, float(confidence)))
+            
+            return normalized_name, confidence
+            
+        except Exception as ex:
+            print(f"LLM field normalization failed for '{this_field}': {ex}, falling back to traditional approach")
+            # Fall through to traditional approach below
+    
+    # Traditional approach (original behavior)
+    # Re-case and normalize the field using regex rules
+    processed_field = re_case(this_field)
+    processed_field = regex_norm_field(processed_field)
+    
+    return reformat_field(processed_field, tools_token=tools_token), 0.5
 
 
 def rename_pdf_fields_with_context(
