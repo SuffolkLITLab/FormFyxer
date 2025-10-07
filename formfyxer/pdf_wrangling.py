@@ -6,6 +6,7 @@ import tempfile
 from copy import copy
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Optional,
@@ -30,13 +31,31 @@ from pikepdf import Pdf
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import magenta, pink, blue
 
-from pdfminer.converter import PDFLayoutAnalyzer
-from pdfminer.layout import LAParams, LTPage, LTTextBoxHorizontal, LTChar, LTContainer
+from pdfminer.converter import PDFLayoutAnalyzer, TextConverter
+from pdfminer.layout import (
+    LAParams,
+    LTPage,
+    LTTextBoxHorizontal,
+    LTChar,
+    LTContainer,
+    LTAnno,
+    LTText,
+    LTTextBox,
+    LTTextBoxVertical,
+    LTTextGroup,
+    LTTextLine,
+    LTImage,
+    LTItem,
+)
 from pdfminer.pdffont import PDFUnicodeNotDefined
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdevice import PDFDevice
+from pdfminer.pdftypes import resolve1
+from pdfminer.psparser import PSLiteral, PSKeyword
+from pdfminer.utils import decode_text, translate_matrix, mult_matrix, MATRIX_IDENTITY
 
 # Change this to true to output lots of images to help understand why a kernel didn't work
 DEBUG = False
@@ -689,6 +708,166 @@ class BracketPDFPageAggregator(PDFLayoutAnalyzer):
         return self.results
 
 
+class JinjaFieldTextConverter(TextConverter):
+    def render_char(
+        self,
+        matrix,
+        font,
+        fontsize: float,
+        scaling: float,
+        rise: float,
+        cid: int,
+        ncs,
+        graphicstate,
+    ) -> float:
+        try:
+            text = font.to_unichr(cid)
+            assert isinstance(text, str), str(type(text))
+        except PDFUnicodeNotDefined:
+            text = self.handle_undefined_char(font, cid)
+        textwidth = font.char_width(cid)
+        textdisp = font.char_disp(cid)
+        # Some fonts don't have "{", "}", or "_". Use the right sizes for them,
+        # otherwise they won't get combined into the correct lines
+        if textwidth == 0 and cid == 123 or cid == 125:  # "{" or "}"
+            textwidth = font.char_width(116)  # about the size of a "t"
+        if textwidth == 0 and cid == 95:  # "_"
+            textwidth = font.char_width(77)  # about the size of a "M"
+        item = LTChar(
+            matrix,
+            font,
+            fontsize,
+            scaling,
+            rise,
+            text,
+            textwidth,
+            textdisp,
+            ncs,
+            graphicstate,
+        )
+        self.cur_item.add(item)
+        return item.adv
+
+
+class PDFPageAndFieldInterpreter(PDFPageInterpreter):
+    # TODO: keep track of all of the fields per page, insert them when rendering the page
+    pass
+
+    def __init__(self, rsrcmgr: PDFResourceManager, device: PDFDevice, doc) -> None:
+        self.rsrcmgr = rsrcmgr
+        self.device = device
+        self.doc = doc
+        self.field_pages: Dict[Any, List[FormField]] = {}
+        existing_fields = get_existing_pdf_fields(doc)
+
+        for page_fields, page in zip(existing_fields, doc.pages):
+            objid = page.obj.objgen[0]
+            self.field_pages[objid] = []
+            for field in page_fields:
+                self.field_pages[objid].append(field)
+
+    def dup(self) -> "PDFPageInterpreter":
+        return self.__class__(self.rsrcmgr, self.device, self.doc)
+
+    def get_fields_on_page(self, page_id):
+        return self.field_pages.get(page_id, [])
+
+    def process_page(self, page) -> None:
+        (x0, y0, x1, y1) = page.mediabox
+        if page.rotate == 90:
+            ctm = (0, -1, 1, 0, -y0, x1)
+        elif page.rotate == 180:
+            ctm = (-1, 0, 0, -1, x1, y1)
+        elif page.rotate == 270:
+            ctm = (0, 1, -1, 0, y1, -x0)
+        else:
+            ctm = (1, 0, 0, 1, -x0, -y0)
+        self.device.begin_page(page, ctm)
+
+        self.render_contents(page.resources, page.contents, ctm=ctm)
+        # Render all of the fields on the page as {{ field_name }}
+        # print(page.pageid)
+        for field in self.get_fields_on_page(page.pageid):
+            self.do_BT()
+            # set the font, and the font size. Get any font available
+            font = list(self.fontmap.values())[-1]
+            for contender_font in self.fontmap.values():
+                if contender_font.is_vertical():
+                    continue
+                # Make sure that there's widths for A and a
+                if (
+                    contender_font.char_width(65) == 0
+                    or contender_font.char_width(97) == 0
+                ):
+                    continue
+                font = contender_font
+            self.textstate.fontsize = 8
+            x = 0.0
+            y = 0.0
+            needcharspace = False
+            # Start a specific position on the page (field.x and field.y)
+            self.do_TD(field.x, field.y)
+            matrix = mult_matrix(self.textstate.matrix, ctm)
+            # Manual Tj operation
+            for char in r"{{" + field.name + r"}}":
+                for cid in font.decode(char.encode()):
+                    if needcharspace:
+                        x += 0.1  # charspace
+                    x += self.device.render_char( # type: ignore
+                        translate_matrix(matrix, (x, y)),
+                        font,
+                        self.textstate.fontsize,  # fontsize,
+                        1.0,  # scaling,
+                        0,
+                        cid,
+                        self.ncs,
+                        self.graphicstate.copy(),
+                    )
+                    # if cid == 32 and wordspace:
+                    #     x += 0  # wordspace
+                    needcharspace = True
+            self.do_ET()
+        self.device.end_page(page)
+        return
+
+
+def get_original_text_with_fields(input_file, output_file):
+    """Gets the original text of the document, with the names of the fields in jinja format ({{field_name}})"""
+    with open(input_file, "rb") as fp, open(input_file, "rb") as dup_fp, open(
+        output_file, "wb"
+    ) as output_string:
+        rsrcmgr = PDFResourceManager()
+        device = JinjaFieldTextConverter(
+            rsrcmgr, output_string, codec="utf-8", laparams=LAParams(char_margin=10.0)
+        )
+        interpreter = PDFPageAndFieldInterpreter(rsrcmgr, device, Pdf.open(dup_fp))
+        for page in PDFPage.get_pages(fp, False):
+            interpreter.process_page(page)
+        device.close()
+
+
+class TextAndFieldConverter(TextConverter):
+    def receive_layout(self, ltpage: LTPage) -> None:
+        def render(item: LTItem) -> None:
+            if isinstance(item, LTContainer):
+                for child in item:
+                    render(child)
+            elif isinstance(item, LTText):
+                self.write_text(item.get_text())
+            if isinstance(item, LTTextBox):
+                self.write_text("\n")
+            elif isinstance(item, LTImage):
+                if self.imagewriter is not None:
+                    self.imagewriter.export_image(item)
+            elif isinstance(item, LTAnno):
+                self.write_text(item.get_text())
+
+        if self.showpageno:
+            self.write_text("Page %s\n" % ltpage.pageid)
+        render(ltpage)
+        self.write_text("\f")
+
+
 class Textbox(TypedDict):
     textbox: LTTextBoxHorizontal
     bbox: BoundingBoxF
@@ -1039,9 +1218,114 @@ def get_possible_fields(
     return fields
 
 
+class ImproveNameVisitor:
+    def __init__(self):
+        self.used_field_names = set()
+
+    def improve_name_with_surrounding_text(
+        self, field_info: FormField, textboxes: List[Textbox]
+    ) -> FormField:
+        dists = [
+            (
+                bbox_distance(field_info.get_bbox(), textbox["bbox"])[0],
+                textbox["textbox"],
+                textbox["bbox"],
+            )
+            for textbox in textboxes
+        ]
+        if DEBUG:
+            print(f"For {field_info.name}, dists: {dists}")
+        min_textbox = min(dists, key=lambda d: d[0])
+        # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
+        # text_obj_bboxes.remove(min_obj[2])
+        # TODO(brycew): actual regex replacement of lots of underscores
+        label = re.sub("[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
+        label = re.sub("_{3,}", "_", label).strip("_")
+        if label not in self.used_field_names:
+            field_info.name = label
+            self.used_field_names.add(label)
+        elif DEBUG:
+            print(f"avoiding using label {label} more than once")
+        return field_info
+
+
+class AllCloseTextVisitor:
+    def __init__(self):
+        self.field_map = {}
+
+    def all_close_text(self, field_info, textboxes) -> FormField:
+        dists = [
+            (tb["bbox"][0] + tb["bbox"][1] * 1000, tb["textbox"].get_text())
+            for tb in textboxes
+        ] + [
+            (
+                field_info.get_bbox()[0] + field_info.get_bbox()[1] * 1000,
+                "{{ " + field_info.name + "}} ",
+            )
+        ]
+        textbox_order = sorted(dists, key=lambda d: d[0])
+        all_text = "".join([tb[1] for tb in textbox_order])
+        self.field_map[field_info.name] = all_text
+        return field_info
+
+
+class LowestVertVisitor:
+    """Gets just the closest text to the field, and returns that"""
+
+    def __init__(self):
+        self.field_map = {}
+
+    def lowest_vert(fi, tbs):
+        dists = []
+        for tb in tbs:
+            dist = pdf_wrangling.bbox_distance(fi.get_bbox(), tb["bbox"])
+            a_side, b_side = dist[1], dist[2]
+            closest_side_dist = min(
+                pdf_wrangling.get_dist(a_side[0], b_side[0]),
+                pdf_wrangling.get_dist(a_side[1], b_side[1]),
+            )
+            enumm = ("After" if closest_side_dist > 0 else "Before",)
+            tup = (dist[0], enumm, tb["textbox"], tb["bbox"])
+            dists.append(tup)
+        min_tb = min(dists, key=lambda d: d[0])
+        print(f"{fi.name}, {min_tb[2].get_text()}")
+        self.field_map[fi.name] = min_tb
+        return fi
+
+
+def replace_in_original(original_text, field_map):
+    """Given the original text of a PDF (extract_text(...)), adds the field's names in their best places.
+    Doesn't always work, especially with duplicate text.
+    """
+    text = original_text
+    for field_info in field_map.items():
+        try:
+            idx = text.index(field_info[1][2].get_text())
+            print(f"{field_info[0]}, {idx}")
+            if field_info[1][1] == "Before":
+                text = text[:idx] + " {{ " + field_info[0] + " }} " + text[idx:]
+            else:
+                new_idx = idx + len(field_info[1][2].get_text())
+                text = text[:new_idx] + " {{ " + field_info[0] + " }} " + text[new_idx:]
+        except Exception as ex:
+            print(f"EXCEPTION on {field_info[0]}: {ex}")
+    return text
+
+
 def improve_names_with_surrounding_text(
     fields: List[List[FormField]], textboxes: List[List[Textbox]]
-):
+) -> List[List[FormField]]:
+    name_visitor = ImproveNameVisitor()
+    return surrounding_text_traverse(
+        fields,
+        textboxes,
+        lambda fi, tbs: name_visitor.improve_name_with_surrounding_text(fi, tbs),
+    )
+
+
+def surrounding_text_traverse(
+    fields: List[List[FormField]], textboxes: List[List[Textbox]], visitor: Callable
+) -> List[List[FormField]]:
     new_fields = []
     used_field_names = set()
     for i, (fields_in_page, text_in_page) in enumerate(zip(fields, textboxes)):
@@ -1094,6 +1378,7 @@ def improve_names_with_surrounding_text(
                     used_field_names.add(label)
                 elif DEBUG:
                     print(f"avoiding using label {label} more than once")
+                copied_field_info = visitor(copied_field_info, intersected)
             page_fields.append(copied_field_info)
 
         new_fields.append(page_fields)
