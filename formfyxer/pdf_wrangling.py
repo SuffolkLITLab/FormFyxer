@@ -788,6 +788,19 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
         # Render all of the fields on the page as {{ field_name }}
         # print(page.pageid)
         for field in self.get_fields_on_page(page.pageid):
+            # If no fonts are available from rendering the page content,
+            # we'll insert the field marker as plain text in the text stream
+            if not self.fontmap:
+                # Fallback: add field marker directly to the text converter
+                field_marker = "{{" + field.name + "}}"
+                # Insert into the device's text stream at the appropriate position
+                if hasattr(self.device, 'write_text'):
+                    self.device.write_text(field_marker)
+                elif hasattr(self.device, 'outfp'):
+                    # Direct write to output stream if available
+                    self.device.outfp.write(field_marker.encode(self.device.codec))
+                continue
+                
             self.do_BT()
             # set the font, and the font size. Get any font available
             font = list(self.fontmap.values())[-1]
@@ -1239,7 +1252,7 @@ class ImproveNameVisitor:
         # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
         # text_obj_bboxes.remove(min_obj[2])
         # TODO(brycew): actual regex replacement of lots of underscores
-        label = re.sub("[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
+        label = re.sub(r"[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
         label = re.sub("_{3,}", "_", label).strip("_")
         if label not in self.used_field_names:
             field_info.name = label
