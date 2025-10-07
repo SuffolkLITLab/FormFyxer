@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import tempfile
 
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams
@@ -431,6 +432,159 @@ def normalize_name(
         return f"*{this_field}", 0.01
 
     return reformat_field(this_field, tools_token=tools_token), 0.5
+
+
+def rename_pdf_fields_with_context(
+    pdf_path: str,
+    original_field_names: List[str],
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+) -> Dict[str, str]:
+    """
+    Use LLM to rename PDF fields based on full PDF context with field markers.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        original_field_names: List of original field names from the PDF
+        openai_creds: OpenAI credentials to use for the API call
+        api_key: explicit API key to use (overrides creds and env vars)
+        model: the OpenAI model to use (default: gpt-5-nano)
+    
+    Returns:
+        Dictionary mapping original field names to new Assembly Line names
+    """
+    if not original_field_names:
+        return {}
+    
+    try:
+        # Import here to avoid circular imports
+        from .pdf_wrangling import get_original_text_with_fields
+        
+        # Get PDF text with field markers
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as temp_file:
+            try:
+                get_original_text_with_fields(pdf_path, temp_file.name)
+                
+                # Read the text with field markers
+                with open(temp_file.name, 'r', encoding='utf-8') as f:
+                    pdf_text_with_fields = f.read()
+                
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
+        
+        if not pdf_text_with_fields or not pdf_text_with_fields.strip():
+            # Fallback: if we can't get text with field markers, use basic approach
+            print("Warning: Could not extract PDF text with field markers, falling back to regex approach")
+            return {name: regex_norm_field(re_case(name)) for name in original_field_names}
+        
+        # Load the field labeling prompt
+        system_message = _load_prompt("field_labeling")
+        
+        # For GPT-5-nano: Support up to 30 pages (roughly 100K tokens input, well within 400K limit)
+        # Estimate: 30 pages * ~1300 tokens/page = ~39K tokens for PDF text
+        # Plus prompt and field list = ~50K total input tokens (comfortable margin)
+        max_pdf_text_chars = 300000  # Roughly 75K tokens worth of text
+        
+        user_message = f"""Here is the PDF form text with field markers:
+
+{pdf_text_with_fields[:max_pdf_text_chars]}
+
+Original field names to rename:
+{json.dumps(original_field_names, indent=2)}
+
+Please analyze the context around each field marker and provide appropriate Assembly Line variable names."""
+
+        # Call the LLM with much higher limits for GPT-5-nano
+        response = text_complete(
+            system_message=system_message,
+            user_message=user_message,
+            max_tokens=15000,  # Increased for larger field lists and more detailed reasoning
+            creds=openai_creds,
+            api_key=api_key,
+            model=model,
+        )
+        
+        # Parse the response
+        if isinstance(response, dict):
+            field_mappings = response.get("field_mappings", {})
+        elif isinstance(response, str):
+            try:
+                parsed_response = json.loads(response)
+                field_mappings = parsed_response.get("field_mappings", {})
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to parse JSON response: {response}")
+        else:
+            raise ValueError(f"Unexpected response type: {type(response)}")
+        
+        # Validate the response
+        if not isinstance(field_mappings, dict):
+            raise ValueError("field_mappings is not a dictionary")
+        
+        # Ensure all original fields are mapped
+        mapped_fields = set(field_mappings.keys())
+        original_fields = set(original_field_names)
+        
+        missing_fields = original_fields - mapped_fields
+        extra_fields = mapped_fields - original_fields
+        
+        # Handle missing fields with fallback
+        for missing_field in missing_fields:
+            fallback_name = regex_norm_field(re_case(missing_field))
+            field_mappings[missing_field] = fallback_name
+            print(f"Warning: LLM didn't map '{missing_field}', using fallback: '{fallback_name}'")
+        
+        # Remove extra fields that weren't in the original list
+        for extra_field in extra_fields:
+            del field_mappings[extra_field]
+            print(f"Warning: LLM provided mapping for unknown field '{extra_field}', removing")
+        
+        # Handle duplicates by adding suffixes
+        final_mappings = {}
+        used_names = set()
+        
+        for original_name in original_field_names:
+            new_name = field_mappings.get(original_name, original_name)
+            
+            # If this name is already used, add a suffix
+            if new_name in used_names:
+                counter = 2
+                base_name = new_name
+                while f"{base_name}__{counter}" in used_names:
+                    counter += 1
+                new_name = f"{base_name}__{counter}"
+            
+            final_mappings[original_name] = new_name
+            used_names.add(new_name)
+        
+        return final_mappings
+        
+    except Exception as ex:
+        print(f"Failed to rename fields with LLM: {ex}")
+        
+        # Fallback: use regex-based approach
+        fallback_mappings = {}
+        used_names = set()
+        
+        for original_name in original_field_names:
+            new_name = regex_norm_field(re_case(original_name))
+            
+            # Handle duplicates
+            if new_name in used_names:
+                counter = 2
+                base_name = new_name
+                while f"{base_name}__{counter}" in used_names:
+                    counter += 1
+                new_name = f"{base_name}__{counter}"
+            
+            fallback_mappings[original_name] = new_name
+            used_names.add(new_name)
+        
+        return fallback_mappings
 
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
@@ -964,8 +1118,9 @@ def text_complete(
         
         # GPT-5 models use max_completion_tokens instead of max_tokens and need more tokens due to reasoning
         if model.startswith("gpt-5"):
-            # Increase tokens significantly for GPT-5 models to account for reasoning tokens
-            completion_params["max_completion_tokens"] = max_tokens * 10
+            # Increase tokens for GPT-5 models but respect the 128K completion token limit
+            requested_tokens = min(max_tokens * 5, 128000)  # 5x multiplier but capped at 128K
+            completion_params["max_completion_tokens"] = requested_tokens
         else:
             completion_params["max_tokens"] = max_tokens
             completion_params["temperature"] = temperature
@@ -1011,15 +1166,18 @@ def complete_with_command(
     api_key: Optional[str] = None,
 ) -> str:
     """Combines some text with a command to send to open ai."""
-    # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
-    # A bit less than 4097 in case the tokenizer is wrong
-    # don't deal with negative numbers, clip at 1 (OpenAi will error anyway)
-    max_length = max(4080 - len(tokenizer(command)["input_ids"]) - tokens, 1)
+    # For GPT-5-nano: 400K input token limit, so we can handle much larger inputs
+    # Support up to 30 pages of PDF text (~300K characters = ~75K tokens)
+    # Reserve space for command and response tokens: 375K - command - response = ~300K for text
+    max_input_tokens = 300000  # Conservative limit for input text
+    max_length = max(max_input_tokens - len(tokenizer(command)["input_ids"]) - tokens, 1)
+    
     text_tokens = tokenizer(text)
     if len(text_tokens["input_ids"]) > max_length:
         text = tokenizer.decode(
             tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
         )
+    
     result = text_complete(
         system_message=command,
         user_message=text,
@@ -1050,7 +1208,7 @@ def describe_form(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
     command = _load_prompt("describe_form")
-    return complete_with_command(text, command, 1000, creds=creds, api_key=api_key)
+    return complete_with_command(text, command, 3000, creds=creds, api_key=api_key)  # Increased for more detailed descriptions
 
 
 def needs_calculations(text: str) -> bool:
@@ -1416,27 +1574,67 @@ def parse_form(
                 title = "(Untitled)"
     nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
-        length = len(field_names)
-        last = "null"
-        new_names = []
-        new_names_conf = []
-        for i, field_name in enumerate(field_names):
-            new_name, new_confidence = normalize_name(
-                jur or "",
-                cat or "",
-                i,
-                i / length,
-                last,
-                field_name,
-                tools_token=tools_token,
-            )
-            new_names.append(new_name)
-            new_names_conf.append(new_confidence)
-            last = field_name
-        new_names = [
-            v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
-            for i, v in enumerate(new_names)
-        ]
+        # Use enhanced LLM-powered field renaming with PDF context
+        if (openai_creds or resolved_api_key) and field_names:
+            try:
+                field_mappings = rename_pdf_fields_with_context(
+                    in_file,
+                    field_names,
+                    openai_creds=openai_creds,
+                    api_key=resolved_api_key,
+                )
+                new_names = [field_mappings.get(name, name) or name for name in field_names]
+                # Set high confidence for LLM-generated names
+                new_names_conf = [0.8 if field_mappings.get(name) else 0.1 for name in field_names]
+                llm_renamed_count = len([n for n in new_names if n and not n.startswith('*')])
+                print(f"Successfully renamed {llm_renamed_count} fields using LLM")
+            except Exception as e:
+                print(f"LLM field renaming failed: {e}, falling back to traditional approach")
+                # Fallback to traditional approach
+                length = len(field_names)
+                last = "null"
+                new_names = []
+                new_names_conf = []
+                for i, field_name in enumerate(field_names):
+                    new_name, new_confidence = normalize_name(
+                        jur or "",
+                        cat or "",
+                        i,
+                        i / length,
+                        last,
+                        field_name,
+                        tools_token=tools_token,
+                    )
+                    new_names.append(new_name)
+                    new_names_conf.append(new_confidence)
+                    last = field_name
+                new_names = [
+                    v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
+                    for i, v in enumerate(new_names)
+                ]
+        else:
+            # Traditional approach when no OpenAI credentials available
+            length = len(field_names)
+            last = "null"
+            new_names = []
+            new_names_conf = []
+            for i, field_name in enumerate(field_names):
+                new_name, new_confidence = normalize_name(
+                    jur or "",
+                    cat or "",
+                    i,
+                    i / length,
+                    last,
+                    field_name,
+                    tools_token=tools_token,
+                )
+                new_names.append(new_name)
+                new_names_conf.append(new_confidence)
+                last = field_name
+            new_names = [
+                v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
+                for i, v in enumerate(new_names)
+            ]
     else:
         new_names = field_names
         new_names_conf = []

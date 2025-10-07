@@ -388,9 +388,11 @@ def get_modified_docx_runs(
     encoding = tiktoken.encoding_for_model("gpt-4")
     token_count = len(encoding.encode(role_description + docx_repr))
 
-    if token_count > 128000:
+    # Updated limits for GPT-5-nano (400K input tokens) while maintaining GPT-4 compatibility
+    max_tokens = 350000  # Conservative limit allowing for response tokens
+    if token_count > max_tokens:
         raise Exception(
-            f"Input to OpenAI is too long ({token_count} tokens). Maximum is 128000 tokens."
+            f"Input to OpenAI is too long ({token_count} tokens). Maximum is {max_tokens} tokens."
         )
 
     moderation_response = openai_client.moderations.create(
@@ -407,7 +409,7 @@ def get_modified_docx_runs(
         ],
         response_format={"type": "json_object"},
         temperature=temperature,
-        max_tokens=4096,
+        max_tokens=16384,  # Increased for more detailed responses
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0,
