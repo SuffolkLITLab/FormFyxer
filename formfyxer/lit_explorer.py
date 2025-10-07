@@ -68,6 +68,7 @@ from .passive_voice_detection import detect_passive_voice_segments, split_senten
 from .docassemble_support import get_openai_api_key_from_sources
 
 from transformers import GPT2TokenizerFast
+from pathlib import Path
 
 load_dotenv()
 
@@ -76,6 +77,23 @@ tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 class OpenAiCreds(TypedDict):
     org: str
     key: str
+
+
+def _load_prompt(prompt_name: str) -> str:
+    """Load a prompt from the prompts directory.
+    
+    Args:
+        prompt_name: Name of the prompt file (without .txt extension)
+        
+    Returns:
+        The prompt text as a string.
+        
+    Raises:
+        FileNotFoundError: If the prompt file cannot be found.
+    """
+    current_dir = Path(__file__).parent
+    prompt_file = current_dir / "prompts" / f"{prompt_name}.txt"
+    return prompt_file.read_text(encoding="utf-8").strip()
 
 stop_words = set(stopwords.words("english"))
 
@@ -448,26 +466,7 @@ def cluster_screens(
         return {}
 
     # Create system and user messages for the LLM to group fields logically
-    system_message = """You are an expert in user experience design and legal forms. 
-Your task is to group form field variable names into logical screens or pages 
-that would make sense for a user filling out a form. Group related fields together.
-
-Guidelines:
-- Group personal information fields together (name, address, contact info)
-- Group party information together (plaintiff, defendant, etc.)
-- Group court/case information together
-- Group signature/date fields together
-- Keep screens reasonably sized (3-8 fields per screen typically)
-- Use descriptive screen names that indicate the content
-
-Return your answer as a JSON object where each key is a descriptive screen name 
-(e.g., "personal_information", "case_details", "signatures") 
-and each value is a list of field names that belong together.
-
-IMPORTANT: Every field from the input must appear exactly once in the output. 
-Do not add, remove, or modify any field names.
-
-Respond only with the JSON object, no other text."""
+    system_message = _load_prompt("field_grouping")
 
     user_message = f"""Here are the field names to group:
 {json.dumps(fields, indent=2)}
@@ -480,7 +479,7 @@ Please group these fields into logical screens following the guidelines provided
         response = text_complete(
             system_message=system_message,
             user_message=user_message,
-            max_tokens=1500,
+            max_tokens=3000,
             creds=openai_creds,
             api_key=api_key,
             model=model,
@@ -957,15 +956,18 @@ def text_complete(
         if user_message:
             messages.append({"role": "user", "content": user_message})
         
-        # GPT-5 family models don't support temperature parameter
+        # GPT-5 family models use different parameters
         completion_params = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
         }
         
-        # Only add temperature for non-GPT-5 models
-        if not model.startswith("gpt-5"):
+        # GPT-5 models use max_completion_tokens instead of max_tokens and need more tokens due to reasoning
+        if model.startswith("gpt-5"):
+            # Increase tokens significantly for GPT-5 models to account for reasoning tokens
+            completion_params["max_completion_tokens"] = max_tokens * 10
+        else:
+            completion_params["max_tokens"] = max_tokens
             completion_params["temperature"] = temperature
         
         # Enable JSON mode if "json" appears in the prompt (case-insensitive)
@@ -1032,23 +1034,23 @@ def complete_with_command(
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = len(tokenizer(text)["input_ids"])
-    command = "Rewrite the above at a sixth grade reading level."
+    tokens = max(len(tokenizer(text)["input_ids"]), 500)  # Minimum 500 tokens for GPT-5
+    command = _load_prompt("plain_language")
     return complete_with_command(text, command, tokens, creds=creds)
 
 
 def guess_form_name(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
-    command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 20, creds=creds, api_key=api_key)
+    command = _load_prompt("guess_form_name")
+    return complete_with_command(text, command, 200, creds=creds, api_key=api_key)
 
 
 def describe_form(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
-    command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 250, creds=creds, api_key=api_key)
+    command = _load_prompt("describe_form")
+    return complete_with_command(text, command, 1000, creds=creds, api_key=api_key)
 
 
 def needs_calculations(text: str) -> bool:
