@@ -19,7 +19,7 @@ setuptools.setup(
     license='MIT',
     packages=['formfyxer'],
     install_requires=['pdfminer.six', 'pandas', 'pikepdf',
-        'textstat', 'requests', 'numpy', 'scikit-learn', 'networkx', 'joblib',
+        'textstat', 'requests', 'numpy', 'networkx',
         'nltk', 'boxdetect', 'pdf2image', 'reportlab>=3.6.13', 'pdfminer.six',
         'opencv-python', 'ocrmypdf', 'eyecite', 'passivepy>=0.2.16', 'sigfig',
         'openai', 'python-dotenv', 'python-docx', 'tiktoken', 'transformers' 

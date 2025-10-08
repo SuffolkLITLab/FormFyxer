@@ -14,7 +14,6 @@ pikepdf
 reportlab
 requests
 ocrmypdf
-scikit-learn
 textstat
 transformers
 types-requests

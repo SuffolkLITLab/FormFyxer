@@ -17,10 +17,6 @@ module="pikepdf.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module="sklearn.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module="pdfminer.*"
 ignore_missing_imports = true
 

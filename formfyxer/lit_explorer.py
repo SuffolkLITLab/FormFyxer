@@ -10,12 +10,10 @@ import pikepdf
 import textstat
 import requests
 import json
-import networkx as nx
 import numpy as np
 import pandas as pd
 from numpy import unique
 from numpy import where
-import nltk
 
 import eyecite
 from enum import Enum
@@ -31,6 +29,7 @@ from .pdf_wrangling import (
 
 import math
 from contextlib import contextmanager
+from functools import lru_cache
 import threading
 import _thread
 from typing import (
@@ -47,6 +46,7 @@ from typing import (
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
+import tiktoken
 
 from .passive_voice_detection import detect_passive_voice_segments, split_sentences
 from .docassemble_support import get_openai_api_key_from_sources
@@ -76,7 +76,42 @@ def _load_prompt(prompt_name: str) -> str:
     prompt_file = current_dir / "prompts" / f"{prompt_name}.txt"
     return prompt_file.read_text(encoding="utf-8").strip()
 
-# Hardcoded stop words exported from passive voice detection to avoid external dependency
+
+DEFAULT_TIKTOKEN_ENCODING = "cl100k_base"
+
+
+@lru_cache(maxsize=16)
+def _resolve_encoding(model_name: Optional[str] = None):
+    """Resolve a tiktoken encoder for the provided model name with caching."""
+    try:
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+    except (KeyError, ValueError):
+        pass
+    return tiktoken.get_encoding(DEFAULT_TIKTOKEN_ENCODING)
+
+
+def _token_count(text: Optional[str], model_name: Optional[str] = None) -> int:
+    """Return the number of tokens in ``text`` for the given model."""
+    if not text:
+        return 0
+    encoding = _resolve_encoding(model_name)
+    return len(encoding.encode(text))
+
+
+def _truncate_to_token_limit(
+    text: str, max_tokens: int, model_name: Optional[str] = None
+) -> str:
+    """Truncate ``text`` to ``max_tokens`` for the provided model using tiktoken."""
+    if max_tokens <= 0 or not text:
+        return "" if max_tokens <= 0 else text
+
+    encoding = _resolve_encoding(model_name)
+    tokens = encoding.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    return encoding.decode(tokens[:max_tokens])
+
 stop_words = {
     'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
     'be','because','been','before','being','below','between','both','but','by',
@@ -95,28 +130,6 @@ stop_words = {
 }
 
 # Load local variables, models, and API key(s).
-
-###############
-# Temporarily replace joblib files with local vars
-included_fields = [
-    "users1_name",
-    "users1_birthdate",
-    "users1_address_line_one",
-    "users1_address_line_two",
-    "users1_address_city",
-    "users1_address_state",
-    "users1_address_zip",
-    "users1_phone_number",
-    "users1_email",
-    "plantiffs1_name",
-    "defendants1_name",
-    "petitioners1_name",
-    "respondents1_name",
-    "docket_number",
-    "trial_court_county",
-    "users1_signature",
-    "signature_date",
-]
 
 default_spot_token = os.getenv("SPOT_TOKEN") or os.getenv("TOOLS_TOKEN")
 default_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -289,11 +302,7 @@ def regex_norm_field(text: str):
 
 
 def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] = None):
-    """
-    Transforms a string of text into a snake_case variable close in length to `max_length` name by
-    summarizing the string and stitching the summary together in snake_case.
-    h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
-    """
+    """Generate a snake_case label from ``text`` without external similarity scoring."""
     orig_title = text.lower()
     orig_title = re.sub(r"[^a-zA-Z]+", " ", orig_title)
     orig_title_words = orig_title.split()
@@ -320,61 +329,52 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
     }
 
     filtered_sentence = [w for w in deduped_sentence if w.lower() not in local_stop_words]
-    filtered_title_words = filtered_sentence
-    characters = len(" ".join(filtered_title_words))
-    if characters > 0:
-        words = len(filtered_title_words)
-        av_word_len = math.ceil(
-            len(" ".join(filtered_title_words)) / len(filtered_title_words)
-        )
-        x_words = math.floor((max_length) / av_word_len)
-        sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
-        # for each word compared to other
-        filt_vecs = vectorize(filtered_title_words, tools_token=tools_token)
-        filt_vecs = [vec.reshape(1, 300) for vec in filt_vecs]
-        for i in range(len(filtered_title_words)):
-            for j in range(len(filtered_title_words)):
-                if i != j:
-                    sim_mat[i][j] = cosine_similarity(
-                        filt_vecs[i],
-                        filt_vecs[j],
-                    )[0, 0]
-        try:
-            nx_graph = nx.from_numpy_array(sim_mat)
-            scores = nx.pagerank(nx_graph)
-            sorted_scores = sorted(
-                scores.items(), key=lambda item: item[1], reverse=True
-            )
-            if x_words > len(scores):
-                x_words = len(scores)
-            i = 0
-            new_title = ""
-            for x in filtered_title_words:
-                if scores[i] >= sorted_scores[x_words - 1][1]:
-                    if len(new_title) > 0:
-                        new_title += "_"
-                    new_title += x
-                i += 1
-            return new_title
-        except:
-            return "_".join(filtered_title_words)
-    else:
-        if re.search(r"^(\d+)$", text):
-            return "unknown"
-        else:
-            return re.sub(r"\s+", "_", text.lower())
+    candidate_words = filtered_sentence or deduped_sentence
 
+    sanitized_words: List[str] = []
+    for word in candidate_words:
+        cleaned = re.sub(r"[^a-z0-9]", "", word.lower())
+        if cleaned:
+            sanitized_words.append(cleaned)
 
-def norm(row):
-    """Normalize a word vector."""
-    try:
-        matrix = row.reshape(1, -1).astype(np.float64)
-        return normalize(matrix, axis=1, norm="l2")[0]
-    except Exception as e:
-        print("===================")
-        print("Error: ", e)
-        print("===================")
-        return np.NaN
+    if not sanitized_words:
+        sanitized_words = [
+            re.sub(r"[^a-z0-9]", "", word.lower()) for word in orig_title_words
+        ]
+        sanitized_words = [word for word in sanitized_words if word]
+
+    if sanitized_words:
+        new_words: List[str] = []
+        remaining_length = max_length if max_length > 0 else 0
+
+        for word in sanitized_words:
+            if remaining_length <= 0:
+                break
+
+            if not new_words:
+                trimmed_word = word[:remaining_length] if remaining_length else ""
+                if trimmed_word:
+                    new_words.append(trimmed_word)
+                    remaining_length -= len(trimmed_word)
+            else:
+                if remaining_length <= 1:
+                    break  # not enough space for separator + word
+                remaining_length -= 1  # account for underscore
+                if remaining_length <= 0:
+                    break
+                trimmed_word = word[:remaining_length]
+                if trimmed_word:
+                    new_words.append(trimmed_word)
+                    remaining_length -= len(trimmed_word)
+                else:
+                    break
+
+        if new_words:
+            return "_".join(new_words)
+
+    if re.search(r"^(\d+)$", text):
+        return "unknown"
+    return re.sub(r"\s+", "_", text.lower())
 
 
 def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
@@ -432,7 +432,7 @@ def normalize_name(
     context: Optional[str] = None,
     openai_creds: Optional[OpenAiCreds] = None,
     api_key: Optional[str] = None,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-nano",
 ) -> Tuple[str, float]:
     """
     Normalize a field name, if possible to the Assembly Line conventions, and if
@@ -449,7 +449,7 @@ def normalize_name(
         context: Optional PDF text context to help with field naming
         openai_creds: OpenAI credentials for LLM calls
         api_key: OpenAI API key (overrides creds and env vars)
-        model: OpenAI model to use (default: gpt-4o-mini)
+        model: OpenAI model to use (default: gpt-5-nano)
     
     Returns:
         Tuple of (normalized_field_name, confidence_score)
@@ -458,14 +458,11 @@ def normalize_name(
     Otherwise, falls back to traditional regex-based approach for backward compatibility.
     """
     
-    # Check if field is already in included_fields (high confidence match)
-    if this_field not in included_fields:
-        recased_field = re_case(this_field)
-        normalized_field = regex_norm_field(recased_field)
-        if normalized_field in included_fields:
-            return f"*{normalized_field}", 0.01
-    else:
-        return f"*{this_field}", 0.01
+    # Note: previous versions relied on a hardcoded `included_fields` list
+    # to short-circuit normalization for known Assembly Line fields. That list
+    # has been removed. We now always attempt LLM-assisted normalization when
+    # context and credentials are available, falling back to the traditional
+    # regex-based and reformat approach below.
     
     # If context and LLM credentials are provided, use enhanced LLM normalization
     if context and (openai_creds or api_key or os.getenv("OPENAI_API_KEY")):
@@ -1278,26 +1275,27 @@ def complete_with_command(
     tokens,
     creds: Optional[OpenAiCreds] = None,
     api_key: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Combines some text with a command to send to open ai."""
     # For GPT-5-nano: 400K input token limit, so we can handle much larger inputs
     # Support up to 30 pages of PDF text (~300K characters = ~75K tokens)
     # Reserve space for command and response tokens: 375K - command - response = ~300K for text
     max_input_tokens = 300000  # Conservative limit for input text
-    max_length = max(max_input_tokens - len(tokenizer(command)["input_ids"]) - tokens, 1)
-    
-    text_tokens = tokenizer(text)
-    if len(text_tokens["input_ids"]) > max_length:
-        text = tokenizer.decode(
-            tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
-        )
+    model_to_use = model or "gpt-5-nano"
+
+    available_tokens = max_input_tokens - _token_count(command, model_to_use) - tokens
+    max_length = max(available_tokens, 1)
+
+    text = _truncate_to_token_limit(text, max_length, model_to_use)
     
     result = text_complete(
         system_message=command,
         user_message=text,
         max_tokens=tokens,
         creds=creds,
-        api_key=api_key
+        api_key=api_key,
+        model=model_to_use,
     )
     # Ensure we always return a string for this function
     if isinstance(result, dict):
@@ -1306,23 +1304,35 @@ def complete_with_command(
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = max(len(tokenizer(text)["input_ids"]), 500)  # Minimum 500 tokens for GPT-5
+    model = "gpt-5-nano"
+    tokens = max(_token_count(text, model), 500)  # Minimum 500 tokens for GPT-5
     command = _load_prompt("plain_language")
-    return complete_with_command(text, command, tokens, creds=creds)
+    return complete_with_command(text, command, tokens, creds=creds, model=model)
 
 
 def guess_form_name(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
     command = _load_prompt("guess_form_name")
-    return complete_with_command(text, command, 200, creds=creds, api_key=api_key)
+    model = "gpt-5-nano"
+    return complete_with_command(
+        text, command, 200, creds=creds, api_key=api_key, model=model
+    )
 
 
 def describe_form(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
     command = _load_prompt("describe_form")
-    return complete_with_command(text, command, 3000, creds=creds, api_key=api_key)  # Increased for more detailed descriptions
+    model = "gpt-5-nano"
+    return complete_with_command(
+        text,
+        command,
+        3000,
+        creds=creds,
+        api_key=api_key,
+        model=model,
+    )  # Increased for more detailed descriptions
 
 
 def needs_calculations(text: str) -> bool:
@@ -1636,7 +1646,11 @@ def parse_form(
         else ""
     )
     try:
-        readability = textstat.text_standard(text, float_output=True) if text else -1
+        readability = (
+            textstat.text_standard(text, float_output=True)  # type: ignore[attr-defined]
+            if text
+            else -1
+        )
     except:
         readability = -1
     # Still attempt to re-evaluate if not using openai
@@ -1661,7 +1675,9 @@ def parse_form(
             text = cleanup_text(original_text)
             try:
                 readability = (
-                    textstat.text_standard(text, float_output=True) if text else -1
+                    textstat.text_standard(text, float_output=True)  # type: ignore[attr-defined]
+                    if text
+                    else -1
                 )
             except:
                 readability = -1
@@ -1786,7 +1802,7 @@ def parse_form(
     created_count = sum(1 for c in classified if c == AnswerType.CREATED)
     sentence_count = sum(1 for _ in sentences)
     field_count = len(field_names)
-    difficult_words = textstat.difficult_words_list(text)
+    difficult_words = textstat.difficult_words_list(text)  # type: ignore[attr-defined]
     difficult_word_count = len(difficult_words)
     citation_count = len(citations)
     pdf_is_tagged = is_tagged(the_pdf)
