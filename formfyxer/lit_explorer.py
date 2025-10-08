@@ -15,10 +15,6 @@ import numpy as np
 import pandas as pd
 from numpy import unique
 from numpy import where
-from sklearn.cluster import AffinityPropagation
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
-from joblib import load
 import nltk
 
 import eyecite
@@ -32,19 +28,6 @@ from .pdf_wrangling import (
     unlock_pdf_in_place,
     is_tagged,
 )
-
-try:
-    from nltk.corpus import stopwords
-
-    stopwords.words
-except:
-    print("Downloading stopwords")
-    nltk.download("stopwords")
-    from nltk.corpus import stopwords
-try:
-    nltk.data.find("tokenizers/punkt")
-except:
-    nltk.download("punkt")
 
 import math
 from contextlib import contextmanager
@@ -68,12 +51,9 @@ from dotenv import load_dotenv
 from .passive_voice_detection import detect_passive_voice_segments, split_sentences
 from .docassemble_support import get_openai_api_key_from_sources
 
-from transformers import GPT2TokenizerFast
 from pathlib import Path
 
 load_dotenv()
-
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
 class OpenAiCreds(TypedDict):
     org: str
@@ -96,7 +76,23 @@ def _load_prompt(prompt_name: str) -> str:
     prompt_file = current_dir / "prompts" / f"{prompt_name}.txt"
     return prompt_file.read_text(encoding="utf-8").strip()
 
-stop_words = set(stopwords.words("english"))
+# Hardcoded stop words exported from passive voice detection to avoid external dependency
+stop_words = {
+    'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
+    'be','because','been','before','being','below','between','both','but','by',
+    'could','did','do','does','doing','down','during',
+    'each','few','for','from','further',
+    'had','has','have','having','he','her','here','hers','herself','him','himself','his','how',
+    'i','if','in','into','is','it','its','itself',
+    'just',
+    'me','more','most','my','myself',
+    'no','nor','not',
+    'of','off','on','once','only','or','other','our','ours','ourselves','out','over','own',
+    'same','she','should','so','some','such',
+    'than','that','the','their','theirs','them','themselves','then','there','these','they','this','those','through','to','too',
+    'under','until','up','very',
+    'was','we','were','what','when','where','which','while','who','whom','why','will','with','you','your','yours','yourself','yourselves'
+}
 
 # Load local variables, models, and API key(s).
 
@@ -305,7 +301,25 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
     for word in orig_title_words:
         if word not in deduped_sentence:
             deduped_sentence.append(word)
-    filtered_sentence = [w for w in deduped_sentence if not w.lower() in stop_words]
+    # Use a local hardcoded stop word list (exported from passive voice detection)
+    local_stop_words = {
+        'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
+        'be','because','been','before','being','below','between','both','but','by',
+        'could','did','do','does','doing','down','during',
+        'each','few','for','from','further',
+        'had','has','have','having','he','her','here','hers','herself','him','himself','his','how',
+        'i','if','in','into','is','it','its','itself',
+        'just',
+        'me','more','most','my','myself',
+        'no','nor','not',
+        'of','off','on','once','only','or','other','our','ours','ourselves','out','over','own',
+        'same','she','should','so','some','such',
+        'than','that','the','their','theirs','them','themselves','then','there','these','they','this','those','through','to','too',
+        'under','until','up','very',
+        'was','we','were','what','when','where','which','while','who','whom','why','will','with','you','your','yours','yourself','yourselves'
+    }
+
+    filtered_sentence = [w for w in deduped_sentence if w.lower() not in local_stop_words]
     filtered_title_words = filtered_sentence
     characters = len(" ".join(filtered_title_words))
     if characters > 0:
