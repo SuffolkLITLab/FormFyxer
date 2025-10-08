@@ -1,7 +1,4 @@
 boxdetect
-joblib
-networkx>=3.0
-nltk
 numpy
 mypy
 openai

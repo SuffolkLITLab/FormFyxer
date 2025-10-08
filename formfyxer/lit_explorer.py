@@ -1697,11 +1697,55 @@ def parse_form(
         ):
             title = new_title
         if not title or title == "ApiError" or title.lower() == "abortthisnow.":
+            fallback_title: Optional[str] = None
             matches = re.search(r"(.*)\n", text)
-            if matches:
-                title = re_case(matches.group(1).strip())
-            else:
-                title = "(Untitled)"
+            if matches and matches.group(1).strip():
+                fallback_title = matches.group(1).strip()
+
+            if not fallback_title and original_text:
+                sentences = split_sentences(original_text)
+                if sentences:
+                    fallback_title = sentences[0].strip()
+
+            if not fallback_title and text:
+                cleaned_sentences = [
+                    segment.strip()
+                    for segment in re.split(r"[.!?]", text)
+                    if segment.strip()
+                ]
+                if cleaned_sentences:
+                    fallback_title = cleaned_sentences[0]
+
+            def _clean_title_candidate(raw: str) -> str:
+                candidate = re.sub(r"\s+", " ", raw).strip()
+                candidate = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", candidate)
+                candidate = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", candidate)
+                return candidate.strip(" ._-")
+
+            def _looks_reasonable(candidate: str) -> bool:
+                tokens = candidate.split()
+                if not tokens:
+                    return False
+                single_letter_tokens = [
+                    token for token in tokens if len(token) == 1 and token.lower() not in {"a", "i"}
+                ]
+                if len(single_letter_tokens) > max(1, len(tokens) // 3):
+                    return False
+                if len(candidate) > 160:
+                    return False
+                if re.search(r"[A-Z]{2,}(AND|OR|OF|FOR)[A-Z]", candidate):
+                    return False
+                return True
+
+            if fallback_title:
+                fallback_title = _clean_title_candidate(fallback_title)
+                if not _looks_reasonable(fallback_title):
+                    fallback_title = ""
+
+            if not fallback_title:
+                fallback_title = re_case(Path(in_file).stem.replace("_", " ")).title()
+
+            title = fallback_title if fallback_title else "(Untitled)"
     nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
         # Use enhanced LLM-powered field renaming with PDF context

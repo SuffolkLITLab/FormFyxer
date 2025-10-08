@@ -20,9 +20,6 @@ ignore_missing_imports = true
 module="pdfminer.*"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module="networkx.*"
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module="boxdetect.*"
@@ -30,14 +27,6 @@ ignore_missing_imports=true
 
 [[tool.mypy.overrides]]
 module="pdf2image.*"
-ignore_missing_imports=true
-
-[[tool.mypy.overrides]]
-module="joblib.*"
-ignore_missing_imports=true
-
-[[tool.mypy.overrides]]
-module="nltk.*"
 ignore_missing_imports=true
 
 [[tool.mypy.overrides]]
@@ -50,10 +39,6 @@ ignore_missing_imports=true
 
 [[tool.mypy.overrides]]
 module="textstat.*"
-ignore_missing_imports=true
-
-[[tool.mypy.overrides]]
-module="PassivePySrc.*"
 ignore_missing_imports=true
 
 [[tool.mypy.overrides]]
