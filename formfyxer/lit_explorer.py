@@ -361,50 +361,6 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
     return re.sub(r"\s+", "_", text.lower())
 
 
-def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
-    """Vectorize a string of text.
-
-    Args:
-      text: a string of multiple words to vectorize
-      tools_token: the token to tools.suffolklitlab.org, used for micro-service
-          to reduce the amount of memory you need on your machine. This token
-          is required as we have removed SpaCY dependencies due to breaking changes.
-    """
-    if tools_token:
-        headers = {
-            "Authorization": "Bearer " + tools_token,
-            "Content-Type": "application/json",
-        }
-        body = {"text": text}
-        r = requests.post(
-            "https://tools.suffolklitlab.org/vectorize/",
-            headers=headers,
-            data=json.dumps(body),
-        )
-        if not r.ok:
-            raise Exception("Couldn't access tools.suffolklitlab.org")
-        if isinstance(text, str):
-            output = np.array(r.json().get("embeddings", []))
-            if len(output) <= 0:
-                raise Exception("Vector from tools.suffolklitlab.org is empty")
-            return output
-        else:
-            return [np.array(embed) for embed in r.json().get("embeddings", [])]
-    else:
-        raise Exception("Couldn't access tools.suffolklitlab.org, no token provided")
-        # if isinstance(text, str):
-        #    return norm(nlp(text).vector)
-        # else:
-        #    return [norm(nlp(indiv_text).vector) for indiv_text in text]
-
-
-# Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
-# 1. It will `re_case` the variable text
-# 2. Then it will run the output through `regex_norm_field`
-# 3. If it doesn't find anything, it will use the ML model `clf_field_names`
-# 4. If the prediction isn't very confident, it will run it through `reformat_field`
-
-
 def normalize_name(
     jur: str,
     group: str,
@@ -421,6 +377,9 @@ def normalize_name(
     """
     Normalize a field name, if possible to the Assembly Line conventions, and if
     not, to a snake_case variable name of appropriate length.
+
+    In most cases, you should use the better performing `rename_pdf_fields_with_context` function,
+    which renames all fields in one prompt to an LLM.
 
     Args:
         jur: Jurisdiction (legacy parameter, maintained for compatibility)
