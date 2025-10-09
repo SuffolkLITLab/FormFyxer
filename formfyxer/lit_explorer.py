@@ -25,6 +25,7 @@ from .pdf_wrangling import (
     FieldType,
     unlock_pdf_in_place,
     is_tagged,
+    get_original_text_with_fields,
 )
 
 import math
@@ -112,7 +113,7 @@ def _truncate_to_token_limit(
         return text
     return encoding.decode(tokens[:max_tokens])
 
-stop_words = {
+STOP_WORDS = {
     'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
     'be','because','been','before','being','below','between','both','but','by',
     'could','did','do','does','doing','down','during',
@@ -311,24 +312,7 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
         if word not in deduped_sentence:
             deduped_sentence.append(word)
     # Use a local hardcoded stop word list (exported from passive voice detection)
-    local_stop_words = {
-        'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
-        'be','because','been','before','being','below','between','both','but','by',
-        'could','did','do','does','doing','down','during',
-        'each','few','for','from','further',
-        'had','has','have','having','he','her','here','hers','herself','him','himself','his','how',
-        'i','if','in','into','is','it','its','itself',
-        'just',
-        'me','more','most','my','myself',
-        'no','nor','not',
-        'of','off','on','once','only','or','other','our','ours','ourselves','out','over','own',
-        'same','she','should','so','some','such',
-        'than','that','the','their','theirs','them','themselves','then','there','these','they','this','those','through','to','too',
-        'under','until','up','very',
-        'was','we','were','what','when','where','which','while','who','whom','why','will','with','you','your','yours','yourself','yourselves'
-    }
-
-    filtered_sentence = [w for w in deduped_sentence if w.lower() not in local_stop_words]
+    filtered_sentence = [w for w in deduped_sentence if w.lower() not in STOP_WORDS]
     candidate_words = filtered_sentence or deduped_sentence
 
     sanitized_words: List[str] = []
@@ -569,9 +553,6 @@ def rename_pdf_fields_with_context(
         return {}
     
     try:
-        # Import here to avoid circular imports
-        from .pdf_wrangling import get_original_text_with_fields
-        
         # Get PDF text with field markers
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as temp_file:
             try:
