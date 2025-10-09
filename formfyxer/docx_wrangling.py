@@ -1,14 +1,20 @@
 import docx
+from docx.document import Document as DocxDocument
 import sys
 import os
 from openai import OpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 import tiktoken
 import json
 from docx.oxml import OxmlElement
 import re
 
-from typing import List, Tuple, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 __all__ = [
     "get_labeled_docx_runs",
@@ -52,9 +58,9 @@ def add_run_after(run, text):
 
 
 def update_docx(
-    document: Union[docx.document.Document, str],
+    document: Union[DocxDocument, str],
     modified_runs: List[Tuple[int, int, str, int]],
-) -> docx.document.Document:
+) -> DocxDocument:
     """Update the document with the modified runs.
 
     Note: OpenAI is probabilistic, so the modified run indices may not be correct.
@@ -75,16 +81,18 @@ def update_docx(
     modified_runs.sort(key=lambda x: x[0], reverse=True)
 
     if isinstance(document, str):
-        document = docx.Document(document)
+        doc_obj = docx.Document(document)
+    else:
+        doc_obj = document
 
     for item in modified_runs:
         if len(item) > 4:
             continue
         paragraph_number, run_number, modified_text, new_paragraph = item
-        if paragraph_number >= len(document.paragraphs):
-            add_paragraph_after(document.paragraphs[-1], modified_text)
+        if paragraph_number >= len(doc_obj.paragraphs):
+            add_paragraph_after(doc_obj.paragraphs[-1], modified_text)
             continue
-        paragraph = document.paragraphs[paragraph_number]
+        paragraph = doc_obj.paragraphs[paragraph_number]
         if run_number >= len(paragraph.runs):
             add_run_after(paragraph.runs[-1], modified_text)
             continue
@@ -95,7 +103,7 @@ def update_docx(
             add_paragraph_before(paragraph, modified_text)
         else:
             run.text = modified_text
-    return document
+    return doc_obj
 
 
 def get_docx_repr(
@@ -125,8 +133,8 @@ def get_docx_repr(
 
 def get_labeled_docx_runs(
     docx_path: Optional[str] = None,
-    docx_repr=Optional[str],
-    custom_people_names: Optional[Tuple[str, str]] = None,
+    docx_repr: Optional[str] = None,
+    custom_people_names: Optional[Sequence[Tuple[str, str]]] = None,
     openai_client: Optional[OpenAI] = None,
     api_key: Optional[str] = None,
 ) -> List[Tuple[int, int, str, int]]:
@@ -143,7 +151,6 @@ def get_labeled_docx_runs(
 
     custom_name_text = ""
     if custom_people_names:
-        assert isinstance(custom_people_names, list)
         for name, description in custom_people_names:
             custom_name_text += f"    {name} ({description}), \n"
 
@@ -401,13 +408,21 @@ def get_modified_docx_runs(
     if moderation_response.results[0].flagged:
         raise Exception(f"OpenAI moderation error: {moderation_response.results[0]}")
 
+    system_message: ChatCompletionSystemMessageParam = {
+        "role": "system",
+        "content": [{"type": "text", "text": role_description}],
+    }
+    user_message: ChatCompletionUserMessageParam = {
+        "role": "user",
+        "content": [{"type": "text", "text": docx_repr}],
+    }
+    messages: List[ChatCompletionMessageParam] = [system_message, user_message]
+    response_format = cast(Any, {"type": "json_object"})
+
     response = openai_client.chat.completions.create(
         model="gpt-4-1106-preview",
-        messages=[
-            {"role": "system", "content": role_description},
-            {"role": "user", "content": docx_repr},
-        ],
-        response_format={"type": "json_object"},
+        messages=messages,
+        response_format=response_format,
         temperature=temperature,
         max_tokens=16384,  # Increased for more detailed responses
         top_p=1,
@@ -426,7 +441,7 @@ def get_modified_docx_runs(
     return guesses
 
 
-def make_docx_plain_language(docx_path: str) -> docx.document.Document:
+def make_docx_plain_language(docx_path: str) -> DocxDocument:
     """
     Convert a DOCX file to plain language with the help of OpenAI.
     """
@@ -453,7 +468,7 @@ def make_docx_plain_language(docx_path: str) -> docx.document.Document:
     return update_docx(docx.Document(docx_path), guesses)
 
 
-def modify_docx_with_openai_guesses(docx_path: str) -> docx.document.Document:
+def modify_docx_with_openai_guesses(docx_path: str) -> DocxDocument:
     """Uses OpenAI to guess the variable names for a document and then modifies the document with the guesses.
 
     Args:

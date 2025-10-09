@@ -16,6 +16,7 @@ from typing import (
     BinaryIO,
     Mapping,
     TypedDict,
+    cast,
 )
 from collections.abc import Sequence
 from pathlib import Path
@@ -86,6 +87,15 @@ BoundingBox = Tuple[int, int, int, int]
 # x0, y0, width, height
 BoundingBoxF = Tuple[float, float, float, float]
 XYPair = Tuple[float, float]
+
+
+def _to_int_bbox(bbox: BoundingBoxF) -> BoundingBox:
+    return (
+        int(round(bbox[0])),
+        int(round(bbox[1])),
+        int(round(bbox[2])),
+        int(round(bbox[3])),
+    )
 
 
 class FormField:
@@ -193,10 +203,11 @@ class FormField:
             var_type = FieldType.TEXT
 
         if hasattr(pike_field["all"], "Rect"):
-            x = float(pike_field["all"].Rect[0])
-            y = float(pike_field["all"].Rect[1])
-            width = float(pike_field["all"].Rect[2]) - x
-            height = float(pike_field["all"].Rect[3]) - y
+            rect = cast(Sequence[Any], pike_field["all"].Rect)
+            x = float(rect[0])
+            y = float(rect[1])
+            width = float(rect[2]) - x
+            height = float(rect[3]) - y
         else:
             x = 0
             y = 0
@@ -758,6 +769,8 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
         self.device = device
         self.doc = doc
         self.field_pages: Dict[Any, List[FormField]] = {}
+        # ``PDFPageInterpreter`` populates ``self.ncs`` during processing, but declare it for mypy
+        self.ncs: Any = None
         existing_fields = get_existing_pdf_fields(doc)
 
         for page_fields, page in zip(existing_fields, doc.pages):
@@ -794,11 +807,16 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                 # Fallback: add field marker directly to the text converter
                 field_marker = "{{" + field.name + "}}"
                 # Insert into the device's text stream at the appropriate position
-                if hasattr(self.device, 'write_text'):
-                    self.device.write_text(field_marker)
-                elif hasattr(self.device, 'outfp'):
-                    # Direct write to output stream if available
-                    self.device.outfp.write(field_marker.encode(self.device.codec))
+                write_text = getattr(self.device, "write_text", None)
+                if callable(write_text):
+                    write_text(field_marker)
+                else:
+                    outfp = getattr(self.device, "outfp", None)
+                    if outfp is not None:
+                        # Direct write to output stream if available
+                        codec_value = getattr(self.device, "codec", "utf-8")
+                        codec = codec_value if isinstance(codec_value, str) else "utf-8"
+                        outfp.write(field_marker.encode(codec))
                 continue
                 
             self.do_BT()
@@ -854,7 +872,7 @@ def get_original_text_with_fields(input_file, output_file):
             rsrcmgr, output_string, codec="utf-8", laparams=LAParams(char_margin=10.0)
         )
         interpreter = PDFPageAndFieldInterpreter(rsrcmgr, device, Pdf.open(dup_fp))
-        for page in PDFPage.get_pages(fp, False):
+        for page in PDFPage.get_pages(fp, caching=False):
             interpreter.process_page(page)
         device.close()
 
@@ -1165,6 +1183,7 @@ def get_possible_fields(
     if not textboxes:
         textboxes = get_textboxes_in_pdf(in_pdf_file)
     checkbox_bboxes_per_page = [get_possible_checkboxes(tmp.name) for tmp in tmp_files]
+    checkbox_pdf_bboxes: List[List[BoundingBoxF]]
     if not any(
         [in_page is not None and len(in_page) for in_page in checkbox_bboxes_per_page]
     ):
@@ -1181,12 +1200,18 @@ def get_possible_fields(
                 get_possible_checkboxes(tmp.name, find_small=True) for tmp in tmp_files
             ]
             checkbox_pdf_bboxes = [
-                [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+                [
+                    cast(BoundingBoxF, img2pdf_coords(bbox, images[i].height))
+                    for bbox in bboxes_in_page
+                ]
                 for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
             ]
     else:
         checkbox_pdf_bboxes = [
-            [img2pdf_coords(bbox, images[i].height) for bbox in bboxes_in_page]
+            [
+                cast(BoundingBoxF, img2pdf_coords(bbox, images[i].height))
+                for bbox in bboxes_in_page
+            ]
             for i, bboxes_in_page in enumerate(checkbox_bboxes_per_page)
         ]
 
@@ -1194,9 +1219,12 @@ def get_possible_fields(
         get_possible_text_fields(tmp.name, page_text)
         for tmp, page_text in zip(tmp_files, textboxes)
     ]
-    text_pdf_bboxes = [
+    text_pdf_bboxes: List[List[Tuple[BoundingBoxF, int]]] = [
         [
-            (img2pdf_coords(bbox, images[i].height), font_size)
+            (
+                cast(BoundingBoxF, img2pdf_coords(bbox, images[i].height)),
+                font_size,
+            )
             for bbox, font_size in bboxes_in_page
         ]
         for i, bboxes_in_page in enumerate(text_bboxes_per_page)
@@ -1211,18 +1239,22 @@ def get_possible_fields(
         # Get text boxes with more than one character (not including spaces, _, etc.)
         page_fields = []
         for j, field_info in enumerate(bboxes_in_page):
-            field_bbox, font_size = field_info
+            field_bbox_f, font_size = field_info
+            field_bbox = _to_int_bbox(field_bbox_f)
             label = f"page_{i}_field_{j}"
             # By default the line size is 16.
+            font_size_int = int(font_size)
             if field_bbox[3] > 24:
                 page_fields.append(
-                    FormField.make_textarea(label, field_bbox, font_size)
+                    FormField.make_textarea(label, field_bbox, font_size_int)
                 )
             else:
-                page_fields.append(FormField.make_textbox(label, field_bbox, font_size))
+                page_fields.append(
+                    FormField.make_textbox(label, field_bbox, font_size_int)
+                )
 
         page_fields += [
-            FormField.make_checkbox(f"page_{i}_check_{j}", bbox)
+            FormField.make_checkbox(f"page_{i}_check_{j}", _to_int_bbox(bbox))
             for j, bbox in enumerate(checkboxes_in_page)
         ]
         i += 1
@@ -1288,14 +1320,14 @@ class LowestVertVisitor:
     def __init__(self):
         self.field_map = {}
 
-    def lowest_vert(fi, tbs):
+    def lowest_vert(self, fi: FormField, tbs: List[Textbox]) -> FormField:
         dists = []
         for tb in tbs:
-            dist = pdf_wrangling.bbox_distance(fi.get_bbox(), tb["bbox"])
+            dist = bbox_distance(fi.get_bbox(), tb["bbox"])
             a_side, b_side = dist[1], dist[2]
             closest_side_dist = min(
-                pdf_wrangling.get_dist(a_side[0], b_side[0]),
-                pdf_wrangling.get_dist(a_side[1], b_side[1]),
+                get_dist(a_side[0], b_side[0]),
+                get_dist(a_side[1], b_side[1]),
             )
             enumm = ("After" if closest_side_dist > 0 else "Before",)
             tup = (dist[0], enumm, tb["textbox"], tb["bbox"])
@@ -1417,8 +1449,8 @@ def get_possible_checkboxes(
         cfg.height_range = (25, 40)
     cfg.scaling_factors = [0.6]
     cfg.wh_ratio_range = (0.6, 2.2)
-    cfg.group_size_range = (2, 100)
-    cfg.dilation_iterations = 0
+    cfg.group_size_range = cast(Tuple[int, int], (2, 100))
+    cfg.dilation_iterations = [0]
     cfg.morph_kernels_type = "rectangles"
     checkboxes = get_checkboxes(
         img, cfg=cfg, px_threshold=0.1, plot=False, verbose=False
@@ -1646,10 +1678,9 @@ def get_possible_text_fields(
                     ]
                     if not left_img.any() and not between_lines_img.any():
                         to_return.pop()
-                        bbox = contain_boxes(bbox, last_bbox)
-        to_return.append(
-            (bbox, int(0.95 * img2pdf_coords(line_height, max_height=height)))
-        )
+                        bbox = _to_int_bbox(contain_boxes(bbox, last_bbox))
+        bbox_int = (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))
+        to_return.append((bbox_int, int(0.95 * unit_convert(line_height))))
     return to_return
 
 

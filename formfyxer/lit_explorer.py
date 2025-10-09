@@ -34,6 +34,7 @@ from functools import lru_cache
 import threading
 import _thread
 from typing import (
+    Any,
     Optional,
     Union,
     Iterable,
@@ -42,6 +43,7 @@ from typing import (
     Tuple,
     Callable,
     TypedDict,
+    cast,
 )
 
 import openai
@@ -678,7 +680,7 @@ def cluster_screens(
 
 Please group these fields into logical screens following the guidelines provided."""
 
-    response = ""
+    response: Union[str, Dict[str, Any]] = ""
     try:
         # Use the text_complete function to call the LLM
         response = text_complete(
@@ -692,7 +694,7 @@ Please group these fields into logical screens following the guidelines provided
 
         # Handle the response (could be dict if JSON was parsed, or str if parsing failed)
         if isinstance(response, dict):
-            screens = response
+            screens = cast(Dict[str, List[str]], response)
         elif isinstance(response, str):
             # If we got a string back, the JSON parsing failed - try manual parsing as fallback
             try:
@@ -727,7 +729,7 @@ Please group these fields into logical screens following the guidelines provided
         
         # Check for duplicate fields in the response
         if len(response_fields) != len(response_set):
-            field_counts = {}
+            field_counts: Dict[str, int] = {}
             for field in response_fields:
                 field_counts[field] = field_counts.get(field, 0) + 1
             duplicates = [field for field, count in field_counts.items() if count > 1]
@@ -1157,12 +1159,12 @@ def text_complete(
             raise Exception("No OpenAI credentials provided")
     
     try:
-        messages = [{"role": "system", "content": system_message}]
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_message}]
         if user_message:
             messages.append({"role": "user", "content": user_message})
         
         # GPT-5 family models use different parameters
-        completion_params = {
+        completion_params: Dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
