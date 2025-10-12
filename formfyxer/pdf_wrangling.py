@@ -854,8 +854,6 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                         self.ncs,
                         self.graphicstate.copy(),
                     )
-                    # if cid == 32 and wordspace:
-                    #     x += 0  # wordspace
                     needcharspace = True
             self.do_ET()
         self.device.end_page(page)
