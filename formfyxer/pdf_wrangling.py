@@ -761,8 +761,6 @@ class JinjaFieldTextConverter(TextConverter):
 
 
 class PDFPageAndFieldInterpreter(PDFPageInterpreter):
-    # TODO: keep track of all of the fields per page, insert them when rendering the page
-    pass
 
     def __init__(self, rsrcmgr: PDFResourceManager, device: PDFDevice, doc) -> None:
         self.rsrcmgr = rsrcmgr
