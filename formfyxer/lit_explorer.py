@@ -1517,6 +1517,34 @@ def transformed_sentences(
     return transformed
 
 
+def fallback_rename_fields(field_names: List[str]) -> Tuple[List[str], List[float]]:
+    """
+    A simple fallback renaming scheme that just makes field names lowercase
+    and replaces spaces with underscores.
+    """
+    length = len(field_names)
+    last = "null"
+    new_names = []
+    new_names_conf = []
+    for i, field_name in enumerate(field_names):
+        new_name, new_confidence = normalize_name(
+            "",
+            "",
+            i,
+            i / length,
+            last,
+            field_name,
+        )
+        new_names.append(new_name)
+        new_names_conf.append(new_confidence)
+        last = field_name
+    new_names = [
+        v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
+        for i, v in enumerate(new_names)
+    ]
+    return new_names, new_names_conf
+
+
 def parse_form(
     in_file: str,
     title: Optional[str] = None,
@@ -1690,7 +1718,6 @@ def parse_form(
             title = fallback_title if fallback_title else "(Untitled)"
     nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
-        # Use enhanced LLM-powered field renaming with PDF context
         if (openai_creds or resolved_api_key) and field_names:
             try:
                 field_mappings = rename_pdf_fields_with_context(
@@ -1700,57 +1727,13 @@ def parse_form(
                     api_key=resolved_api_key,
                 )
                 new_names = [field_mappings.get(name, name) or name for name in field_names]
-                # Set high confidence for LLM-generated names
                 new_names_conf = [0.8 if field_mappings.get(name) else 0.1 for name in field_names]
-                llm_renamed_count = len([n for n in new_names if n and not n.startswith('*')])
-                print(f"Successfully renamed {llm_renamed_count} fields using LLM")
             except Exception as e:
                 print(f"LLM field renaming failed: {e}, falling back to traditional approach")
                 # Fallback to traditional approach
-                length = len(field_names)
-                last = "null"
-                new_names = []
-                new_names_conf = []
-                for i, field_name in enumerate(field_names):
-                    new_name, new_confidence = normalize_name(
-                        jur or "",
-                        cat or "",
-                        i,
-                        i / length,
-                        last,
-                        field_name,
-                        tools_token=tools_token,
-                    )
-                    new_names.append(new_name)
-                    new_names_conf.append(new_confidence)
-                    last = field_name
-                new_names = [
-                    v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
-                    for i, v in enumerate(new_names)
-                ]
+                new_names, new_names_conf = fallback_rename_fields(field_names)
         else:
-            # Traditional approach when no OpenAI credentials available
-            length = len(field_names)
-            last = "null"
-            new_names = []
-            new_names_conf = []
-            for i, field_name in enumerate(field_names):
-                new_name, new_confidence = normalize_name(
-                    jur or "",
-                    cat or "",
-                    i,
-                    i / length,
-                    last,
-                    field_name,
-                    tools_token=tools_token,
-                )
-                new_names.append(new_name)
-                new_names_conf.append(new_confidence)
-                last = field_name
-            new_names = [
-                v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
-                for i, v in enumerate(new_names)
-            ]
+            new_names, new_names_conf = fallback_rename_fields(field_names)
     else:
         new_names = field_names
         new_names_conf = []
