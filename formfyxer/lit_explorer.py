@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import tempfile
 
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams
@@ -9,16 +10,10 @@ import pikepdf
 import textstat
 import requests
 import json
-import networkx as nx
 import numpy as np
 import pandas as pd
 from numpy import unique
 from numpy import where
-from sklearn.cluster import AffinityPropagation
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
-from joblib import load
-import nltk
 
 import eyecite
 from enum import Enum
@@ -30,26 +25,16 @@ from .pdf_wrangling import (
     FieldType,
     unlock_pdf_in_place,
     is_tagged,
+    get_original_text_with_fields,
 )
-
-try:
-    from nltk.corpus import stopwords
-
-    stopwords.words
-except:
-    print("Downloading stopwords")
-    nltk.download("stopwords")
-    from nltk.corpus import stopwords
-try:
-    nltk.data.find("tokenizers/punkt")
-except:
-    nltk.download("punkt")
 
 import math
 from contextlib import contextmanager
+from functools import lru_cache
 import threading
 import _thread
 from typing import (
+    Any,
     Optional,
     Union,
     Iterable,
@@ -58,46 +43,96 @@ from typing import (
     Tuple,
     Callable,
     TypedDict,
+    cast,
 )
 
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
+import tiktoken
 
 from .passive_voice_detection import detect_passive_voice_segments, split_sentences
 from .docassemble_support import get_openai_api_key_from_sources
 
-from transformers import GPT2TokenizerFast
+from pathlib import Path
 
 load_dotenv()
 
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+class OpenAiCreds(TypedDict):
+    org: str
+    key: str
 
-stop_words = set(stopwords.words("english"))
+
+def _load_prompt(prompt_name: str) -> str:
+    """Load a prompt from the prompts directory.
+    
+    Args:
+        prompt_name: Name of the prompt file (without .txt extension)
+        
+    Returns:
+        The prompt text as a string.
+        
+    Raises:
+        FileNotFoundError: If the prompt file cannot be found.
+    """
+    current_dir = Path(__file__).parent
+    prompt_file = current_dir / "prompts" / f"{prompt_name}.txt"
+    return prompt_file.read_text(encoding="utf-8").strip()
+
+
+DEFAULT_TIKTOKEN_ENCODING = "cl100k_base"
+
+
+@lru_cache(maxsize=16)
+def _resolve_encoding(model_name: Optional[str] = None):
+    """Resolve a tiktoken encoder for the provided model name with caching."""
+    try:
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+    except (KeyError, ValueError):
+        pass
+    return tiktoken.get_encoding(DEFAULT_TIKTOKEN_ENCODING)
+
+
+def _token_count(text: Optional[str], model_name: Optional[str] = None) -> int:
+    """Return the number of tokens in ``text`` for the given model."""
+    if not text:
+        return 0
+    encoding = _resolve_encoding(model_name)
+    return len(encoding.encode(text))
+
+
+def _truncate_to_token_limit(
+    text: str, max_tokens: int, model_name: Optional[str] = None
+) -> str:
+    """Truncate ``text`` to ``max_tokens`` for the provided model using tiktoken."""
+    if max_tokens <= 0 or not text:
+        return "" if max_tokens <= 0 else text
+
+    encoding = _resolve_encoding(model_name)
+    tokens = encoding.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    return encoding.decode(tokens[:max_tokens])
+
+STOP_WORDS = {
+    'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
+    'be','because','been','before','being','below','between','both','but','by',
+    'could','did','do','does','doing','down','during',
+    'each','few','for','from','further',
+    'had','has','have','having','he','her','here','hers','herself','him','himself','his','how',
+    'i','if','in','into','is','it','its','itself',
+    'just',
+    'me','more','most','my','myself',
+    'no','nor','not',
+    'of','off','on','once','only','or','other','our','ours','ourselves','out','over','own',
+    'same','she','should','so','some','such',
+    'than','that','the','their','theirs','them','themselves','then','there','these','they','this','those','through','to','too',
+    'under','until','up','very',
+    'was','we','were','what','when','where','which','while','who','whom','why','will','with','you','your','yours','yourself','yourselves'
+}
 
 # Load local variables, models, and API key(s).
-
-###############
-# Temporarily replace joblib files with local vars
-included_fields = [
-    "users1_name",
-    "users1_birthdate",
-    "users1_address_line_one",
-    "users1_address_line_two",
-    "users1_address_city",
-    "users1_address_state",
-    "users1_address_zip",
-    "users1_phone_number",
-    "users1_email",
-    "plantiffs1_name",
-    "defendants1_name",
-    "petitioners1_name",
-    "respondents1_name",
-    "docket_number",
-    "trial_court_county",
-    "users1_signature",
-    "signature_date",
-]
 
 default_spot_token = os.getenv("SPOT_TOKEN") or os.getenv("TOOLS_TOKEN")
 default_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -270,11 +305,7 @@ def regex_norm_field(text: str):
 
 
 def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] = None):
-    """
-    Transforms a string of text into a snake_case variable close in length to `max_length` name by
-    summarizing the string and stitching the summary together in snake_case.
-    h/t https://towardsdatascience.com/nlp-building-a-summariser-68e0c19e3a93
-    """
+    """Generate a snake_case label from ``text`` without external similarity scoring."""
     orig_title = text.lower()
     orig_title = re.sub(r"[^a-zA-Z]+", " ", orig_title)
     orig_title_words = orig_title.split()
@@ -282,106 +313,54 @@ def reformat_field(text: str, max_length: int = 30, tools_token: Optional[str] =
     for word in orig_title_words:
         if word not in deduped_sentence:
             deduped_sentence.append(word)
-    filtered_sentence = [w for w in deduped_sentence if not w.lower() in stop_words]
-    filtered_title_words = filtered_sentence
-    characters = len(" ".join(filtered_title_words))
-    if characters > 0:
-        words = len(filtered_title_words)
-        av_word_len = math.ceil(
-            len(" ".join(filtered_title_words)) / len(filtered_title_words)
-        )
-        x_words = math.floor((max_length) / av_word_len)
-        sim_mat = np.zeros([len(filtered_title_words), len(filtered_title_words)])
-        # for each word compared to other
-        filt_vecs = vectorize(filtered_title_words, tools_token=tools_token)
-        filt_vecs = [vec.reshape(1, 300) for vec in filt_vecs]
-        for i in range(len(filtered_title_words)):
-            for j in range(len(filtered_title_words)):
-                if i != j:
-                    sim_mat[i][j] = cosine_similarity(
-                        filt_vecs[i],
-                        filt_vecs[j],
-                    )[0, 0]
-        try:
-            nx_graph = nx.from_numpy_array(sim_mat)
-            scores = nx.pagerank(nx_graph)
-            sorted_scores = sorted(
-                scores.items(), key=lambda item: item[1], reverse=True
-            )
-            if x_words > len(scores):
-                x_words = len(scores)
-            i = 0
-            new_title = ""
-            for x in filtered_title_words:
-                if scores[i] >= sorted_scores[x_words - 1][1]:
-                    if len(new_title) > 0:
-                        new_title += "_"
-                    new_title += x
-                i += 1
-            return new_title
-        except:
-            return "_".join(filtered_title_words)
-    else:
-        if re.search(r"^(\d+)$", text):
-            return "unknown"
-        else:
-            return re.sub(r"\s+", "_", text.lower())
+    # Use a local hardcoded stop word list (exported from passive voice detection)
+    filtered_sentence = [w for w in deduped_sentence if w.lower() not in STOP_WORDS]
+    candidate_words = filtered_sentence or deduped_sentence
 
+    sanitized_words: List[str] = []
+    for word in candidate_words:
+        cleaned = re.sub(r"[^a-z0-9]", "", word.lower())
+        if cleaned:
+            sanitized_words.append(cleaned)
 
-def norm(row):
-    """Normalize a word vector."""
-    try:
-        matrix = row.reshape(1, -1).astype(np.float64)
-        return normalize(matrix, axis=1, norm="l2")[0]
-    except Exception as e:
-        print("===================")
-        print("Error: ", e)
-        print("===================")
-        return np.NaN
+    if not sanitized_words:
+        sanitized_words = [
+            re.sub(r"[^a-z0-9]", "", word.lower()) for word in orig_title_words
+        ]
+        sanitized_words = [word for word in sanitized_words if word]
 
+    if sanitized_words:
+        new_words: List[str] = []
+        remaining_length = max_length if max_length > 0 else 0
 
-def vectorize(text: Union[List[str], str], tools_token: Optional[str] = None):
-    """Vectorize a string of text.
+        for word in sanitized_words:
+            if remaining_length <= 0:
+                break
 
-    Args:
-      text: a string of multiple words to vectorize
-      tools_token: the token to tools.suffolklitlab.org, used for micro-service
-          to reduce the amount of memory you need on your machine. This token
-          is required as we have removed SpaCY dependencies due to breaking changes.
-    """
-    if tools_token:
-        headers = {
-            "Authorization": "Bearer " + tools_token,
-            "Content-Type": "application/json",
-        }
-        body = {"text": text}
-        r = requests.post(
-            "https://tools.suffolklitlab.org/vectorize/",
-            headers=headers,
-            data=json.dumps(body),
-        )
-        if not r.ok:
-            raise Exception("Couldn't access tools.suffolklitlab.org")
-        if isinstance(text, str):
-            output = np.array(r.json().get("embeddings", []))
-            if len(output) <= 0:
-                raise Exception("Vector from tools.suffolklitlab.org is empty")
-            return output
-        else:
-            return [np.array(embed) for embed in r.json().get("embeddings", [])]
-    else:
-        raise Exception("Couldn't access tools.suffolklitlab.org, no token provided")
-        # if isinstance(text, str):
-        #    return norm(nlp(text).vector)
-        # else:
-        #    return [norm(nlp(indiv_text).vector) for indiv_text in text]
+            if not new_words:
+                trimmed_word = word[:remaining_length] if remaining_length else ""
+                if trimmed_word:
+                    new_words.append(trimmed_word)
+                    remaining_length -= len(trimmed_word)
+            else:
+                if remaining_length <= 1:
+                    break  # not enough space for separator + word
+                remaining_length -= 1  # account for underscore
+                if remaining_length <= 0:
+                    break
+                trimmed_word = word[:remaining_length]
+                if trimmed_word:
+                    new_words.append(trimmed_word)
+                    remaining_length -= len(trimmed_word)
+                else:
+                    break
 
+        if new_words:
+            return "_".join(new_words)
 
-# Given an auto-generated field name and context from the form where it appeared, this function attempts to normalize the field name. Here's what's going on:
-# 1. It will `re_case` the variable text
-# 2. Then it will run the output through `regex_norm_field`
-# 3. If it doesn't find anything, it will use the ML model `clf_field_names`
-# 4. If the prediction isn't very confident, it will run it through `reformat_field`
+    if re.search(r"^(\d+)$", text):
+        return "unknown"
+    return re.sub(r"\s+", "_", text.lower())
 
 
 def normalize_name(
@@ -392,23 +371,273 @@ def normalize_name(
     last_field: str,
     this_field: str,
     tools_token: Optional[str] = None,
+    context: Optional[str] = None,
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
 ) -> Tuple[str, float]:
     """
     Normalize a field name, if possible to the Assembly Line conventions, and if
     not, to a snake_case variable name of appropriate length.
 
-    HACK: temporarily all we do is re-case it and normalize it using regex rules.
-    Will be replaced with call to LLM soon.
+    In most cases, you should use the better performing `rename_pdf_fields_with_context` function,
+    which renames all fields in one prompt to an LLM.
+
+    Args:
+        jur: Jurisdiction (legacy parameter, maintained for compatibility)
+        group: Group/category (legacy parameter, maintained for compatibility)  
+        n: Position in field list (legacy parameter, maintained for compatibility)
+        per: Percentage through field list (legacy parameter, maintained for compatibility)
+        last_field: Previous field name (legacy parameter, maintained for compatibility)
+        this_field: The field name to normalize
+        tools_token: Tools API token (legacy parameter, maintained for compatibility)
+        context: Optional PDF text context to help with field naming
+        openai_creds: OpenAI credentials for LLM calls
+        api_key: OpenAI API key (overrides creds and env vars)
+        model: OpenAI model to use (default: gpt-5-nano)
+    
+    Returns:
+        Tuple of (normalized_field_name, confidence_score)
+    
+    If context and LLM credentials are provided, uses LLM normalization.
+    Otherwise, falls back to traditional regex-based approach for backward compatibility.
     """
+    
+    # Note: previous versions relied on a hardcoded `included_fields` list
+    # to short-circuit normalization for known Assembly Line fields. That list
+    # has been removed. We now always attempt LLM-assisted normalization when
+    # context and credentials are available, falling back to the traditional
+    # regex-based and reformat approach below.
+    
+    # If context and LLM credentials are provided, use enhanced LLM normalization
+    if context and (openai_creds or api_key or os.getenv("OPENAI_API_KEY")):
+        try:
+            # Use LLM to normalize the field name with context
+            system_message = _load_prompt("normalize_field_name")
+            
+            # Truncate context if too long (keep reasonable size for token limits)
+            max_context_chars = 2000  # Roughly 500 tokens
+            truncated_context = context[:max_context_chars] if len(context) > max_context_chars else context
+            
+            user_message = f"""Field to normalize: "{this_field}"
 
-    if this_field not in included_fields:
-        this_field = re_case(this_field)
-        this_field = regex_norm_field(this_field)
+Context from PDF form:
+{truncated_context}
 
-    if this_field in included_fields:
-        return f"*{this_field}", 0.01
+Additional information:
+- Field position: {n} out of total fields
+- Previous field: "{last_field}"
+- Jurisdiction: "{jur}" (if relevant)
+- Category: "{group}" (if relevant)
 
-    return reformat_field(this_field, tools_token=tools_token), 0.5
+Please normalize this field name following Assembly Line conventions."""
+
+            # Resolve API key
+            resolved_api_key = api_key or (openai_creds["key"] if openai_creds else None) or os.getenv("OPENAI_API_KEY")
+            
+            response = text_complete(
+                system_message=system_message,
+                user_message=user_message,
+                max_tokens=500,  # Small response expected
+                creds=openai_creds,
+                api_key=resolved_api_key,
+                model=model,
+            )
+            
+            # Parse the response
+            if isinstance(response, dict):
+                normalized_name = response.get("normalized_name", "")
+                confidence = response.get("confidence", 0.5)
+            elif isinstance(response, str):
+                try:
+                    parsed_response = json.loads(response)
+                    normalized_name = parsed_response.get("normalized_name", "")
+                    confidence = parsed_response.get("confidence", 0.5)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Failed to parse JSON response: {response}")
+            else:
+                raise ValueError(f"Unexpected response type: {type(response)}")
+            
+            # Validate the response
+            if not normalized_name or not isinstance(normalized_name, str):
+                raise ValueError("No valid normalized_name in response")
+            
+            # Basic validation: ensure it follows snake_case conventions
+            if not re.match(r'^[a-z][a-z0-9_]*$', normalized_name):
+                # If the LLM response doesn't follow conventions, clean it up
+                normalized_name = re.sub(r'[^a-z0-9_]', '_', normalized_name.lower())
+                normalized_name = re.sub(r'_+', '_', normalized_name)  # Remove multiple underscores
+                normalized_name = normalized_name.strip('_')  # Remove leading/trailing underscores
+                if not normalized_name or not normalized_name[0].isalpha():
+                    # Fallback if still invalid
+                    raise ValueError("Invalid field name after cleanup")
+                confidence = max(0.1, confidence - 0.2)  # Reduce confidence for cleaned names
+            
+            # Ensure confidence is in valid range
+            confidence = max(0.1, min(1.0, float(confidence)))
+            
+            return normalized_name, confidence
+            
+        except Exception as ex:
+            print(f"LLM field normalization failed for '{this_field}': {ex}, falling back to traditional approach")
+            # Fall through to traditional approach below
+    
+    # Traditional approach (original behavior)
+    # Re-case and normalize the field using regex rules
+    processed_field = re_case(this_field)
+    processed_field = regex_norm_field(processed_field)
+    
+    return reformat_field(processed_field, tools_token=tools_token), 0.5
+
+
+def rename_pdf_fields_with_context(
+    pdf_path: str,
+    original_field_names: List[str],
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+) -> Dict[str, str]:
+    """
+    Use LLM to rename PDF fields based on full PDF context with field markers.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        original_field_names: List of original field names from the PDF
+        openai_creds: OpenAI credentials to use for the API call
+        api_key: explicit API key to use (overrides creds and env vars)
+        model: the OpenAI model to use (default: gpt-5-nano)
+    
+    Returns:
+        Dictionary mapping original field names to new Assembly Line names
+    """
+    if not original_field_names:
+        return {}
+    
+    try:
+        # Get PDF text with field markers
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as temp_file:
+            try:
+                get_original_text_with_fields(pdf_path, temp_file.name)
+                
+                # Read the text with field markers
+                with open(temp_file.name, 'r', encoding='utf-8') as f:
+                    pdf_text_with_fields = f.read()
+                
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
+        
+        if not pdf_text_with_fields or not pdf_text_with_fields.strip():
+            # Fallback: if we can't get text with field markers, use basic approach
+            print("Warning: Could not extract PDF text with field markers, falling back to regex approach")
+            return {name: regex_norm_field(re_case(name)) for name in original_field_names}
+        
+        # Load the field labeling prompt
+        system_message = _load_prompt("field_labeling")
+        
+        # For GPT-5-nano: Support up to 30 pages (roughly 100K tokens input, well within 400K limit)
+        # Estimate: 30 pages * ~1300 tokens/page = ~39K tokens for PDF text
+        # Plus prompt and field list = ~50K total input tokens (comfortable margin)
+        max_pdf_text_chars = 300000  # Roughly 75K tokens worth of text
+        
+        user_message = f"""Here is the PDF form text with field markers:
+
+{pdf_text_with_fields[:max_pdf_text_chars]}
+
+Original field names to rename:
+{json.dumps(original_field_names, indent=2)}
+
+Please analyze the context around each field marker and provide appropriate Assembly Line variable names."""
+
+        # Call the LLM with much higher limits for GPT-5-nano
+        response = text_complete(
+            system_message=system_message,
+            user_message=user_message,
+            max_tokens=15000,  # Increased for larger field lists and more detailed reasoning
+            creds=openai_creds,
+            api_key=api_key,
+            model=model,
+        )
+        
+        # Parse the response
+        if isinstance(response, dict):
+            field_mappings = response.get("field_mappings", {})
+        elif isinstance(response, str):
+            try:
+                parsed_response = json.loads(response)
+                field_mappings = parsed_response.get("field_mappings", {})
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to parse JSON response: {response}")
+        else:
+            raise ValueError(f"Unexpected response type: {type(response)}")
+        
+        # Validate the response
+        if not isinstance(field_mappings, dict):
+            raise ValueError("field_mappings is not a dictionary")
+        
+        # Ensure all original fields are mapped
+        mapped_fields = set(field_mappings.keys())
+        original_fields = set(original_field_names)
+        
+        missing_fields = original_fields - mapped_fields
+        extra_fields = mapped_fields - original_fields
+        
+        # Handle missing fields with fallback
+        for missing_field in missing_fields:
+            fallback_name = regex_norm_field(re_case(missing_field))
+            field_mappings[missing_field] = fallback_name
+            print(f"Warning: LLM didn't map '{missing_field}', using fallback: '{fallback_name}'")
+        
+        # Remove extra fields that weren't in the original list
+        for extra_field in extra_fields:
+            del field_mappings[extra_field]
+            print(f"Warning: LLM provided mapping for unknown field '{extra_field}', removing")
+        
+        # Handle duplicates by adding suffixes
+        final_mappings = {}
+        used_names = set()
+        
+        for original_name in original_field_names:
+            new_name = field_mappings.get(original_name, original_name)
+            
+            # If this name is already used, add a suffix
+            if new_name in used_names:
+                counter = 2
+                base_name = new_name
+                while f"{base_name}__{counter}" in used_names:
+                    counter += 1
+                new_name = f"{base_name}__{counter}"
+            
+            final_mappings[original_name] = new_name
+            used_names.add(new_name)
+        
+        return final_mappings
+        
+    except Exception as ex:
+        print(f"Failed to rename fields with LLM: {ex}")
+        
+        # Fallback: use regex-based approach
+        fallback_mappings = {}
+        used_names = set()
+        
+        for original_name in original_field_names:
+            new_name = regex_norm_field(re_case(original_name))
+            
+            # Handle duplicates
+            if new_name in used_names:
+                counter = 2
+                base_name = new_name
+                while f"{base_name}__{counter}" in used_names:
+                    counter += 1
+                new_name = f"{base_name}__{counter}"
+            
+            fallback_mappings[original_name] = new_name
+            used_names.add(new_name)
+        
+        return fallback_mappings
 
 
 # Take a list of AL variables and spits out suggested groupings. Here's what's going on:
@@ -420,43 +649,148 @@ def normalize_name(
 
 
 def cluster_screens(
-    fields: List[str] = [], damping: float = 0.7, tools_token: Optional[str] = None
+    fields: List[str] = [],
+    openai_creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+    damping: Optional[float] = None,
+    tools_token: Optional[str] = None,
 ) -> Dict[str, List[str]]:
     """
-    Groups the given fields into screens based on how much they are related.
+    Groups the given fields into screens using an LLM (GPT) for semantic understanding.
 
     Args:
       fields: a list of field names
-      damping: a value >= 0.5 and < 1. Tunes how related screens should be
-      tools_token: the token to tools.suffolklitlab.org, needed of doing
-          micro-service vectorization
+      openai_creds: OpenAI credentials to use for the API call
+      api_key: explicit API key to use (overrides creds and env vars)
+      model: the OpenAI model to use (default: gpt-5-nano, can use gpt-4 variants)
+      damping: deprecated parameter, kept for backward compatibility
+      tools_token: deprecated parameter, kept for backward compatibility
 
     Returns: a suggested screen grouping, each screen name mapped to the list of fields on it
     """
-    vec_mat = np.zeros([len(fields), 300])
-    vecs = vectorize([re_case(field) for field in fields], tools_token=tools_token)
-    for i in range(len(fields)):
-        vec_mat[i] = vecs[i]
-    # create model
-    # note will have to require newer version to fit the model when running with random_state=4
-    # just on the unit test for now, to make sure `tools.suffolklitlab.org` and local don't differ
-    model = AffinityPropagation(
-        damping=damping, random_state=4 if NEEDS_STABILITY else None
-    )
-    model.fit(vec_mat)
-    # assign a cluster to each example
-    yhat = model.predict(vec_mat)
-    # retrieve unique clusters
-    clusters = unique(yhat)
+    if not fields:
+        return {}
+
+    # Create system and user messages for the LLM to group fields logically
+    system_message = _load_prompt("field_grouping")
+
+    user_message = f"""Here are the field names to group:
+{json.dumps(fields, indent=2)}
+
+Please group these fields into logical screens following the guidelines provided."""
+
+    response: Union[str, Dict[str, Any]] = ""
+    try:
+        # Use the text_complete function to call the LLM
+        response = text_complete(
+            system_message=system_message,
+            user_message=user_message,
+            max_tokens=3000,
+            creds=openai_creds,
+            api_key=api_key,
+            model=model,
+        )
+
+        # Handle the response (could be dict if JSON was parsed, or str if parsing failed)
+        if isinstance(response, dict):
+            screens = cast(Dict[str, List[str]], response)
+        elif isinstance(response, str):
+            # If we got a string back, the JSON parsing failed - try manual parsing as fallback
+            try:
+                screens = json.loads(response)
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to parse JSON response: {response}")
+        else:
+            raise ValueError(f"Unexpected response type: {type(response)}")
+        
+        # Validate the response
+        if not isinstance(screens, dict):
+            raise ValueError("Response is not a dictionary")
+        
+        # Collect all fields from the response
+        response_fields = []
+        for screen_fields in screens.values():
+            if not isinstance(screen_fields, list):
+                raise ValueError(f"Screen fields must be a list, got {type(screen_fields)}")
+            response_fields.extend(screen_fields)
+        
+        # Check that all input fields are present in the output
+        input_set = set(fields)
+        response_set = set(response_fields)
+        
+        missing_fields = input_set - response_set
+        extra_fields = response_set - input_set
+        
+        if missing_fields or extra_fields:
+            raise ValueError(
+                f"Field validation failed. Missing: {missing_fields}, Extra: {extra_fields}"
+            )
+        
+        # Check for duplicate fields in the response
+        if len(response_fields) != len(response_set):
+            field_counts: Dict[str, int] = {}
+            for field in response_fields:
+                field_counts[field] = field_counts.get(field, 0) + 1
+            duplicates = [field for field, count in field_counts.items() if count > 1]
+            raise ValueError(f"Duplicate fields found in response: {duplicates}")
+        
+        return screens
+        
+    except Exception as ex:
+        print(f"Failed to parse LLM response or validation failed: {ex}")
+        if hasattr(ex, '__context__') and ex.__context__:
+            print(f"Context: {ex.__context__}")
+        print(f"Response: {response}")
+        
+        # Fallback: create a simple grouping based on field name patterns
+        return _fallback_field_grouping(fields)
+
+
+def _fallback_field_grouping(fields: List[str]) -> Dict[str, List[str]]:
+    """
+    Fallback field grouping when LLM fails. Groups fields based on simple heuristics.
+    """
+    if not fields:
+        return {}
+    
     screens = {}
-    # sim = np.zeros([5,300])
-    for i, cluster in enumerate(clusters):
-        this_screen = where(yhat == cluster)[0]
-        vars = []
-        for screen in this_screen:
-            # sim[screen]=vec_mat[screen] # use this spot to add up vectors for compare to list
-            vars.append(fields[screen])
-        screens["screen_%s" % i] = vars
+    personal_info = []
+    party_info = []
+    case_info = []
+    signature_info = []
+    other_fields = []
+    
+    # Simple keyword-based grouping
+    for field in fields:
+        field_lower = field.lower()
+        if any(keyword in field_lower for keyword in ['name', 'address', 'phone', 'email', 'birth']):
+            personal_info.append(field)
+        elif any(keyword in field_lower for keyword in ['plaintiff', 'defendant', 'petitioner', 'respondent']):
+            party_info.append(field)
+        elif any(keyword in field_lower for keyword in ['docket', 'case', 'court', 'trial']):
+            case_info.append(field)
+        elif any(keyword in field_lower for keyword in ['signature', 'date']):
+            signature_info.append(field)
+        else:
+            other_fields.append(field)
+    
+    # Only add non-empty screens
+    if personal_info:
+        screens['personal_information'] = personal_info
+    if party_info:
+        screens['party_information'] = party_info
+    if case_info:
+        screens['case_information'] = case_info
+    if signature_info:
+        screens['signatures_and_dates'] = signature_info
+    if other_fields:
+        screens['other_fields'] = other_fields
+    
+    # If no fields were categorized, put them all in one screen
+    if not screens:
+        screens['screen_1'] = fields
+    
     return screens
 
 
@@ -777,27 +1111,38 @@ def all_caps_words(text: str) -> int:
     return 0
 
 
-class OpenAiCreds(TypedDict):
-    org: str
-    key: str
-
-
 def text_complete(
-    prompt: str,
+    system_message: str,
+    user_message: Optional[str] = None,
     max_tokens: int = 500,
     creds: Optional[OpenAiCreds] = None,
     temperature: float = 0,
     api_key: Optional[str] = None,
-) -> str:
+    model: str = "gpt-5-nano",
+    # Legacy parameter for backward compatibility
+    prompt: Optional[str] = None,
+) -> Union[str, Dict]:
     """Run a prompt via openAI's API and return the result.
 
     Args:
-        prompt (str): The prompt to send to the API.
+        system_message (str): The system message that sets the context/role for the AI.
+        user_message (Optional[str]): The user message/question. If None, system_message is used as the prompt.
         max_tokens (int, optional): The number of tokens to generate. Defaults to 500.
         creds (Optional[OpenAiCreds], optional): The credentials to use. Defaults to None.
-        temperature (float, optional): The temperature to use. Defaults to 0.
+        temperature (float, optional): The temperature to use. Defaults to 0. Note: Not supported by GPT-5 family models.
         api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
+        model (str, optional): The model to use. Defaults to "gpt-5-nano".
+        prompt (Optional[str]): Legacy parameter for backward compatibility. If provided, used as system message.
+    
+    Returns:
+        Union[str, Dict]: Returns a parsed dictionary if JSON was requested and successfully parsed, 
+                         otherwise returns the raw string response.
     """
+    # Handle backward compatibility
+    if prompt is not None:
+        system_message = prompt
+        user_message = None
+    
     # Resolve the API key using our helper function
     resolved_key = get_openai_api_key_from_sources(api_key, dict(creds) if creds else None)
 
@@ -812,19 +1157,55 @@ def text_complete(
             openai_client = client
         else:
             raise Exception("No OpenAI credentials provided")
+    
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=1.0,
-            frequency_penalty=0.0,
-            presence_penalty=0.0,
-        )
-        return str((response.choices[0].message.content or "").strip())
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_message}]
+        if user_message:
+            messages.append({"role": "user", "content": user_message})
+        
+        # GPT-5 family models use different parameters
+        completion_params: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+        }
+        
+        # GPT-5 models use max_completion_tokens instead of max_tokens and need more tokens due to reasoning
+        if model.startswith("gpt-5"):
+            # Increase tokens for GPT-5 models but respect the 128K completion token limit
+            requested_tokens = min(max_tokens * 5, 128000)  # 5x multiplier but capped at 128K
+            completion_params["max_completion_tokens"] = requested_tokens
+        else:
+            completion_params["max_tokens"] = max_tokens
+            completion_params["temperature"] = temperature
+        
+        # Enable JSON mode if "json" appears in the prompt (case-insensitive)
+        combined_prompt = system_message + (user_message or "")
+        is_json_request = "json" in combined_prompt.lower()
+        if is_json_request:
+            completion_params["response_format"] = {"type": "json_object"}
+        
+        response = openai_client.chat.completions.create(**completion_params)
+        raw_response = str((response.choices[0].message.content or "").strip())
+        
+        # If JSON was requested, try to parse and return the JSON object
+        if is_json_request:
+            try:
+                return json.loads(raw_response)
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, try to extract JSON from the response
+                # Sometimes the model might include extra text around the JSON
+                json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+                if json_match:
+                    try:
+                        return json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        print(f"Failed to parse JSON response: {e}")
+                        return raw_response
+                else:
+                    print(f"No valid JSON found in response: {raw_response}")
+                    return raw_response
+        
+        return raw_response
     except Exception as ex:
         print(f"{ex}")
         return "ApiError"
@@ -836,43 +1217,67 @@ def complete_with_command(
     tokens,
     creds: Optional[OpenAiCreds] = None,
     api_key: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Combines some text with a command to send to open ai."""
-    # OpenAI's max number of tokens length is 4097, so we trim the input text to 4080 - command - tokens length.
-    # A bit less than 4097 in case the tokenizer is wrong
-    # don't deal with negative numbers, clip at 1 (OpenAi will error anyway)
-    max_length = max(4080 - len(tokenizer(command)["input_ids"]) - tokens, 1)
-    text_tokens = tokenizer(text)
-    if len(text_tokens["input_ids"]) > max_length:
-        text = tokenizer.decode(
-            tokenizer(text, truncation=True, max_length=max_length)["input_ids"]
-        )
-    return text_complete(
-        text + "\n\n" + command, max_tokens=tokens, creds=creds, api_key=api_key
+    # For GPT-5-nano: 400K input token limit, so we can handle much larger inputs
+    # Support up to 30 pages of PDF text (~300K characters = ~75K tokens)
+    # Reserve space for command and response tokens: 375K - command - response = ~300K for text
+    max_input_tokens = 300000  # Conservative limit for input text
+    model_to_use = model or "gpt-5-nano"
+
+    available_tokens = max_input_tokens - _token_count(command, model_to_use) - tokens
+    max_length = max(available_tokens, 1)
+
+    text = _truncate_to_token_limit(text, max_length, model_to_use)
+    
+    result = text_complete(
+        system_message=command,
+        user_message=text,
+        max_tokens=tokens,
+        creds=creds,
+        api_key=api_key,
+        model=model_to_use,
     )
+    # Ensure we always return a string for this function
+    if isinstance(result, dict):
+        return json.dumps(result)
+    return result
 
 
 def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
-    tokens = len(tokenizer(text)["input_ids"])
-    command = "Rewrite the above at a sixth grade reading level."
-    return complete_with_command(text, command, tokens, creds=creds)
+    model = "gpt-5-nano"
+    tokens = max(_token_count(text, model), 500)  # Minimum 500 tokens for GPT-5
+    command = _load_prompt("plain_language")
+    return complete_with_command(text, command, tokens, creds=creds, model=model)
 
 
 def guess_form_name(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
-    command = 'If the above is a court form, write the form\'s name, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 20, creds=creds, api_key=api_key)
+    command = _load_prompt("guess_form_name")
+    model = "gpt-5-nano"
+    return complete_with_command(
+        text, command, 200, creds=creds, api_key=api_key, model=model
+    )
 
 
 def describe_form(
     text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
 ) -> str:
-    command = 'If the above is a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow.".'
-    return complete_with_command(text, command, 250, creds=creds, api_key=api_key)
+    command = _load_prompt("describe_form")
+    model = "gpt-5-nano"
+    return complete_with_command(
+        text,
+        command,
+        3000,
+        creds=creds,
+        api_key=api_key,
+        model=model,
+    )  # Increased for more detailed descriptions
 
 
-def needs_calculations(text: Union[str]) -> bool:
+def needs_calculations(text: str) -> bool:
     # since we reomved SpaCy we can't use Doc,
     # so I rewrote this to provide similar functionality absent Doc
     # old code is commented out
@@ -1112,6 +1517,34 @@ def transformed_sentences(
     return transformed
 
 
+def fallback_rename_fields(field_names: List[str]) -> Tuple[List[str], List[float]]:
+    """
+    A simple fallback renaming scheme that just makes field names lowercase
+    and replaces spaces with underscores.
+    """
+    length = len(field_names)
+    last = "null"
+    new_names = []
+    new_names_conf = []
+    for i, field_name in enumerate(field_names):
+        new_name, new_confidence = normalize_name(
+            "",
+            "",
+            i,
+            i / length,
+            last,
+            field_name,
+        )
+        new_names.append(new_name)
+        new_names_conf.append(new_confidence)
+        last = field_name
+    new_names = [
+        v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
+        for i, v in enumerate(new_names)
+    ]
+    return new_names, new_names_conf
+
+
 def parse_form(
     in_file: str,
     title: Optional[str] = None,
@@ -1183,7 +1616,11 @@ def parse_form(
         else ""
     )
     try:
-        readability = textstat.text_standard(text, float_output=True) if text else -1
+        readability = (
+            textstat.text_standard(text, float_output=True)  # type: ignore[attr-defined]
+            if text
+            else -1
+        )
     except:
         readability = -1
     # Still attempt to re-evaluate if not using openai
@@ -1208,7 +1645,9 @@ def parse_form(
             text = cleanup_text(original_text)
             try:
                 readability = (
-                    textstat.text_standard(text, float_output=True) if text else -1
+                    textstat.text_standard(text, float_output=True)  # type: ignore[attr-defined]
+                    if text
+                    else -1
                 )
             except:
                 readability = -1
@@ -1228,34 +1667,73 @@ def parse_form(
         ):
             title = new_title
         if not title or title == "ApiError" or title.lower() == "abortthisnow.":
+            fallback_title: Optional[str] = None
             matches = re.search(r"(.*)\n", text)
-            if matches:
-                title = re_case(matches.group(1).strip())
-            else:
-                title = "(Untitled)"
+            if matches and matches.group(1).strip():
+                fallback_title = matches.group(1).strip()
+
+            if not fallback_title and original_text:
+                sentences = split_sentences(original_text)
+                if sentences:
+                    fallback_title = sentences[0].strip()
+
+            if not fallback_title and text:
+                cleaned_sentences = [
+                    segment.strip()
+                    for segment in re.split(r"[.!?]", text)
+                    if segment.strip()
+                ]
+                if cleaned_sentences:
+                    fallback_title = cleaned_sentences[0]
+
+            def _clean_title_candidate(raw: str) -> str:
+                candidate = re.sub(r"\s+", " ", raw).strip()
+                candidate = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", candidate)
+                candidate = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", candidate)
+                return candidate.strip(" ._-")
+
+            def _looks_reasonable(candidate: str) -> bool:
+                tokens = candidate.split()
+                if not tokens:
+                    return False
+                single_letter_tokens = [
+                    token for token in tokens if len(token) == 1 and token.lower() not in {"a", "i"}
+                ]
+                if len(single_letter_tokens) > max(1, len(tokens) // 3):
+                    return False
+                if len(candidate) > 160:
+                    return False
+                if re.search(r"[A-Z]{2,}(AND|OR|OF|FOR)[A-Z]", candidate):
+                    return False
+                return True
+
+            if fallback_title:
+                fallback_title = _clean_title_candidate(fallback_title)
+                if not _looks_reasonable(fallback_title):
+                    fallback_title = ""
+
+            if not fallback_title:
+                fallback_title = re_case(Path(in_file).stem.replace("_", " ")).title()
+
+            title = fallback_title if fallback_title else "(Untitled)"
     nsmi = spot(title + ". " + text, token=spot_token) if spot_token else []
     if normalize:
-        length = len(field_names)
-        last = "null"
-        new_names = []
-        new_names_conf = []
-        for i, field_name in enumerate(field_names):
-            new_name, new_confidence = normalize_name(
-                jur or "",
-                cat or "",
-                i,
-                i / length,
-                last,
-                field_name,
-                tools_token=tools_token,
-            )
-            new_names.append(new_name)
-            new_names_conf.append(new_confidence)
-            last = field_name
-        new_names = [
-            v + "__" + str(new_names[:i].count(v) + 1) if new_names.count(v) > 1 else v
-            for i, v in enumerate(new_names)
-        ]
+        if (openai_creds or resolved_api_key) and field_names:
+            try:
+                field_mappings = rename_pdf_fields_with_context(
+                    in_file,
+                    field_names,
+                    openai_creds=openai_creds,
+                    api_key=resolved_api_key,
+                )
+                new_names = [field_mappings.get(name, name) or name for name in field_names]
+                new_names_conf = [0.8 if field_mappings.get(name) else 0.1 for name in field_names]
+            except Exception as e:
+                print(f"LLM field renaming failed: {e}, falling back to traditional approach")
+                # Fallback to traditional approach
+                new_names, new_names_conf = fallback_rename_fields(field_names)
+        else:
+            new_names, new_names_conf = fallback_rename_fields(field_names)
     else:
         new_names = field_names
         new_names_conf = []
@@ -1293,7 +1771,7 @@ def parse_form(
     created_count = sum(1 for c in classified if c == AnswerType.CREATED)
     sentence_count = sum(1 for _ in sentences)
     field_count = len(field_names)
-    difficult_words = textstat.difficult_words_list(text)
+    difficult_words = textstat.difficult_words_list(text)  # type: ignore[attr-defined]
     difficult_word_count = len(difficult_words)
     citation_count = len(citations)
     pdf_is_tagged = is_tagged(the_pdf)

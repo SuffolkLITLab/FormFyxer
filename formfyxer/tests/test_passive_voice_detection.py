@@ -264,8 +264,25 @@ class TestPassiveVoiceDetection(unittest.TestCase):
         # Verify the loaded prompt was used in the API call
         call_args = self.mock_client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
-        self.assertEqual(len(messages), 1)
-        self.assertIn("Test prompt content", messages[0]["content"])
+        self.assertEqual(len(messages), 2)
+        system_message = messages[0]
+        user_message = messages[1]
+
+        self.assertEqual(system_message.get("role"), "system")
+        system_content = system_message.get("content", [])
+        self.assertTrue(system_content)
+        self.assertIn(
+            "Test prompt content",
+            [part.get("text", "") for part in system_content if isinstance(part, dict)],
+        )
+
+        self.assertEqual(user_message.get("role"), "user")
+        user_content = user_message.get("content", [])
+        self.assertTrue(user_content)
+        self.assertIn(
+            "Sentence: Test sentence with more words.",
+            [part.get("text", "") for part in user_content if isinstance(part, dict)],
+        )
 
     def test_sentence_splitting(self):
         """Test that text is properly split into sentences."""

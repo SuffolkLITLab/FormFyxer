@@ -1,7 +1,4 @@
 boxdetect
-joblib
-networkx>=3.0
-nltk
 numpy
 mypy
 openai
@@ -14,7 +11,6 @@ pikepdf
 reportlab
 requests
 ocrmypdf
-scikit-learn
 textstat
 transformers
 types-requests

@@ -6,10 +6,15 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from openai import AuthenticationError
 
 from .docassemble_support import get_openai_api_key
@@ -249,14 +254,20 @@ def detect_passive_voice_segments(
 
     for sentence in sentences:
         system_prompt = _load_prompt()
-        full_prompt = (
-            f"{system_prompt}\n\nSentence: {sentence}"  # Mirroring promptfoo format
-        )
+        system_message: ChatCompletionSystemMessageParam = {
+            "role": "system",
+            "content": [{"type": "text", "text": system_prompt}],
+        }
+        user_message: ChatCompletionUserMessageParam = {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Sentence: {sentence}"}],
+        }
+        messages: List[ChatCompletionMessageParam] = [system_message, user_message]
 
         try:
             response = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": full_prompt}],
+                messages=messages,
                 max_completion_tokens=500,  # We only need one word: "passive" or "active", but leave room for reasoning tokens with gpt-5
             )
         except AuthenticationError as exc:
@@ -269,7 +280,7 @@ def detect_passive_voice_segments(
                 _cached_client = new_client
                 response = new_client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "user", "content": full_prompt}],
+                    messages=messages,
                     max_completion_tokens=500,
                 )
             else:
