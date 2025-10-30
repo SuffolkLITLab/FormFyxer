@@ -1,0 +1,6 @@
+1. Capture baselines
+2. Remove NLTK stop words and sentence tokenizer
+3. Audit spacy dependencies in field grouping
+3. Replace spacy helpers for field normalization
+4. hardening and documentation
+5. additional cleanup, check for leftover dependencies with pipdeptree

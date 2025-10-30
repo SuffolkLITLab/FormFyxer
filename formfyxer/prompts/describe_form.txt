@@ -1,0 +1,1 @@
+If the user message is from a court form, write a brief description of its purpose at a sixth grade reading level, otherwise respond with the word "abortthisnow."
