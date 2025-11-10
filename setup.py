@@ -21,8 +21,13 @@ setuptools.setup(
     install_requires=['pdfminer.six', 'pandas', 'pikepdf',
         'textstat', 'requests', 'numpy',
     'boxdetect', 'pdf2image', 'reportlab>=3.6.13', 'pdfminer.six',
-    'opencv-python', 'ocrmypdf', 'eyecite', 'sigfig',
+    'opencv-python-headless', 'ocrmypdf', 'eyecite', 'sigfig',
         'openai', 'python-dotenv', 'python-docx', 'tiktoken', 'transformers' 
     ],
+    entry_points={
+        'console_scripts': [
+            'formfyxer=formfyxer.cli:main',
+        ],
+    },
     include_package_data = True
 )
