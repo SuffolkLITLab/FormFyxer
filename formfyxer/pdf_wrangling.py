@@ -160,7 +160,9 @@ class FormField:
             self.configs.update(configs)
 
     @classmethod
-    def make_textbox(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
+    def make_textbox(
+        cls, label: str, field_bbox: BoundingBox, font_size: int
+    ) -> "FormField":
         return FormField(
             label,
             FieldType.TEXT,
@@ -171,7 +173,9 @@ class FormField:
         )
 
     @classmethod
-    def make_textarea(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
+    def make_textarea(
+        cls, label: str, field_bbox: BoundingBox, font_size: int
+    ) -> "FormField":
         return FormField(
             label,
             FieldType.AREA,
@@ -510,7 +514,7 @@ def has_fields(pdf_file: str) -> bool:
 
 
 def get_existing_pdf_fields(
-    in_file: Union[str, Path, BinaryIO, Pdf]
+    in_file: Union[str, Path, BinaryIO, Pdf],
 ) -> List[List[FormField]]:
     """Use PikePDF to get fields from the PDF"""
     if isinstance(in_file, Pdf):
@@ -784,7 +788,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
         return self.field_pages.get(page_id, [])
 
     def process_page(self, page) -> None:
-        (x0, y0, x1, y1) = page.mediabox
+        x0, y0, x1, y1 = page.mediabox
         if page.rotate == 90:
             ctm = (0, -1, 1, 0, -y0, x1)
         elif page.rotate == 180:
@@ -816,7 +820,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                         codec = codec_value if isinstance(codec_value, str) else "utf-8"
                         outfp.write(field_marker.encode(codec))
                 continue
-                
+
             self.do_BT()
             # set the font, and the font size. Get any font available
             font = list(self.fontmap.values())[-1]
@@ -842,7 +846,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                 for cid in font.decode(char.encode()):
                     if needcharspace:
                         x += 0.1  # charspace
-                    x += self.device.render_char( # type: ignore
+                    x += self.device.render_char(  # type: ignore
                         translate_matrix(matrix, (x, y)),
                         font,
                         self.textstate.fontsize,  # fontsize,
@@ -1083,6 +1087,89 @@ def get_dist(point_a: XYPair, point_b: XYPair) -> float:
     return math.sqrt((point_a[0] - point_b[0]) ** 2 + (point_a[1] - point_b[1]) ** 2)
 
 
+def _default_text_field_name(page_index: int, field_index: int) -> str:
+    return f"page_{page_index}_field_{field_index}"
+
+
+def _default_checkbox_name(page_index: int, field_index: int) -> str:
+    return f"page_{page_index}_check_{field_index}"
+
+
+def _closest_textbox(
+    field_bbox: BoundingBoxF, textboxes: List[Textbox]
+) -> Optional[Textbox]:
+    if not textboxes:
+        return None
+    return min(
+        textboxes, key=lambda textbox: bbox_distance(field_bbox, textbox["bbox"])[0]
+    )
+
+
+def _sanitize_field_label(text: str) -> str:
+    label = re.sub(r"[\W]", "_", text.lower().strip(" \n\t_,."))
+    return re.sub(r"_{3,}", "_", label).strip("_")
+
+
+def _default_label_for_field(
+    field_info: FormField, textboxes: List[Textbox], used_field_names: set[str]
+) -> Optional[str]:
+    min_textbox = _closest_textbox(field_info.get_bbox(), textboxes)
+    if min_textbox is None:
+        return None
+    label = _sanitize_field_label(min_textbox["textbox"].get_text())
+    if not label or label in used_field_names:
+        return None
+    return label
+
+
+def _next_preferred_name(
+    preferred_names: Optional[Sequence[str]],
+    next_name_index: int,
+    used_field_names: Optional[set[str]] = None,
+) -> Tuple[Optional[str], int]:
+    if not preferred_names:
+        return None, next_name_index
+    while next_name_index < len(preferred_names):
+        label = _sanitize_field_label(preferred_names[next_name_index])
+        next_name_index += 1
+        if not label:
+            continue
+        if used_field_names is not None and label in used_field_names:
+            continue
+        return label, next_name_index
+    return None, next_name_index
+
+
+def _is_blank_text_field(
+    img_bin: np.ndarray,
+    bbox: BoundingBox,
+    line_height: int,
+    text_lines: List[Textbox],
+    is_blank_text_field: Optional[
+        Callable[[np.ndarray, BoundingBox, int, List[Textbox]], bool]
+    ] = None,
+) -> bool:
+    if is_blank_text_field:
+        return is_blank_text_field(img_bin, bbox, line_height, text_lines)
+
+    margin = int(0.04 * dpi)
+    line_bump = int(dpi * 0.025)
+    top_side = bbox[1] - bbox[3] + margin
+    bottom_side = bbox[1] - line_bump
+    left_margin = bbox[2] // 5
+    left_side = bbox[0] + left_margin
+    right_side = bbox[0] + bbox[2] - margin
+    above_line_img = img_bin[top_side:bottom_side, left_side:right_side]
+    if above_line_img.any():
+        file_out = f"text_above_{int(random.random() * 1000)}.png"
+        if DEBUG:
+            print(f"avoiding text box because stuff above: {file_out}")
+            cv2.imwrite(file_out, above_line_img)
+            cv2.imwrite("bin_" + file_out, img_bin)
+        return False
+    return True
+
+
 def get_connected_edges(point: XYPair, point_list: Sequence):
     """point list is always ordered clockwise from the bottom left,
     i.e. bottom left, top left, top right, bottom right"""
@@ -1147,6 +1234,10 @@ def bbox_distance(
 def get_possible_fields(
     in_pdf_file: Union[str, Path],
     textboxes: Optional[List[List[Textbox]]] = None,
+    preferred_names: Optional[Sequence[str]] = None,
+    is_blank_text_field: Optional[
+        Callable[[np.ndarray, BoundingBox, int, List[Textbox]], bool]
+    ] = None,
 ) -> List[List[FormField]]:
     """Given an input PDF, runs a series of heuristics to predict where there
     might be places for user enterable information (i.e. PDF fields), and returns
@@ -1164,6 +1255,10 @@ def get_possible_fields(
       textboxes (optional): the location of various lines of text in the PDF.
           If not given, will be calculated automatically. This allows us to
           pass through expensive info to calculate through several functions.
+      preferred_names (optional): field names to assign in order as fields are
+          detected.
+      is_blank_text_field (optional): override the blank-space heuristic used
+          for detecting text entry lines.
 
     Returns:
       For each page in the input PDF, a list of predicted form fields
@@ -1212,7 +1307,9 @@ def get_possible_fields(
         ]
 
     text_bboxes_per_page = [
-        get_possible_text_fields(tmp.name, page_text)
+        get_possible_text_fields(
+            tmp.name, page_text, is_blank_text_field=is_blank_text_field
+        )
         for tmp, page_text in zip(tmp_files, textboxes)
     ]
     text_pdf_bboxes: List[List[Tuple[BoundingBoxF, int]]] = [
@@ -1228,6 +1325,8 @@ def get_possible_fields(
 
     fields = []
     i = 0
+    next_name_index = 0
+    used_field_names: set[str] = set()
     for (
         bboxes_in_page,
         checkboxes_in_page,
@@ -1237,9 +1336,14 @@ def get_possible_fields(
         for j, field_info in enumerate(bboxes_in_page):
             field_bbox_f, font_size = field_info
             field_bbox = _to_int_bbox(field_bbox_f)
-            label = f"page_{i}_field_{j}"
             # By default the line size is 16.
             font_size_int = int(font_size)
+            label, next_name_index = _next_preferred_name(
+                preferred_names, next_name_index, used_field_names
+            )
+            if not label:
+                label = _default_text_field_name(i, j)
+            used_field_names.add(label)
             if field_bbox[3] > 24:
                 page_fields.append(
                     FormField.make_textarea(label, field_bbox, font_size_int)
@@ -1249,45 +1353,19 @@ def get_possible_fields(
                     FormField.make_textbox(label, field_bbox, font_size_int)
                 )
 
-        page_fields += [
-            FormField.make_checkbox(f"page_{i}_check_{j}", _to_int_bbox(bbox))
-            for j, bbox in enumerate(checkboxes_in_page)
-        ]
+        for j, bbox in enumerate(checkboxes_in_page):
+            checkbox_bbox = _to_int_bbox(bbox)
+            label, next_name_index = _next_preferred_name(
+                preferred_names, next_name_index, used_field_names
+            )
+            if not label:
+                label = _default_checkbox_name(i, j)
+            used_field_names.add(label)
+            page_fields.append(FormField.make_checkbox(label, checkbox_bbox))
         i += 1
         fields.append(page_fields)
 
     return fields
-
-
-class ImproveNameVisitor:
-    def __init__(self):
-        self.used_field_names = set()
-
-    def improve_name_with_surrounding_text(
-        self, field_info: FormField, textboxes: List[Textbox]
-    ) -> FormField:
-        dists = [
-            (
-                bbox_distance(field_info.get_bbox(), textbox["bbox"])[0],
-                textbox["textbox"],
-                textbox["bbox"],
-            )
-            for textbox in textboxes
-        ]
-        if DEBUG:
-            print(f"For {field_info.name}, dists: {dists}")
-        min_textbox = min(dists, key=lambda d: d[0])
-        # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
-        # text_obj_bboxes.remove(min_obj[2])
-        # TODO(brycew): actual regex replacement of lots of underscores
-        label = re.sub(r"[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
-        label = re.sub("_{3,}", "_", label).strip("_")
-        if label not in self.used_field_names:
-            field_info.name = label
-            self.used_field_names.add(label)
-        elif DEBUG:
-            print(f"avoiding using label {label} more than once")
-        return field_info
 
 
 class AllCloseTextVisitor:
@@ -1354,14 +1432,47 @@ def replace_in_original(original_text, field_map):
 
 
 def improve_names_with_surrounding_text(
-    fields: List[List[FormField]], textboxes: List[List[Textbox]]
+    fields: List[List[FormField]],
+    textboxes: List[List[Textbox]],
+    preferred_names: Optional[Sequence[str]] = None,
 ) -> List[List[FormField]]:
-    name_visitor = ImproveNameVisitor()
-    return surrounding_text_traverse(
-        fields,
-        textboxes,
-        lambda fi, tbs: name_visitor.improve_name_with_surrounding_text(fi, tbs),
-    )
+    new_fields = []
+    used_field_names: set[str] = set()
+    next_name_index = 0
+    for fields_in_page, text_in_page in zip(fields, textboxes):
+        page_fields = []
+        text_in_page = [
+            text
+            for text in text_in_page
+            if len(text["textbox"].get_text().strip(" \n\t_,."))
+        ]
+        text_obj_bboxes = [text["bbox"] for text in text_in_page]
+        for field_info in fields_in_page:
+            copied_field_info = copy(field_info)
+            field_bbox = field_info.get_bbox()
+            intersected = [
+                textbox
+                for textbox, intersect in zip(
+                    text_in_page,
+                    intersect_bboxs(
+                        field_bbox, text_obj_bboxes, horiz_dilation=50, vert_dilation=50
+                    ),
+                )
+                if intersect
+            ]
+            label, next_name_index = _next_preferred_name(
+                preferred_names, next_name_index, used_field_names
+            )
+            if not label:
+                label = _default_label_for_field(
+                    copied_field_info, intersected, used_field_names
+                )
+            if label:
+                copied_field_info.name = label
+                used_field_names.add(label)
+            page_fields.append(copied_field_info)
+        new_fields.append(page_fields)
+    return new_fields
 
 
 def surrounding_text_traverse(
@@ -1503,6 +1614,9 @@ def get_possible_text_fields(
     img: Union[str, BinaryIO, cv2.Mat],
     text_lines: List[Textbox],
     default_line_height: int = 44,
+    is_blank_text_field: Optional[
+        Callable[[np.ndarray, BoundingBox, int, List[Textbox]], bool]
+    ] = None,
 ) -> List[Tuple[BoundingBox, int]]:
     """Uses openCV to attempt to find places where a PDF could expect an input text field.
 
@@ -1510,6 +1624,7 @@ def get_possible_text_fields(
     Won't find field inputs as boxes
 
     default_line_height: the default height (16 pt), in pixels (at 200 dpi), which is 45
+    is_blank_text_field: optional override for blank-space detection.
     """
     if isinstance(img, str):
         # 0 is for the flags: means nothing special is being used
@@ -1528,7 +1643,7 @@ def get_possible_text_fields(
     # OTSU = optimum global thresholding: minimizes the variance of each Thresh "class"
     # for each possible thresh value between 128 and 255, split up pixels, get the within-class variance,
     # and minimize that
-    (thresh, img_bin) = cv2.threshold(
+    thresh, img_bin = cv2.threshold(
         img_mat, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
@@ -1583,13 +1698,13 @@ def get_possible_text_fields(
 
         return (cnts, boundingBoxes)
 
-    (contours, boundingBoxes) = sort_contours(contours, method="top-to-bottom")
+    contours, boundingBoxes = sort_contours(contours, method="top-to-bottom")
     vert_contours, _ = cv2.findContours(
         vert_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
     if vert_contours:
         # Don't consider horizontal lines that meet up against vertical lines as text fields
-        (vert_contours, vert_bounding_boxes) = sort_contours(
+        vert_contours, vert_bounding_boxes = sort_contours(
             vert_contours, method="top-to-bottom"
         )
         no_vert_coll = []
@@ -1637,20 +1752,9 @@ def get_possible_text_fields(
             bbox[2],
             line_height,
         )  # change bbox height (likely 0 or 1) to the right height
-        margin = int(0.04 * dpi)
-        line_bump = int(
-            dpi * 0.025
-        )  # vertical distance to not include the recogized line in the image
-        top_side, bottom_side = bbox[1] - bbox[3] + margin, bbox[1] - line_bump
-        left_margin = bbox[2] // 5
-        left_side, right_side = bbox[0] + left_margin, bbox[0] + bbox[2] - margin
-        above_line_img = img_bin[top_side:bottom_side, left_side:right_side]
-        if above_line_img.any():
-            file_out = f"text_above_{int(random.random() * 1000)}.png"
-            if DEBUG:
-                print(f"avoiding text box because stuff above: {file_out}")
-                cv2.imwrite(file_out, above_line_img)
-                cv2.imwrite("bin_" + file_out, img_bin)
+        if not _is_blank_text_field(
+            img_bin, bbox, line_height, text_lines, is_blank_text_field
+        ):
             continue
 
         if to_return:
@@ -1663,6 +1767,8 @@ def get_possible_text_fields(
                 overlap_dist = right - left
                 # if the overlap of each is greater than 90% dist of both
                 if overlap_dist > 0.98 * bbox[2] and overlap_dist > 0.98 * last_bbox[2]:
+                    margin = int(0.04 * dpi)
+                    line_bump = int(dpi * 0.025)
                     between_lines_img = img_bin[
                         last_bbox[1] + margin : bbox[1] - line_bump,
                         bbox[0] + margin : bbox[0] + bbox[2] - margin,
@@ -1680,7 +1786,14 @@ def get_possible_text_fields(
     return to_return
 
 
-def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
+def auto_add_fields(
+    in_pdf_file: Union[str, Path],
+    out_pdf_file: Union[str, Path],
+    preferred_names: Optional[Sequence[str]] = None,
+    is_blank_text_field: Optional[
+        Callable[[np.ndarray, BoundingBox, int, List[Textbox]], bool]
+    ] = None,
+):
     """Uses [get_possible_fields](#formfyxer.pdf_wrangling.get_possible_fields) and
     [set_fields](#formfyxer.pdf_wrangling.set_fields) to automatically add new detected fields
     to an input PDF.
@@ -1695,21 +1808,36 @@ def auto_add_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path
       out_pdf_file: the output file name or path of the PDF where a new version of `in_pdf_file` will
           be stored, with the new fields. Doesn't need to existing, but if a file does exist at that
           filename, it will be overwritten.
+      preferred_names: optional field names to assign in order.
+      is_blank_text_field: optional override for blank-space detection.
 
     Returns:
       Nothing
     """
     textboxes = get_textboxes_in_pdf(in_pdf_file)
-    fields = get_possible_fields(in_pdf_file, textboxes=textboxes)
-    fields = improve_names_with_surrounding_text(fields, textboxes=textboxes)
+    fields = get_possible_fields(
+        in_pdf_file,
+        textboxes=textboxes,
+        preferred_names=preferred_names,
+        is_blank_text_field=is_blank_text_field,
+    )
+    fields = improve_names_with_surrounding_text(
+        fields, textboxes=textboxes, preferred_names=preferred_names
+    )
     set_fields(in_pdf_file, out_pdf_file, fields, overwrite=True)
 
 
-def auto_rename_fields(in_pdf_file: Union[str, Path], out_pdf_file: Union[str, Path]):
+def auto_rename_fields(
+    in_pdf_file: Union[str, Path],
+    out_pdf_file: Union[str, Path],
+    preferred_names: Optional[Sequence[str]] = None,
+):
     textboxes = get_textboxes_in_pdf(in_pdf_file)
     fields = get_existing_pdf_fields(in_pdf_file)
     all_fields = [field for fields_in_page in fields for field in fields_in_page]
-    new_fields = improve_names_with_surrounding_text(fields, textboxes=textboxes)
+    new_fields = improve_names_with_surrounding_text(
+        fields, textboxes=textboxes, preferred_names=preferred_names
+    )
     all_new_fields = [
         field for fields_in_page in new_fields for field in fields_in_page
     ]

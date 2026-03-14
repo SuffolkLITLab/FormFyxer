@@ -6,7 +6,6 @@ import numpy as np
 import argparse
 from typing import List
 
-
 openai_creds = None  # {
 #  "org": os.environ.get("OPENAI_ORG"),
 #  "key": os.environ.get("OPENAI_KEY")
