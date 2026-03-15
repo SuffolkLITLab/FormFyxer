@@ -1087,11 +1087,15 @@ def get_dist(point_a: XYPair, point_b: XYPair) -> float:
     return math.sqrt((point_a[0] - point_b[0]) ** 2 + (point_a[1] - point_b[1]) ** 2)
 
 
-def _default_text_field_name(page_index: int, field_index: int) -> str:
+def _default_text_field_name(
+    page_index: int, field_index: int, field_bbox: BoundingBox, font_size: int
+) -> str:
     return f"page_{page_index}_field_{field_index}"
 
 
-def _default_checkbox_name(page_index: int, field_index: int) -> str:
+def _default_checkbox_name(
+    page_index: int, field_index: int, field_bbox: BoundingBox
+) -> str:
     return f"page_{page_index}_check_{field_index}"
 
 
@@ -1342,7 +1346,7 @@ def get_possible_fields(
                 preferred_names, next_name_index, used_field_names
             )
             if not label:
-                label = _default_text_field_name(i, j)
+                label = _default_text_field_name(i, j, field_bbox, font_size_int)
             used_field_names.add(label)
             if field_bbox[3] > 24:
                 page_fields.append(
@@ -1359,13 +1363,29 @@ def get_possible_fields(
                 preferred_names, next_name_index, used_field_names
             )
             if not label:
-                label = _default_checkbox_name(i, j)
+                label = _default_checkbox_name(i, j, checkbox_bbox)
             used_field_names.add(label)
             page_fields.append(FormField.make_checkbox(label, checkbox_bbox))
         i += 1
         fields.append(page_fields)
 
     return fields
+
+
+class ImproveNameVisitor:
+    def __init__(self):
+        self.used_field_names = set()
+
+    def improve_name_with_surrounding_text(
+        self, field_info: FormField, textboxes: List[Textbox]
+    ) -> FormField:
+        label = _default_label_for_field(field_info, textboxes, self.used_field_names)
+        if label:
+            field_info.name = label
+            self.used_field_names.add(label)
+        elif DEBUG:
+            print(f"avoiding using label {label} more than once")
+        return field_info
 
 
 class AllCloseTextVisitor:

@@ -1,9 +1,11 @@
+import inspect
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from formfyxer.lit_explorer import (
+    parse_form,
     rename_pdf_fields_with_context,
     text_complete,
 )
@@ -63,6 +65,11 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
             "https://endpoint.example/v1",
         )
         self.assertEqual(mock_text_complete.call_args.kwargs["model"], "gpt-4o-mini")
+
+    def test_parse_form_accepts_model_and_openai_base_url(self):
+        signature = inspect.signature(parse_form)
+        self.assertIn("model", signature.parameters)
+        self.assertIn("openai_base_url", signature.parameters)
 
 
 if __name__ == "__main__":
