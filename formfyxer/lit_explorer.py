@@ -58,6 +58,7 @@ from pathlib import Path
 
 load_dotenv()
 
+
 class OpenAiCreds(TypedDict):
     org: str
     key: str
@@ -65,13 +66,13 @@ class OpenAiCreds(TypedDict):
 
 def _load_prompt(prompt_name: str) -> str:
     """Load a prompt from the prompts directory.
-    
+
     Args:
         prompt_name: Name of the prompt file (without .txt extension)
-        
+
     Returns:
         The prompt text as a string.
-        
+
     Raises:
         FileNotFoundError: If the prompt file cannot be found.
     """
@@ -115,21 +116,132 @@ def _truncate_to_token_limit(
         return text
     return encoding.decode(tokens[:max_tokens])
 
+
 STOP_WORDS = {
-    'a','about','above','after','again','against','all','am','an','and','any','are','aren','as','at',
-    'be','because','been','before','being','below','between','both','but','by',
-    'could','did','do','does','doing','down','during',
-    'each','few','for','from','further',
-    'had','has','have','having','he','her','here','hers','herself','him','himself','his','how',
-    'i','if','in','into','is','it','its','itself',
-    'just',
-    'me','more','most','my','myself',
-    'no','nor','not',
-    'of','off','on','once','only','or','other','our','ours','ourselves','out','over','own',
-    'same','she','should','so','some','such',
-    'than','that','the','their','theirs','them','themselves','then','there','these','they','this','those','through','to','too',
-    'under','until','up','very',
-    'was','we','were','what','when','where','which','while','who','whom','why','will','with','you','your','yours','yourself','yourselves'
+    "a",
+    "about",
+    "above",
+    "after",
+    "again",
+    "against",
+    "all",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "aren",
+    "as",
+    "at",
+    "be",
+    "because",
+    "been",
+    "before",
+    "being",
+    "below",
+    "between",
+    "both",
+    "but",
+    "by",
+    "could",
+    "did",
+    "do",
+    "does",
+    "doing",
+    "down",
+    "during",
+    "each",
+    "few",
+    "for",
+    "from",
+    "further",
+    "had",
+    "has",
+    "have",
+    "having",
+    "he",
+    "her",
+    "here",
+    "hers",
+    "herself",
+    "him",
+    "himself",
+    "his",
+    "how",
+    "i",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "itself",
+    "just",
+    "me",
+    "more",
+    "most",
+    "my",
+    "myself",
+    "no",
+    "nor",
+    "not",
+    "of",
+    "off",
+    "on",
+    "once",
+    "only",
+    "or",
+    "other",
+    "our",
+    "ours",
+    "ourselves",
+    "out",
+    "over",
+    "own",
+    "same",
+    "she",
+    "should",
+    "so",
+    "some",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "themselves",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "to",
+    "too",
+    "under",
+    "until",
+    "up",
+    "very",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "whom",
+    "why",
+    "will",
+    "with",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
 }
 
 # Load local variables, models, and API key(s).
@@ -386,7 +498,7 @@ def normalize_name(
 
     Args:
         jur: Jurisdiction (legacy parameter, maintained for compatibility)
-        group: Group/category (legacy parameter, maintained for compatibility)  
+        group: Group/category (legacy parameter, maintained for compatibility)
         n: Position in field list (legacy parameter, maintained for compatibility)
         per: Percentage through field list (legacy parameter, maintained for compatibility)
         last_field: Previous field name (legacy parameter, maintained for compatibility)
@@ -396,30 +508,34 @@ def normalize_name(
         openai_creds: OpenAI credentials for LLM calls
         api_key: OpenAI API key (overrides creds and env vars)
         model: OpenAI model to use (default: gpt-5-nano)
-    
+
     Returns:
         Tuple of (normalized_field_name, confidence_score)
-    
+
     If context and LLM credentials are provided, uses LLM normalization.
     Otherwise, falls back to traditional regex-based approach for backward compatibility.
     """
-    
+
     # Note: previous versions relied on a hardcoded `included_fields` list
     # to short-circuit normalization for known Assembly Line fields. That list
     # has been removed. We now always attempt LLM-assisted normalization when
     # context and credentials are available, falling back to the traditional
     # regex-based and reformat approach below.
-    
+
     # If context and LLM credentials are provided, use enhanced LLM normalization
     if context and (openai_creds or api_key or os.getenv("OPENAI_API_KEY")):
         try:
             # Use LLM to normalize the field name with context
             system_message = _load_prompt("normalize_field_name")
-            
+
             # Truncate context if too long (keep reasonable size for token limits)
             max_context_chars = 2000  # Roughly 500 tokens
-            truncated_context = context[:max_context_chars] if len(context) > max_context_chars else context
-            
+            truncated_context = (
+                context[:max_context_chars]
+                if len(context) > max_context_chars
+                else context
+            )
+
             user_message = f"""Field to normalize: "{this_field}"
 
 Context from PDF form:
@@ -434,8 +550,12 @@ Additional information:
 Please normalize this field name following Assembly Line conventions."""
 
             # Resolve API key
-            resolved_api_key = api_key or (openai_creds["key"] if openai_creds else None) or os.getenv("OPENAI_API_KEY")
-            
+            resolved_api_key = (
+                api_key
+                or (openai_creds["key"] if openai_creds else None)
+                or os.getenv("OPENAI_API_KEY")
+            )
+
             response = text_complete(
                 system_message=system_message,
                 user_message=user_message,
@@ -444,7 +564,7 @@ Please normalize this field name following Assembly Line conventions."""
                 api_key=resolved_api_key,
                 model=model,
             )
-            
+
             # Parse the response
             if isinstance(response, dict):
                 normalized_name = response.get("normalized_name", "")
@@ -458,36 +578,44 @@ Please normalize this field name following Assembly Line conventions."""
                     raise ValueError(f"Failed to parse JSON response: {response}")
             else:
                 raise ValueError(f"Unexpected response type: {type(response)}")
-            
+
             # Validate the response
             if not normalized_name or not isinstance(normalized_name, str):
                 raise ValueError("No valid normalized_name in response")
-            
+
             # Basic validation: ensure it follows snake_case conventions
-            if not re.match(r'^[a-z][a-z0-9_]*$', normalized_name):
+            if not re.match(r"^[a-z][a-z0-9_]*$", normalized_name):
                 # If the LLM response doesn't follow conventions, clean it up
-                normalized_name = re.sub(r'[^a-z0-9_]', '_', normalized_name.lower())
-                normalized_name = re.sub(r'_+', '_', normalized_name)  # Remove multiple underscores
-                normalized_name = normalized_name.strip('_')  # Remove leading/trailing underscores
+                normalized_name = re.sub(r"[^a-z0-9_]", "_", normalized_name.lower())
+                normalized_name = re.sub(
+                    r"_+", "_", normalized_name
+                )  # Remove multiple underscores
+                normalized_name = normalized_name.strip(
+                    "_"
+                )  # Remove leading/trailing underscores
                 if not normalized_name or not normalized_name[0].isalpha():
                     # Fallback if still invalid
                     raise ValueError("Invalid field name after cleanup")
-                confidence = max(0.1, confidence - 0.2)  # Reduce confidence for cleaned names
-            
+                confidence = max(
+                    0.1, confidence - 0.2
+                )  # Reduce confidence for cleaned names
+
             # Ensure confidence is in valid range
             confidence = max(0.1, min(1.0, float(confidence)))
-            
+
             return normalized_name, confidence
-            
+
         except Exception as ex:
-            print(f"LLM field normalization failed for '{this_field}': {ex}, falling back to traditional approach")
+            print(
+                f"LLM field normalization failed for '{this_field}': {ex}, falling back to traditional approach"
+            )
             # Fall through to traditional approach below
-    
+
     # Traditional approach (original behavior)
     # Re-case and normalize the field using regex rules
     processed_field = re_case(this_field)
     processed_field = regex_norm_field(processed_field)
-    
+
     return reformat_field(processed_field, tools_token=tools_token), 0.5
 
 
@@ -500,50 +628,56 @@ def rename_pdf_fields_with_context(
 ) -> Dict[str, str]:
     """
     Use LLM to rename PDF fields based on full PDF context with field markers.
-    
+
     Args:
         pdf_path: Path to the PDF file
         original_field_names: List of original field names from the PDF
         openai_creds: OpenAI credentials to use for the API call
         api_key: explicit API key to use (overrides creds and env vars)
         model: the OpenAI model to use (default: gpt-5-nano)
-    
+
     Returns:
         Dictionary mapping original field names to new Assembly Line names
     """
     if not original_field_names:
         return {}
-    
+
     try:
         # Get PDF text with field markers
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".txt", delete=False
+        ) as temp_file:
             try:
                 get_original_text_with_fields(pdf_path, temp_file.name)
-                
+
                 # Read the text with field markers
-                with open(temp_file.name, 'r', encoding='utf-8') as f:
+                with open(temp_file.name, "r", encoding="utf-8") as f:
                     pdf_text_with_fields = f.read()
-                
+
             finally:
                 # Clean up temp file
                 try:
                     os.unlink(temp_file.name)
                 except:
                     pass
-        
+
         if not pdf_text_with_fields or not pdf_text_with_fields.strip():
             # Fallback: if we can't get text with field markers, use basic approach
-            print("Warning: Could not extract PDF text with field markers, falling back to regex approach")
-            return {name: regex_norm_field(re_case(name)) for name in original_field_names}
-        
+            print(
+                "Warning: Could not extract PDF text with field markers, falling back to regex approach"
+            )
+            return {
+                name: regex_norm_field(re_case(name)) for name in original_field_names
+            }
+
         # Load the field labeling prompt
         system_message = _load_prompt("field_labeling")
-        
+
         # For GPT-5-nano: Support up to 30 pages (roughly 100K tokens input, well within 400K limit)
         # Estimate: 30 pages * ~1300 tokens/page = ~39K tokens for PDF text
         # Plus prompt and field list = ~50K total input tokens (comfortable margin)
         max_pdf_text_chars = 300000  # Roughly 75K tokens worth of text
-        
+
         user_message = f"""Here is the PDF form text with field markers:
 
 {pdf_text_with_fields[:max_pdf_text_chars]}
@@ -562,7 +696,7 @@ Please analyze the context around each field marker and provide appropriate Asse
             api_key=api_key,
             model=model,
         )
-        
+
         # Parse the response
         if isinstance(response, dict):
             field_mappings = response.get("field_mappings", {})
@@ -574,36 +708,40 @@ Please analyze the context around each field marker and provide appropriate Asse
                 raise ValueError(f"Failed to parse JSON response: {response}")
         else:
             raise ValueError(f"Unexpected response type: {type(response)}")
-        
+
         # Validate the response
         if not isinstance(field_mappings, dict):
             raise ValueError("field_mappings is not a dictionary")
-        
+
         # Ensure all original fields are mapped
         mapped_fields = set(field_mappings.keys())
         original_fields = set(original_field_names)
-        
+
         missing_fields = original_fields - mapped_fields
         extra_fields = mapped_fields - original_fields
-        
+
         # Handle missing fields with fallback
         for missing_field in missing_fields:
             fallback_name = regex_norm_field(re_case(missing_field))
             field_mappings[missing_field] = fallback_name
-            print(f"Warning: LLM didn't map '{missing_field}', using fallback: '{fallback_name}'")
-        
+            print(
+                f"Warning: LLM didn't map '{missing_field}', using fallback: '{fallback_name}'"
+            )
+
         # Remove extra fields that weren't in the original list
         for extra_field in extra_fields:
             del field_mappings[extra_field]
-            print(f"Warning: LLM provided mapping for unknown field '{extra_field}', removing")
-        
+            print(
+                f"Warning: LLM provided mapping for unknown field '{extra_field}', removing"
+            )
+
         # Handle duplicates by adding suffixes
         final_mappings = {}
         used_names = set()
-        
+
         for original_name in original_field_names:
             new_name = field_mappings.get(original_name, original_name)
-            
+
             # If this name is already used, add a suffix
             if new_name in used_names:
                 counter = 2
@@ -611,22 +749,22 @@ Please analyze the context around each field marker and provide appropriate Asse
                 while f"{base_name}__{counter}" in used_names:
                     counter += 1
                 new_name = f"{base_name}__{counter}"
-            
+
             final_mappings[original_name] = new_name
             used_names.add(new_name)
-        
+
         return final_mappings
-        
+
     except Exception as ex:
         print(f"Failed to rename fields with LLM: {ex}")
-        
+
         # Fallback: use regex-based approach
         fallback_mappings = {}
         used_names = set()
-        
+
         for original_name in original_field_names:
             new_name = regex_norm_field(re_case(original_name))
-            
+
             # Handle duplicates
             if new_name in used_names:
                 counter = 2
@@ -634,10 +772,10 @@ Please analyze the context around each field marker and provide appropriate Asse
                 while f"{base_name}__{counter}" in used_names:
                     counter += 1
                 new_name = f"{base_name}__{counter}"
-            
+
             fallback_mappings[original_name] = new_name
             used_names.add(new_name)
-        
+
         return fallback_mappings
 
 
@@ -704,30 +842,32 @@ Please group these fields into logical screens following the guidelines provided
                 raise ValueError(f"Failed to parse JSON response: {response}")
         else:
             raise ValueError(f"Unexpected response type: {type(response)}")
-        
+
         # Validate the response
         if not isinstance(screens, dict):
             raise ValueError("Response is not a dictionary")
-        
+
         # Collect all fields from the response
         response_fields = []
         for screen_fields in screens.values():
             if not isinstance(screen_fields, list):
-                raise ValueError(f"Screen fields must be a list, got {type(screen_fields)}")
+                raise ValueError(
+                    f"Screen fields must be a list, got {type(screen_fields)}"
+                )
             response_fields.extend(screen_fields)
-        
+
         # Check that all input fields are present in the output
         input_set = set(fields)
         response_set = set(response_fields)
-        
+
         missing_fields = input_set - response_set
         extra_fields = response_set - input_set
-        
+
         if missing_fields or extra_fields:
             raise ValueError(
                 f"Field validation failed. Missing: {missing_fields}, Extra: {extra_fields}"
             )
-        
+
         # Check for duplicate fields in the response
         if len(response_fields) != len(response_set):
             field_counts: Dict[str, int] = {}
@@ -735,15 +875,15 @@ Please group these fields into logical screens following the guidelines provided
                 field_counts[field] = field_counts.get(field, 0) + 1
             duplicates = [field for field, count in field_counts.items() if count > 1]
             raise ValueError(f"Duplicate fields found in response: {duplicates}")
-        
+
         return screens
-        
+
     except Exception as ex:
         print(f"Failed to parse LLM response or validation failed: {ex}")
-        if hasattr(ex, '__context__') and ex.__context__:
+        if hasattr(ex, "__context__") and ex.__context__:
             print(f"Context: {ex.__context__}")
         print(f"Response: {response}")
-        
+
         # Fallback: create a simple grouping based on field name patterns
         return _fallback_field_grouping(fields)
 
@@ -754,44 +894,52 @@ def _fallback_field_grouping(fields: List[str]) -> Dict[str, List[str]]:
     """
     if not fields:
         return {}
-    
+
     screens = {}
     personal_info = []
     party_info = []
     case_info = []
     signature_info = []
     other_fields = []
-    
+
     # Simple keyword-based grouping
     for field in fields:
         field_lower = field.lower()
-        if any(keyword in field_lower for keyword in ['name', 'address', 'phone', 'email', 'birth']):
+        if any(
+            keyword in field_lower
+            for keyword in ["name", "address", "phone", "email", "birth"]
+        ):
             personal_info.append(field)
-        elif any(keyword in field_lower for keyword in ['plaintiff', 'defendant', 'petitioner', 'respondent']):
+        elif any(
+            keyword in field_lower
+            for keyword in ["plaintiff", "defendant", "petitioner", "respondent"]
+        ):
             party_info.append(field)
-        elif any(keyword in field_lower for keyword in ['docket', 'case', 'court', 'trial']):
+        elif any(
+            keyword in field_lower for keyword in ["docket", "case", "court", "trial"]
+        ):
             case_info.append(field)
-        elif any(keyword in field_lower for keyword in ['signature', 'date']):
+        elif any(keyword in field_lower for keyword in ["signature", "date"]):
             signature_info.append(field)
         else:
             other_fields.append(field)
-    
+
     # Only add non-empty screens
     if personal_info:
-        screens['personal_information'] = personal_info
+        screens["personal_information"] = personal_info
     if party_info:
-        screens['party_information'] = party_info
+        screens["party_information"] = party_info
     if case_info:
-        screens['case_information'] = case_info
+        screens["case_information"] = case_info
     if signature_info:
-        screens['signatures_and_dates'] = signature_info
+        screens["signatures_and_dates"] = signature_info
     if other_fields:
-        screens['other_fields'] = other_fields
-    
+        screens["other_fields"] = other_fields
+
     # If no fields were categorized, put them all in one screen
     if not screens:
-        screens['screen_1'] = fields
-    
+        screens["screen_1"] = fields
+
     return screens
 
 
@@ -1134,18 +1282,20 @@ def text_complete(
         api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
         model (str, optional): The model to use. Defaults to "gpt-5-nano".
         prompt (Optional[str]): Legacy parameter for backward compatibility. If provided, used as system message.
-    
+
     Returns:
-        Union[str, Dict]: Returns a parsed dictionary if JSON was requested and successfully parsed, 
+        Union[str, Dict]: Returns a parsed dictionary if JSON was requested and successfully parsed,
                          otherwise returns the raw string response.
     """
     # Handle backward compatibility
     if prompt is not None:
         system_message = prompt
         user_message = None
-    
+
     # Resolve the API key using our helper function
-    resolved_key = get_openai_api_key_from_sources(api_key, dict(creds) if creds else None)
+    resolved_key = get_openai_api_key_from_sources(
+        api_key, dict(creds) if creds else None
+    )
 
     if resolved_key:
         openai_client = OpenAI(
@@ -1158,36 +1308,38 @@ def text_complete(
             openai_client = client
         else:
             raise Exception("No OpenAI credentials provided")
-    
+
     try:
         messages: List[Dict[str, str]] = [{"role": "system", "content": system_message}]
         if user_message:
             messages.append({"role": "user", "content": user_message})
-        
+
         # GPT-5 family models use different parameters
         completion_params: Dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
-        
+
         # GPT-5 models use max_completion_tokens instead of max_tokens and need more tokens due to reasoning
         if model.startswith("gpt-5"):
             # Increase tokens for GPT-5 models but respect the 128K completion token limit
-            requested_tokens = min(max_tokens * 5, 128000)  # 5x multiplier but capped at 128K
+            requested_tokens = min(
+                max_tokens * 5, 128000
+            )  # 5x multiplier but capped at 128K
             completion_params["max_completion_tokens"] = requested_tokens
         else:
             completion_params["max_tokens"] = max_tokens
             completion_params["temperature"] = temperature
-        
+
         # Enable JSON mode if "json" appears in the prompt (case-insensitive)
         combined_prompt = system_message + (user_message or "")
         is_json_request = "json" in combined_prompt.lower()
         if is_json_request:
             completion_params["response_format"] = {"type": "json_object"}
-        
+
         response = openai_client.chat.completions.create(**completion_params)
         raw_response = str((response.choices[0].message.content or "").strip())
-        
+
         # If JSON was requested, try to parse and return the JSON object
         if is_json_request:
             try:
@@ -1195,7 +1347,7 @@ def text_complete(
             except json.JSONDecodeError as e:
                 # If JSON parsing fails, try to extract JSON from the response
                 # Sometimes the model might include extra text around the JSON
-                json_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+                json_match = re.search(r"\{.*\}", raw_response, re.DOTALL)
                 if json_match:
                     try:
                         return json.loads(json_match.group())
@@ -1205,7 +1357,7 @@ def text_complete(
                 else:
                     print(f"No valid JSON found in response: {raw_response}")
                     return raw_response
-        
+
         return raw_response
     except Exception as ex:
         print(f"{ex}")
@@ -1231,7 +1383,7 @@ def complete_with_command(
     max_length = max(available_tokens, 1)
 
     text = _truncate_to_token_limit(text, max_length, model_to_use)
-    
+
     result = text_complete(
         system_message=command,
         user_message=text,
@@ -1641,7 +1793,9 @@ def parse_form(
                 in_file,
                 temp_pdf.name,
             ]
-            process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
+            process = subprocess.run(
+                ocr_p, timeout=60, check=False, capture_output=True
+            )
         if process.returncode == 0:
             original_text = process.stdout.decode()
             text = cleanup_text(original_text)
@@ -1699,7 +1853,9 @@ def parse_form(
                 if not tokens:
                     return False
                 single_letter_tokens = [
-                    token for token in tokens if len(token) == 1 and token.lower() not in {"a", "i"}
+                    token
+                    for token in tokens
+                    if len(token) == 1 and token.lower() not in {"a", "i"}
                 ]
                 if len(single_letter_tokens) > max(1, len(tokens) // 3):
                     return False
@@ -1728,10 +1884,16 @@ def parse_form(
                     openai_creds=openai_creds,
                     api_key=resolved_api_key,
                 )
-                new_names = [field_mappings.get(name, name) or name for name in field_names]
-                new_names_conf = [0.8 if field_mappings.get(name) else 0.1 for name in field_names]
+                new_names = [
+                    field_mappings.get(name, name) or name for name in field_names
+                ]
+                new_names_conf = [
+                    0.8 if field_mappings.get(name) else 0.1 for name in field_names
+                ]
             except Exception as e:
-                print(f"LLM field renaming failed: {e}, falling back to traditional approach")
+                print(
+                    f"LLM field renaming failed: {e}, falling back to traditional approach"
+                )
                 # Fallback to traditional approach
                 new_names, new_names_conf = fallback_rename_fields(field_names)
         else:
