@@ -14,6 +14,32 @@ class TestPassiveVoiceDetection(unittest.TestCase):
         """Set up test fixtures."""
         self.mock_client = Mock()
 
+    def test_ensure_client_respects_openai_base_url_from_config(self):
+        """Ensure the OpenAI client is created with a base_url from config."""
+        with patch(
+            "formfyxer.passive_voice_detection.get_openai_api_key",
+            return_value="test-key",
+        ), patch(
+            "formfyxer.passive_voice_detection.get_openai_base_url",
+            return_value="https://example.com/v1",
+        ), patch(
+            "formfyxer.passive_voice_detection.OpenAI"
+        ) as mock_openai:
+            # Reset cached client if previously set
+            from formfyxer import passive_voice_detection
+
+            passive_voice_detection._cached_client = None
+
+            # Trigger client creation
+            client = passive_voice_detection._ensure_client()
+
+            mock_openai.assert_called_once_with(
+                api_key="test-key",
+                organization=None,
+                base_url="https://example.com/v1",
+            )
+            self.assertIs(client, mock_openai.return_value)
+
     def _create_mock_chat_response(self, content):
         """Create a mock OpenAI chat completion response.
 

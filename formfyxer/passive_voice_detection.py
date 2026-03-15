@@ -17,7 +17,7 @@ from openai.types.chat import (
 )
 from openai import AuthenticationError
 
-from .docassemble_support import get_openai_api_key
+from .docassemble_support import get_openai_api_key, get_openai_base_url
 
 __all__ = ["detect_passive_voice_segments", "split_sentences"]
 
@@ -54,7 +54,7 @@ def _ensure_client(
     This function implements a singleton pattern for OpenAI client creation, using
     cached instances to avoid repeated initialization. If no client is provided,
     it creates one using the provided api_key, docassemble config, or environment variables
-    OPENAI_API_KEY and optionally OPENAI_ORGANIZATION/OPENAI_ORG
+    OPENAI_API_KEY and optionally OPENAI_ORGANIZATION/OPENAI_ORG.
 
     Args:
         openai_client: Pre-configured OpenAI client. If provided, this client
@@ -76,7 +76,11 @@ def _ensure_client(
 
     # If an explicit API key is provided, create a new client (don't cache)
     if api_key:
-        return OpenAI(api_key=api_key, organization=_organization or None)
+        return OpenAI(
+            api_key=api_key,
+            organization=_organization or None,
+            base_url=get_openai_base_url() or None,
+        )
 
     if _cached_client is None:
         resolved_key = get_openai_api_key()
@@ -84,17 +88,17 @@ def _ensure_client(
             raise RuntimeError(
                 "OPENAI_API_KEY must be set (environment variable, docassemble config, or passed explicitly) to use passive voice detection."
             )
+        resolved_base_url = get_openai_base_url()
         _cached_client = OpenAI(
-            api_key=resolved_key, organization=_organization or None
+            api_key=resolved_key,
+            organization=_organization or None,
+            base_url=resolved_base_url or None,
         )
 
     return _cached_client
 
 
-_SENTENCE_REGEX = re.compile(
-    r"[^.!?\n]+(?:[.!?](?!['\"]?\w))?",
-    re.UNICODE,
-)
+_SENTENCE_REGEX = re.compile(r"[^.!?\n]+(?:[.!?](?!['\"]?\w))?", re.UNICODE)
 
 
 def split_sentences(text: str) -> List[str]:

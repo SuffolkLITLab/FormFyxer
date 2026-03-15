@@ -33,6 +33,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 import threading
 import _thread
+from urllib.parse import urlsplit
 from typing import (
     Any,
     Optional,
@@ -115,6 +116,30 @@ def _truncate_to_token_limit(
     if len(tokens) <= max_tokens:
         return text
     return encoding.decode(tokens[:max_tokens])
+
+
+def _normalize_openai_base_url(openai_base_url: Optional[str]) -> Optional[str]:
+    """Normalize OpenAI-compatible base URLs, including Azure resource URLs."""
+    base_url = str(openai_base_url or "").strip()
+    if not base_url:
+        return None
+
+    parsed = urlsplit(base_url)
+    hostname = (parsed.hostname or "").lower()
+    path = parsed.path.rstrip("/")
+    is_azure_host = hostname.endswith(".openai.azure.com") or hostname.endswith(
+        ".cognitiveservices.azure.com"
+    )
+
+    # Azure hosts need a canonical /openai/v1/ path regardless of what was passed in
+    if is_azure_host and (
+        "/openai/deployments/" in path
+        or not path.startswith("/openai/")
+        or path == "/openai/v1"
+    ):
+        return parsed._replace(path="/openai/v1/", query="", fragment="").geturl()
+
+    return base_url
 
 
 STOP_WORDS = {
@@ -625,6 +650,7 @@ def rename_pdf_fields_with_context(
     openai_creds: Optional[OpenAiCreds] = None,
     api_key: Optional[str] = None,
     model: str = "gpt-5-nano",
+    openai_base_url: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Use LLM to rename PDF fields based on full PDF context with field markers.
@@ -635,6 +661,7 @@ def rename_pdf_fields_with_context(
         openai_creds: OpenAI credentials to use for the API call
         api_key: explicit API key to use (overrides creds and env vars)
         model: the OpenAI model to use (default: gpt-5-nano)
+        openai_base_url: optional OpenAI-compatible endpoint URL
 
     Returns:
         Dictionary mapping original field names to new Assembly Line names
@@ -695,6 +722,7 @@ Please analyze the context around each field marker and provide appropriate Asse
             creds=openai_creds,
             api_key=api_key,
             model=model,
+            openai_base_url=openai_base_url,
         )
 
         # Parse the response
@@ -1268,6 +1296,7 @@ def text_complete(
     temperature: float = 0,
     api_key: Optional[str] = None,
     model: str = "gpt-5-nano",
+    openai_base_url: Optional[str] = None,
     # Legacy parameter for backward compatibility
     prompt: Optional[str] = None,
 ) -> Union[str, Dict]:
@@ -1281,6 +1310,7 @@ def text_complete(
         temperature (float, optional): The temperature to use. Defaults to 0. Note: Not supported by GPT-5 family models.
         api_key (Optional[str], optional): Explicit API key to use. Defaults to None.
         model (str, optional): The model to use. Defaults to "gpt-5-nano".
+        openai_base_url (Optional[str], optional): OpenAI-compatible base URL override.
         prompt (Optional[str]): Legacy parameter for backward compatibility. If provided, used as system message.
 
     Returns:
@@ -1296,15 +1326,22 @@ def text_complete(
     resolved_key = get_openai_api_key_from_sources(
         api_key, dict(creds) if creds else None
     )
+    normalized_base_url = _normalize_openai_base_url(openai_base_url)
 
     if resolved_key:
         openai_client = OpenAI(
-            api_key=resolved_key, organization=creds.get("org") if creds else None
+            api_key=resolved_key,
+            organization=creds.get("org") if creds else None,
+            base_url=normalized_base_url,
         )
     elif creds:
-        openai_client = OpenAI(api_key=creds["key"], organization=creds["org"])
+        openai_client = OpenAI(
+            api_key=creds["key"],
+            organization=creds["org"],
+            base_url=normalized_base_url,
+        )
     else:
-        if client:
+        if client and not normalized_base_url:
             openai_client = client
         else:
             raise Exception("No OpenAI credentials provided")
@@ -1371,6 +1408,7 @@ def complete_with_command(
     creds: Optional[OpenAiCreds] = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    openai_base_url: Optional[str] = None,
 ) -> str:
     """Combines some text with a command to send to open ai."""
     # For GPT-5-nano: 400K input token limit, so we can handle much larger inputs
@@ -1391,6 +1429,7 @@ def complete_with_command(
         creds=creds,
         api_key=api_key,
         model=model_to_use,
+        openai_base_url=openai_base_url,
     )
     # Ensure we always return a string for this function
     if isinstance(result, dict):
@@ -1406,20 +1445,32 @@ def plain_lang(text, creds: Optional[OpenAiCreds] = None) -> str:
 
 
 def guess_form_name(
-    text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
+    text,
+    creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+    openai_base_url: Optional[str] = None,
 ) -> str:
     command = _load_prompt("guess_form_name")
-    model = "gpt-5-nano"
     return complete_with_command(
-        text, command, 200, creds=creds, api_key=api_key, model=model
+        text,
+        command,
+        200,
+        creds=creds,
+        api_key=api_key,
+        model=model,
+        openai_base_url=openai_base_url,
     )
 
 
 def describe_form(
-    text, creds: Optional[OpenAiCreds] = None, api_key: Optional[str] = None
+    text,
+    creds: Optional[OpenAiCreds] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-nano",
+    openai_base_url: Optional[str] = None,
 ) -> str:
     command = _load_prompt("describe_form")
-    model = "gpt-5-nano"
     return complete_with_command(
         text,
         command,
@@ -1427,6 +1478,7 @@ def describe_form(
         creds=creds,
         api_key=api_key,
         model=model,
+        openai_base_url=openai_base_url,
     )  # Increased for more detailed descriptions
 
 
@@ -1708,6 +1760,8 @@ def parse_form(
     tools_token: Optional[str] = None,
     openai_creds: Optional[OpenAiCreds] = None,
     openai_api_key: Optional[str] = None,
+    openai_base_url: Optional[str] = None,
+    model: str = "gpt-5-nano",
     rewrite: bool = False,
     debug: bool = False,
 ):
@@ -1730,6 +1784,8 @@ def parse_form(
             guess the title and description
         openai_api_key: an explicit OpenAI API key to use, if provided it will override
             any creds or environment variables
+        openai_base_url: an OpenAI-compatible endpoint URL override
+        model: the OpenAI-compatible model name to use for PDF labeling-related calls
         rewrite: whether to rewrite the PDF in place with the new field names
         debug: whether to print debug information
 
@@ -1764,7 +1820,13 @@ def parse_form(
     original_text = extract_text(in_file, laparams=LAParams(detect_vertical=True))
     text = cleanup_text(original_text)
     description = (
-        describe_form(text, creds=openai_creds, api_key=resolved_api_key)
+        describe_form(
+            text,
+            creds=openai_creds,
+            api_key=resolved_api_key,
+            model=model,
+            openai_base_url=openai_base_url,
+        )
         if (openai_creds or resolved_api_key)
         else ""
     )
@@ -1809,7 +1871,13 @@ def parse_form(
                 readability = -1
 
     new_title = (
-        guess_form_name(text, creds=openai_creds, api_key=resolved_api_key)
+        guess_form_name(
+            text,
+            creds=openai_creds,
+            api_key=resolved_api_key,
+            model=model,
+            openai_base_url=openai_base_url,
+        )
         if (openai_creds or resolved_api_key)
         else ""
     )
@@ -1883,6 +1951,8 @@ def parse_form(
                     field_names,
                     openai_creds=openai_creds,
                     api_key=resolved_api_key,
+                    model=model,
+                    openai_base_url=openai_base_url,
                 )
                 new_names = [
                     field_mappings.get(name, name) or name for name in field_names
