@@ -767,6 +767,7 @@ class JinjaFieldTextConverter(TextConverter):
 class PDFPageAndFieldInterpreter(PDFPageInterpreter):
 
     def __init__(self, rsrcmgr: PDFResourceManager, device: PDFDevice, doc) -> None:
+        super().__init__(rsrcmgr, device)
         self.rsrcmgr = rsrcmgr
         self.device = device
         self.doc = doc

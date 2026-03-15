@@ -1,4 +1,5 @@
 import inspect
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from formfyxer.lit_explorer import (
     rename_pdf_fields_with_context,
     text_complete,
 )
+from formfyxer.pdf_wrangling import get_original_text_with_fields
 
 
 class TestLitExplorerPdfLabeling(unittest.TestCase):
@@ -70,6 +72,17 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
         signature = inspect.signature(parse_form)
         self.assertIn("model", signature.parameters)
         self.assertIn("openai_base_url", signature.parameters)
+
+    def test_get_original_text_with_fields_handles_pdfminer_state(self):
+        fixture = Path(__file__).parent / "affidavit_supplement.pdf"
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+        try:
+            get_original_text_with_fields(str(fixture), str(temp_path))
+            output = temp_path.read_text(encoding="utf-8")
+            self.assertTrue(len(output) > 0)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
