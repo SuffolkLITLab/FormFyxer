@@ -160,7 +160,9 @@ class FormField:
             self.configs.update(configs)
 
     @classmethod
-    def make_textbox(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
+    def make_textbox(
+        cls, label: str, field_bbox: BoundingBox, font_size: int
+    ) -> "FormField":
         return FormField(
             label,
             FieldType.TEXT,
@@ -171,7 +173,9 @@ class FormField:
         )
 
     @classmethod
-    def make_textarea(cls, label: str, field_bbox: BoundingBox, font_size: int) -> "FormField":
+    def make_textarea(
+        cls, label: str, field_bbox: BoundingBox, font_size: int
+    ) -> "FormField":
         return FormField(
             label,
             FieldType.AREA,
@@ -510,7 +514,7 @@ def has_fields(pdf_file: str) -> bool:
 
 
 def get_existing_pdf_fields(
-    in_file: Union[str, Path, BinaryIO, Pdf]
+    in_file: Union[str, Path, BinaryIO, Pdf],
 ) -> List[List[FormField]]:
     """Use PikePDF to get fields from the PDF"""
     if isinstance(in_file, Pdf):
@@ -784,7 +788,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
         return self.field_pages.get(page_id, [])
 
     def process_page(self, page) -> None:
-        (x0, y0, x1, y1) = page.mediabox
+        x0, y0, x1, y1 = page.mediabox
         if page.rotate == 90:
             ctm = (0, -1, 1, 0, -y0, x1)
         elif page.rotate == 180:
@@ -816,7 +820,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                         codec = codec_value if isinstance(codec_value, str) else "utf-8"
                         outfp.write(field_marker.encode(codec))
                 continue
-                
+
             self.do_BT()
             # set the font, and the font size. Get any font available
             font = list(self.fontmap.values())[-1]
@@ -842,7 +846,7 @@ class PDFPageAndFieldInterpreter(PDFPageInterpreter):
                 for cid in font.decode(char.encode()):
                     if needcharspace:
                         x += 0.1  # charspace
-                    x += self.device.render_char( # type: ignore
+                    x += self.device.render_char(  # type: ignore
                         translate_matrix(matrix, (x, y)),
                         font,
                         self.textstate.fontsize,  # fontsize,
@@ -1280,7 +1284,9 @@ class ImproveNameVisitor:
         # TODO(brycew): remove the text boxes if they intersect something, unlikely they are the label for more than one.
         # text_obj_bboxes.remove(min_obj[2])
         # TODO(brycew): actual regex replacement of lots of underscores
-        label = re.sub(r"[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,."))
+        label = re.sub(
+            r"[\W]", "_", min_textbox[1].get_text().lower().strip(" \n\t_,.")
+        )
         label = re.sub("_{3,}", "_", label).strip("_")
         if label not in self.used_field_names:
             field_info.name = label
@@ -1528,7 +1534,7 @@ def get_possible_text_fields(
     # OTSU = optimum global thresholding: minimizes the variance of each Thresh "class"
     # for each possible thresh value between 128 and 255, split up pixels, get the within-class variance,
     # and minimize that
-    (thresh, img_bin) = cv2.threshold(
+    thresh, img_bin = cv2.threshold(
         img_mat, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
@@ -1583,13 +1589,13 @@ def get_possible_text_fields(
 
         return (cnts, boundingBoxes)
 
-    (contours, boundingBoxes) = sort_contours(contours, method="top-to-bottom")
+    contours, boundingBoxes = sort_contours(contours, method="top-to-bottom")
     vert_contours, _ = cv2.findContours(
         vert_lines_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
     if vert_contours:
         # Don't consider horizontal lines that meet up against vertical lines as text fields
-        (vert_contours, vert_bounding_boxes) = sort_contours(
+        vert_contours, vert_bounding_boxes = sort_contours(
             vert_contours, method="top-to-bottom"
         )
         no_vert_coll = []
