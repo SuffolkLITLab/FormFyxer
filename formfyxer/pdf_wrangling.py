@@ -1163,7 +1163,14 @@ def _is_blank_text_field(
     left_margin = bbox[2] // 5
     left_side = bbox[0] + left_margin
     right_side = bbox[0] + bbox[2] - margin
-    above_line_img = img_bin[top_side:bottom_side, left_side:right_side]
+    height, width = img_bin.shape[:2]
+    top = max(0, min(top_side, height))
+    bottom = max(0, min(bottom_side, height))
+    left = max(0, min(left_side, width))
+    right = max(0, min(right_side, width))
+    if top >= bottom or left >= right:
+        return True
+    above_line_img = img_bin[top:bottom, left:right]
     if above_line_img.any():
         file_out = f"text_above_{int(random.random() * 1000)}.png"
         if DEBUG:
@@ -1251,7 +1258,8 @@ def get_possible_fields(
     ```python
     fields = get_possible_fields('no_field.pdf')
     print(fields[0][0])
-    # Type: FieldType.TEXT, Name: name, User name: , X: 67.68, Y: 666.0, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}
+    # Type: FieldType.TEXT, Name: page_0_field_0, tooltip: , X: 67.68, Y: 666.0, font_size: 20, Configs: {'fieldFlags': 'doNotScroll', 'width': 239.4, 'height': 16}
+    # Run improve_names_with_surrounding_text(...) afterwards to derive labels from nearby text.
     ```
 
     Args:

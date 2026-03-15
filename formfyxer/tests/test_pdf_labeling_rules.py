@@ -60,6 +60,14 @@ class TestPdfLabelingRules(unittest.TestCase):
         self.assertFalse(is_blank)
         self.assertEqual(callback_args, [((1, 10, 10, 5), 5, [])])
 
+    def test_blank_space_rule_clamps_out_of_bounds_slice(self):
+        img_bin = np.zeros((20, 20), dtype=np.uint8)
+        img_bin[-1, -1] = 1
+
+        is_blank = _is_blank_text_field(img_bin, (0, 4, 10, 12), 12, [])
+
+        self.assertTrue(is_blank)
+
     def test_get_possible_fields_uses_preferred_names(self):
         with patch(
             "formfyxer.pdf_wrangling.convert_from_path",
