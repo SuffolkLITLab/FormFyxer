@@ -139,6 +139,7 @@ class TestSpot(unittest.TestCase):
             self.request_args["url"],
             headers=self.request_args["headers"],
             data=json.dumps(self.request_args["data"]),
+            timeout=30,
         )
 
     @mock.patch("requests.post")
@@ -151,6 +152,7 @@ class TestSpot(unittest.TestCase):
             self.request_args["url"],
             headers=self.request_args["headers"],
             data=json.dumps(self.request_args["data"]),
+            timeout=30,
         )
 
 
