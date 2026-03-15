@@ -372,6 +372,7 @@ def spot(
         "https://spot.suffolklitlab.org/v0/entities-nested/",
         headers=headers,
         data=json.dumps(body),
+        timeout=30,
     )
     output_ = r.json()
     try:
@@ -1844,16 +1845,19 @@ def parse_form(
         or readability > 30
     ):
         # We do not care what the PDF output is, doesn't add that much time
-        ocr_p = [
-            "ocrmypdf",
-            "--force-ocr",
-            "--rotate-pages",
-            "--sidecar",
-            "-",
-            in_file,
-            "/tmp/test.pdf",
-        ]
-        process = subprocess.run(ocr_p, timeout=60, check=False, capture_output=True)
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as temp_pdf:
+            ocr_p = [
+                "ocrmypdf",
+                "--force-ocr",
+                "--rotate-pages",
+                "--sidecar",
+                "-",
+                in_file,
+                temp_pdf.name,
+            ]
+            process = subprocess.run(
+                ocr_p, timeout=60, check=False, capture_output=True
+            )
         if process.returncode == 0:
             original_text = process.stdout.decode()
             text = cleanup_text(original_text)
