@@ -542,7 +542,67 @@ def get_existing_pdf_fields(
         for annot in page.Annots:  # type: ignore
             annot_index_by_objgen[cast(Tuple[int, int], annot.objgen)] = idx
 
+    def _ordered_pages_from(start_page: Optional[int]) -> List[int]:
+        if not pages:
+            return []
+        if start_page is None or start_page < 0 or start_page >= len(pages):
+            return list(range(len(pages)))
+        return list(range(start_page, len(pages))) + list(range(0, start_page))
+
+    def _resolve_page_without_p(
+        field_data: PikeField,
+        field_info: FormField,
+        last_resolved_page: Optional[int],
+    ) -> int:
+        # If possible, honor explicit page markers in generated field names.
+        page_match = re.match(r"^page_(\d+)_", field_data["var_name"])
+        if page_match:
+            explicit_page = int(page_match.group(1))
+            if 0 <= explicit_page < len(pages):
+                return explicit_page
+
+        # First try direct annotation object ownership.
+        mapped_page = annot_index_by_objgen.get(
+            cast(Tuple[int, int], field_data["all"].objgen)
+        )
+        if mapped_page is not None:
+            return mapped_page
+
+        # Otherwise, use field-order continuity while preferring pages where this
+        # field does not collide with already-assigned fields.
+        ordered_pages = _ordered_pages_from(last_resolved_page)
+        candidate_bbox = field_info.get_bbox()
+        overlap_count_by_page: Dict[int, int] = {}
+        for page_idx in ordered_pages:
+            overlap_count_by_page[page_idx] = sum(
+                1
+                for existing_field in fields_in_pages[page_idx]
+                if intersect_bbox(
+                    candidate_bbox,
+                    existing_field.get_bbox(),
+                    vert_dilation=0,
+                    horiz_dilation=0,
+                )
+            )
+
+        non_overlapping_pages = [
+            page_idx
+            for page_idx in ordered_pages
+            if overlap_count_by_page[page_idx] == 0
+        ]
+        if non_overlapping_pages:
+            return non_overlapping_pages[0]
+
+        # Last heuristic: minimize overlap count, tie-broken by page order.
+        if ordered_pages:
+            return min(ordered_pages, key=lambda page_idx: overlap_count_by_page[page_idx])
+
+        # Historical fallback.
+        return 0
+
+    last_resolved_page: Optional[int] = None
     for field_i, field in enumerate(all_fields):
+        field_info = FormField.from_pikefield(field)
         if len(pages) == 1:
             # I don't know how exactly fields are associated with pages (they're associated with
             # annotations, and pages have names? Unclear), so just throw it at the beginning
@@ -557,12 +617,11 @@ def get_existing_pdf_fields(
             if i == -1:
                 continue
         else:
-            # Some generators omit `/P` for widget annotations. In that case, infer the page
-            # by matching the annotation object to each page's /Annots array.
-            # If the object is not directly referenced in /Annots (for example, logical field
-            # entries with widget kids), preserve historical behavior and keep it on page 0.
-            i = annot_index_by_objgen.get(cast(Tuple[int, int], field["all"].objgen), 0)
-        fields_in_pages[i].append(FormField.from_pikefield(field))
+            # Some generators omit `/P`. In that case, infer page by using annotation
+            # ownership when possible, then continuity + overlap avoidance.
+            i = _resolve_page_without_p(field, field_info, last_resolved_page)
+        fields_in_pages[i].append(field_info)
+        last_resolved_page = i
     return fields_in_pages
 
 

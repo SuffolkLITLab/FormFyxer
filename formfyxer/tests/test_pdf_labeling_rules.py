@@ -158,6 +158,49 @@ class TestPdfLabelingRules(unittest.TestCase):
             base_path.unlink(missing_ok=True)
             patched_path.unlink(missing_ok=True)
 
+    def test_get_existing_pdf_fields_uses_overlap_avoidance_for_unmapped_fields(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as patched_tmp:
+            patched_path = Path(patched_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Page 1")
+            c.showPage()
+            c.drawString(72, 720, "Page 2")
+            c.showPage()
+            c.save()
+
+            with pikepdf.Pdf.open(str(base_path), allow_overwriting_input=True) as pdf:
+                field_one = pikepdf.Dictionary(
+                    FT=pikepdf.Name("/Tx"),
+                    T=pikepdf.String("logical_field_1"),
+                    F=4,
+                    Rect=pikepdf.Array([72, 650, 212, 670]),
+                )
+                field_two = pikepdf.Dictionary(
+                    FT=pikepdf.Name("/Tx"),
+                    T=pikepdf.String("logical_field_2"),
+                    F=4,
+                    Rect=pikepdf.Array([72, 650, 212, 670]),
+                )
+                pdf.Root.AcroForm = pikepdf.Dictionary(
+                    Fields=pikepdf.Array(
+                        [pdf.make_indirect(field_one), pdf.make_indirect(field_two)]
+                    )
+                )
+                pdf.save(str(patched_path))
+
+            loaded_fields = get_existing_pdf_fields(str(patched_path))
+            self.assertEqual(len(loaded_fields), 2)
+            self.assertEqual([len(page_fields) for page_fields in loaded_fields], [1, 1])
+            self.assertEqual(loaded_fields[0][0].name, "logical_field_1")
+            self.assertEqual(loaded_fields[1][0].name, "logical_field_2")
+        finally:
+            base_path.unlink(missing_ok=True)
+            patched_path.unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     unittest.main()
