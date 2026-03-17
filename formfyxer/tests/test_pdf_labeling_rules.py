@@ -10,9 +10,13 @@ from reportlab.pdfgen import canvas
 from formfyxer.pdf_wrangling import (
     FormField,
     _is_blank_text_field,
+    _extract_unique_text_anchors_from_page,
+    _local_anchor_residual_for_point,
+    _normalize_anchor_text,
     get_existing_pdf_fields,
     get_possible_fields,
     improve_names_with_surrounding_text,
+    copy_pdf_fields,
     set_fields,
 )
 
@@ -35,6 +39,88 @@ class DummyPageImage:
 
 
 class TestPdfLabelingRules(unittest.TestCase):
+    def test_anchor_text_normalization(self):
+        self.assertEqual(
+            _normalize_anchor_text("  Applicant Name:  "),
+            "applicant name",
+        )
+
+    def test_extract_unique_text_anchors_filters_duplicates(self):
+        textboxes = [
+            {"textbox": DummyTextbox("Applicant Name"), "bbox": (100, 100, 80, 10)},
+            {"textbox": DummyTextbox("Address"), "bbox": (100, 80, 60, 10)},
+            {"textbox": DummyTextbox("Address"), "bbox": (300, 80, 60, 10)},
+        ]
+        anchors = _extract_unique_text_anchors_from_page(textboxes)
+        self.assertIn("applicant name", anchors)
+        self.assertNotIn("address", anchors)
+
+    def test_local_anchor_residual_uses_nearest_anchor(self):
+        transform = {
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "shift_x": 0.0,
+            "shift_y": 0.0,
+            "matched_anchor_pairs": [((100.0, 100.0), (130.0, 90.0))],
+        }
+        residual_x, residual_y = _local_anchor_residual_for_point(
+            (110.0, 105.0), transform, max_distance=100.0
+        )
+        self.assertAlmostEqual(residual_x, 30.0, places=5)
+        self.assertAlmostEqual(residual_y, -10.0, places=5)
+
+    @patch("formfyxer.pdf_wrangling._get_page_anchor_transforms")
+    def test_copy_pdf_fields_anchor_adjusts_rectangles(self, mock_get_transforms):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as source_blank_tmp:
+            source_blank_path = Path(source_blank_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as source_tmp:
+            source_path = Path(source_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as destination_tmp:
+            destination_path = Path(destination_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(source_blank_path))
+            c.drawString(72, 720, "Source")
+            c.showPage()
+            c.save()
+
+            source_fields = [
+                [FormField.make_textbox("test_field", (100, 200, 120, 30), 12)]
+            ]
+            set_fields(
+                str(source_blank_path), str(source_path), source_fields, overwrite=True
+            )
+
+            c = canvas.Canvas(str(destination_path))
+            c.drawString(72, 720, "Destination")
+            c.showPage()
+            c.save()
+
+            mock_get_transforms.return_value = [
+                {
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                    "shift_x": 20.0,
+                    "shift_y": 10.0,
+                    "matched_anchor_pairs": [],
+                }
+            ]
+
+            with pikepdf.Pdf.open(str(source_path)) as source_pdf, pikepdf.Pdf.open(
+                str(destination_path), allow_overwriting_input=True
+            ) as destination_pdf:
+                out_pdf = copy_pdf_fields(
+                    source_pdf=source_pdf,
+                    destination_pdf=destination_pdf,
+                    anchor=True,
+                )
+                rect = [float(v) for v in out_pdf.pages[0].Annots[0].Rect]
+                self.assertEqual(rect, [120.0, 210.0, 240.0, 240.0])
+        finally:
+            source_blank_path.unlink(missing_ok=True)
+            source_path.unlink(missing_ok=True)
+            destination_path.unlink(missing_ok=True)
+
     def test_improve_names_with_preferred_names(self):
         fields = [[FormField.make_textbox("page_0_field_0", (100, 100, 120, 20), 12)]]
         textboxes = [

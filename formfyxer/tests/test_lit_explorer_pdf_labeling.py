@@ -84,6 +84,75 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
+    @patch("formfyxer.lit_explorer.text_complete")
+    @patch("formfyxer.lit_explorer.extract_text")
+    @patch("formfyxer.lit_explorer.subprocess.run")
+    @patch(
+        "formfyxer.lit_explorer._load_prompt", return_value="Respond with JSON only."
+    )
+    @patch("formfyxer.lit_explorer.get_original_text_with_fields")
+    def test_rename_pdf_fields_with_context_uses_ocr_text_when_marker_context_missing(
+        self,
+        mock_get_text,
+        mock_load_prompt,
+        mock_subprocess_run,
+        mock_extract_text,
+        mock_text_complete,
+    ):
+        mock_get_text.side_effect = lambda pdf_path, output_path: Path(
+            output_path
+        ).write_text("{{ field_a }}", encoding="utf-8")
+        mock_subprocess_run.return_value = SimpleNamespace(returncode=0)
+        mock_extract_text.return_value = "Applicant name and address on the form."
+        mock_text_complete.return_value = {"field_mappings": {"field_a": "users1_name"}}
+
+        result = rename_pdf_fields_with_context(
+            "fake.pdf",
+            ["field_a"],
+            api_key="sk-test",
+            model="gpt-4o-mini",
+        )
+
+        self.assertEqual(result, {"field_a": "users1_name"})
+        self.assertIn(
+            "OCR text from the PDF form",
+            mock_text_complete.call_args.kwargs["user_message"],
+        )
+
+    @patch("formfyxer.lit_explorer.text_complete")
+    @patch("formfyxer.lit_explorer.extract_text", return_value="")
+    @patch("formfyxer.lit_explorer.subprocess.run")
+    @patch(
+        "formfyxer.lit_explorer._load_prompt", return_value="Respond with JSON only."
+    )
+    @patch("formfyxer.lit_explorer.get_original_text_with_fields")
+    def test_rename_pdf_fields_with_context_uses_llm_field_list_fallback_before_regex(
+        self,
+        mock_get_text,
+        mock_load_prompt,
+        mock_subprocess_run,
+        mock_extract_text,
+        mock_text_complete,
+    ):
+        mock_get_text.side_effect = lambda pdf_path, output_path: Path(
+            output_path
+        ).write_text("{{ field_a }}", encoding="utf-8")
+        mock_subprocess_run.return_value = SimpleNamespace(returncode=1)
+        mock_text_complete.return_value = {"field_mappings": {"field_a": "users1_name"}}
+
+        result = rename_pdf_fields_with_context(
+            "fake.pdf",
+            ["field_a"],
+            api_key="sk-test",
+            model="gpt-4o-mini",
+        )
+
+        self.assertEqual(result, {"field_a": "users1_name"})
+        self.assertIn(
+            "field names extracted from the PDF",
+            mock_text_complete.call_args.kwargs["user_message"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

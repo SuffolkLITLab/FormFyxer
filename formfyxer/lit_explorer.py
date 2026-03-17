@@ -669,73 +669,109 @@ def rename_pdf_fields_with_context(
     if not original_field_names:
         return {}
 
-    try:
-        # Get PDF text with field markers
+    def _read_text_with_markers(source_pdf_path: str) -> str:
         with tempfile.NamedTemporaryFile(
             mode="w+", suffix=".txt", delete=False
         ) as temp_file:
             try:
-                get_original_text_with_fields(pdf_path, temp_file.name)
-
-                # Read the text with field markers
+                get_original_text_with_fields(source_pdf_path, temp_file.name)
                 with open(temp_file.name, "r", encoding="utf-8") as f:
-                    pdf_text_with_fields = f.read()
-
+                    return f.read()
             finally:
-                # Clean up temp file
                 try:
                     os.unlink(temp_file.name)
                 except:
                     pass
 
-        if not pdf_text_with_fields or not pdf_text_with_fields.strip():
-            # Fallback: if we can't get text with field markers, use basic approach
-            print(
-                "Warning: Could not extract PDF text with field markers, falling back to regex approach"
+    def _has_meaningful_context(text: str) -> bool:
+        if not text or not text.strip():
+            return False
+        non_marker_text = re.sub(r"\{\{[^}]+\}\}", " ", text)
+        return len(non_marker_text.strip()) > 40
+
+    def _ocr_text_fallback(source_pdf_path: str) -> str:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
+            temp_pdf_path = temp_pdf.name
+        try:
+            process = subprocess.run(
+                [
+                    "ocrmypdf",
+                    "--force-ocr",
+                    "--skip-big",
+                    "50",
+                    source_pdf_path,
+                    temp_pdf_path,
+                ],
+                timeout=180,
+                check=False,
+                capture_output=True,
             )
-            return {
-                name: regex_norm_field(re_case(name)) for name in original_field_names
-            }
+            if process.returncode != 0:
+                return ""
+            return extract_text(temp_pdf_path) or ""
+        except Exception:
+            return ""
+        finally:
+            try:
+                os.unlink(temp_pdf_path)
+            except:
+                pass
 
-        # Load the field labeling prompt
+    def _call_llm_for_mappings(source_text: str, text_source_label: str) -> Dict[str, str]:
         system_message = _load_prompt("field_labeling")
+        max_pdf_text_chars = 300000
+        user_message = f"""Here is the {text_source_label} for the PDF form:
 
-        # For GPT-5-nano: Support up to 30 pages (roughly 100K tokens input, well within 400K limit)
-        # Estimate: 30 pages * ~1300 tokens/page = ~39K tokens for PDF text
-        # Plus prompt and field list = ~50K total input tokens (comfortable margin)
-        max_pdf_text_chars = 300000  # Roughly 75K tokens worth of text
-
-        user_message = f"""Here is the PDF form text with field markers:
-
-{pdf_text_with_fields[:max_pdf_text_chars]}
+{source_text[:max_pdf_text_chars]}
 
 Original field names to rename:
 {json.dumps(original_field_names, indent=2)}
 
-Please analyze the context around each field marker and provide appropriate Assembly Line variable names."""
+Please analyze the available context and provide appropriate Assembly Line variable names for every field."""
 
-        # Call the LLM with much higher limits for GPT-5-nano
         response = text_complete(
             system_message=system_message,
             user_message=user_message,
-            max_tokens=15000,  # Increased for larger field lists and more detailed reasoning
+            max_tokens=15000,
             creds=openai_creds,
             api_key=api_key,
             model=model,
             openai_base_url=openai_base_url,
         )
 
-        # Parse the response
         if isinstance(response, dict):
             field_mappings = response.get("field_mappings", {})
         elif isinstance(response, str):
-            try:
-                parsed_response = json.loads(response)
-                field_mappings = parsed_response.get("field_mappings", {})
-            except json.JSONDecodeError:
-                raise ValueError(f"Failed to parse JSON response: {response}")
+            parsed_response = json.loads(response)
+            field_mappings = parsed_response.get("field_mappings", {})
         else:
             raise ValueError(f"Unexpected response type: {type(response)}")
+
+        if not isinstance(field_mappings, dict):
+            raise ValueError("field_mappings is not a dictionary")
+        return field_mappings
+
+    try:
+        pdf_text_with_fields = _read_text_with_markers(pdf_path)
+        if _has_meaningful_context(pdf_text_with_fields):
+            field_mappings = _call_llm_for_mappings(
+                pdf_text_with_fields, "PDF form text with field markers"
+            )
+        else:
+            print(
+                "Warning: PDF text with field markers had insufficient context, trying OCR text fallback"
+            )
+            ocr_text = _ocr_text_fallback(pdf_path)
+            if ocr_text.strip():
+                field_mappings = _call_llm_for_mappings(ocr_text, "OCR text from the PDF form")
+            else:
+                print(
+                    "Warning: OCR text fallback unavailable, using field-list-only LLM fallback"
+                )
+                field_list_prompt = "\n".join(original_field_names)
+                field_mappings = _call_llm_for_mappings(
+                    field_list_prompt, "field names extracted from the PDF"
+                )
 
         # Validate the response
         if not isinstance(field_mappings, dict):

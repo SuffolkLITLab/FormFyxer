@@ -13,3 +13,5 @@ dev-testing/.DS_Store
 venv
 *results.json
 .code/
+tmp/
+dev-testing/

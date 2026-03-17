@@ -1,6 +1,7 @@
 import io
 import math
 import re
+import statistics
 from enum import Enum
 import tempfile
 from copy import copy
@@ -632,6 +633,7 @@ def swap_pdf_page(
     source_offset: int = 0,
     destination_offset: int = 0,
     append_fields: bool = False,
+    anchor: bool = False,
 ) -> Pdf:
     """(DEPRECATED: use copy_pdf_fields) Copies the AcroForm fields from one PDF to another blank PDF form. Optionally, choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
@@ -643,6 +645,7 @@ def swap_pdf_page(
         source_offset=source_offset,
         destination_offset=destination_offset,
         append_fields=append_fields,
+        anchor=anchor,
     )
 
 
@@ -653,6 +656,7 @@ def copy_pdf_fields(
     source_offset: int = 0,
     destination_offset: int = 0,
     append_fields: bool = False,
+    anchor: bool = False,
 ) -> Pdf:
     """Copies the AcroForm fields from one PDF to another blank PDF form (without AcroForm fields).
     Useful for getting started with an updated PDF form, where the old fields are pretty close to where
@@ -661,6 +665,8 @@ def copy_pdf_fields(
     Optionally, you can choose a starting page for both
     the source and destination PDFs. By default, it will remove any existing annotations (which include form fields)
     in the destination PDF. If you wish to append annotations instead, specify `append_fields = True`
+    Set `anchor=True` to translate field rectangles based on nearby text anchors in the
+    destination PDF (instead of copying exact coordinates).
 
     Example:
     ```python
@@ -677,6 +683,7 @@ def copy_pdf_fields(
       destination_offset: the starting page that fields will be copied to. Defaults to 0.
       append_annotations: controls whether formfyxer will try to append form fields instead of
         overwriting. Defaults to false; when enabled may lead to undefined behavior.
+      anchor: if true, estimate field movement per page using shared text anchors.
 
     Returns:
       A pikepdf.Pdf object with new fields. If `blank_pdf` was a pikepdf.Pdf object, the
@@ -694,17 +701,271 @@ def copy_pdf_fields(
 
     foreign_root = destination_pdf.copy_foreign(source_pdf.Root)
     destination_pdf.Root.AcroForm = foreign_root.AcroForm
+    page_transforms: List[Optional[PageAnchorTransform]] = []
+    if anchor:
+        page_transforms = _get_page_anchor_transforms(
+            source_pdf, destination_pdf, source_offset, destination_offset
+        )
     for destination_page, source_page in zip(
         destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
     ):
         if not hasattr(source_page, "Annots"):
             continue  # no fields on this page, skip
         annots = source_pdf.make_indirect(source_page.Annots)
+        copied_annots = list(iter(destination_pdf.copy_foreign(annots)))
+        if anchor:
+            page_i = destination_page.index - destination_offset
+            page_transform = (
+                page_transforms[page_i]
+                if 0 <= page_i < len(page_transforms)
+                else None
+            )
+            if page_transform:
+                for annot in copied_annots:
+                    _update_annotation_rect_from_anchor_transform(
+                        annot, destination_page, page_transform
+                    )
         if append_fields and hasattr(destination_page, "Annots"):
-            destination_page.Annots.extend(iter(destination_pdf.copy_foreign(annots)))
+            destination_page.Annots.extend(copied_annots)
         else:
-            destination_page["/Annots"] = destination_pdf.copy_foreign(annots)
+            destination_page["/Annots"] = pikepdf.Array(copied_annots)
     return destination_pdf
+
+
+class TextAnchor(TypedDict):
+    text: str
+    center: XYPair
+
+
+class PageAnchorTransform(TypedDict):
+    scale_x: float
+    scale_y: float
+    shift_x: float
+    shift_y: float
+    matched_anchor_pairs: List[Tuple[XYPair, XYPair]]
+
+
+def _normalize_anchor_text(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text.lower())
+    normalized = re.sub(r"[^a-z0-9 ]", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _textbox_center(bbox: BoundingBoxF) -> XYPair:
+    return (bbox[0] + bbox[2] / 2.0, bbox[1] + bbox[3] / 2.0)
+
+
+def _extract_unique_text_anchors_from_page(
+    page_textboxes: List[Textbox], min_chars: int = 4
+) -> Dict[str, XYPair]:
+    grouped: Dict[str, List[XYPair]] = {}
+    for textbox in page_textboxes:
+        normalized = _normalize_anchor_text(textbox["textbox"].get_text())
+        if len(normalized) < min_chars:
+            continue
+        grouped.setdefault(normalized, []).append(_textbox_center(textbox["bbox"]))
+    return {text: points[0] for text, points in grouped.items() if len(points) == 1}
+
+
+def _page_size(page) -> Tuple[float, float]:
+    media_box = cast(Sequence[Any], page.MediaBox)
+    return (float(media_box[2]) - float(media_box[0]), float(media_box[3]) - float(media_box[1]))
+
+
+def _estimate_page_anchor_transform(
+    source_page_textboxes: List[Textbox],
+    destination_page_textboxes: List[Textbox],
+    source_page,
+    destination_page,
+) -> Optional[PageAnchorTransform]:
+    source_anchors = _extract_unique_text_anchors_from_page(source_page_textboxes)
+    destination_anchors = _extract_unique_text_anchors_from_page(destination_page_textboxes)
+    common = sorted(set(source_anchors.keys()) & set(destination_anchors.keys()))
+    matched_anchor_pairs = [
+        (source_anchors[label], destination_anchors[label]) for label in common
+    ]
+
+    source_width, source_height = _page_size(source_page)
+    destination_width, destination_height = _page_size(destination_page)
+    scale_x = destination_width / source_width if source_width else 1.0
+    scale_y = destination_height / source_height if source_height else 1.0
+
+    if matched_anchor_pairs:
+        x_residuals = [
+            destination[0] - source[0] * scale_x
+            for source, destination in matched_anchor_pairs
+        ]
+        y_residuals = [
+            destination[1] - source[1] * scale_y
+            for source, destination in matched_anchor_pairs
+        ]
+        shift_x = float(statistics.median(x_residuals))
+        shift_y = float(statistics.median(y_residuals))
+    else:
+        shift_x = 0.0
+        shift_y = 0.0
+
+    return {
+        "scale_x": scale_x,
+        "scale_y": scale_y,
+        "shift_x": shift_x,
+        "shift_y": shift_y,
+        "matched_anchor_pairs": matched_anchor_pairs,
+    }
+
+
+def _transform_point(point: XYPair, transform: PageAnchorTransform) -> XYPair:
+    return (
+        point[0] * transform["scale_x"] + transform["shift_x"],
+        point[1] * transform["scale_y"] + transform["shift_y"],
+    )
+
+
+def _local_anchor_residual_for_point(
+    point: XYPair,
+    transform: PageAnchorTransform,
+    max_distance: float = 220.0,
+) -> XYPair:
+    matched_pairs = transform["matched_anchor_pairs"]
+    if not matched_pairs:
+        return (0.0, 0.0)
+
+    nearest = sorted(
+        (
+            (get_dist(point, source_anchor), source_anchor, destination_anchor)
+            for source_anchor, destination_anchor in matched_pairs
+        ),
+        key=lambda entry: entry[0],
+    )
+    candidates = [
+        item for item in nearest[:3] if item[0] <= max_distance
+    ]
+    if not candidates:
+        return (0.0, 0.0)
+
+    weighted_residual_x = 0.0
+    weighted_residual_y = 0.0
+    total_weight = 0.0
+    for distance, source_anchor, destination_anchor in candidates:
+        predicted_anchor = _transform_point(source_anchor, transform)
+        residual_x = destination_anchor[0] - predicted_anchor[0]
+        residual_y = destination_anchor[1] - predicted_anchor[1]
+        weight = 1.0 / max(distance, 12.0)
+        weighted_residual_x += residual_x * weight
+        weighted_residual_y += residual_y * weight
+        total_weight += weight
+
+    if total_weight == 0:
+        return (0.0, 0.0)
+    return (weighted_residual_x / total_weight, weighted_residual_y / total_weight)
+
+
+def _rect_center(rect: Tuple[float, float, float, float]) -> XYPair:
+    return ((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0)
+
+
+def _clamp_rect_to_page(
+    rect: Tuple[float, float, float, float], page
+) -> Tuple[float, float, float, float]:
+    media_box = cast(Sequence[Any], page.MediaBox)
+    left = float(media_box[0])
+    bottom = float(media_box[1])
+    right = float(media_box[2])
+    top = float(media_box[3])
+    x0, y0, x1, y1 = rect
+
+    if x0 < left:
+        dx = left - x0
+        x0 += dx
+        x1 += dx
+    if x1 > right:
+        dx = x1 - right
+        x0 -= dx
+        x1 -= dx
+    if y0 < bottom:
+        dy = bottom - y0
+        y0 += dy
+        y1 += dy
+    if y1 > top:
+        dy = y1 - top
+        y0 -= dy
+        y1 -= dy
+    return (x0, y0, x1, y1)
+
+
+def _update_annotation_rect_from_anchor_transform(
+    annotation, destination_page, transform: PageAnchorTransform
+) -> None:
+    if not hasattr(annotation, "Rect"):
+        return
+    rect_raw = cast(Sequence[Any], resolve1(annotation.Rect))
+    if len(rect_raw) < 4:
+        return
+    x0, y0, x1, y1 = (
+        float(rect_raw[0]),
+        float(rect_raw[1]),
+        float(rect_raw[2]),
+        float(rect_raw[3]),
+    )
+    width = max(1.0, (x1 - x0) * transform["scale_x"])
+    height = max(1.0, (y1 - y0) * transform["scale_y"])
+    center = _rect_center((x0, y0, x1, y1))
+    transformed_center = _transform_point(center, transform)
+    local_residual = _local_anchor_residual_for_point(center, transform)
+    new_center = (
+        transformed_center[0] + local_residual[0],
+        transformed_center[1] + local_residual[1],
+    )
+    new_rect = (
+        new_center[0] - width / 2.0,
+        new_center[1] - height / 2.0,
+        new_center[0] + width / 2.0,
+        new_center[1] + height / 2.0,
+    )
+    clamped_rect = _clamp_rect_to_page(new_rect, destination_page)
+    annotation["/Rect"] = pikepdf.Array(
+        [
+            clamped_rect[0],
+            clamped_rect[1],
+            clamped_rect[2],
+            clamped_rect[3],
+        ]
+    )
+
+
+def _pdf_textboxes_by_page(pdf: Pdf) -> List[List[Textbox]]:
+    io_obj = io.BytesIO()
+    pdf.save(io_obj)
+    io_obj.seek(0)
+    return get_textboxes_in_pdf(io_obj)
+
+
+def _get_page_anchor_transforms(
+    source_pdf: Pdf,
+    destination_pdf: Pdf,
+    source_offset: int,
+    destination_offset: int,
+) -> List[Optional[PageAnchorTransform]]:
+    source_textboxes = _pdf_textboxes_by_page(source_pdf)
+    destination_textboxes = _pdf_textboxes_by_page(destination_pdf)
+    transforms: List[Optional[PageAnchorTransform]] = []
+    for destination_page, source_page in zip(
+        destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
+    ):
+        source_idx = source_page.index
+        destination_idx = destination_page.index
+        if source_idx >= len(source_textboxes) or destination_idx >= len(destination_textboxes):
+            transforms.append(None)
+            continue
+        transforms.append(
+            _estimate_page_anchor_transform(
+                source_textboxes[source_idx],
+                destination_textboxes[destination_idx],
+                source_page,
+                destination_page,
+            )
+        )
+    return transforms
 
 
 class BoxPDFPageAggregator(PDFLayoutAnalyzer):
