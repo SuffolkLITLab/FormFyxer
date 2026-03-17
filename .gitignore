@@ -13,3 +13,7 @@ dev-testing/.DS_Store
 venv
 *results.json
 .code/
+dev-testing/ML_training/
+dev-testing/benchmark_sources_manifest.json
+dev-testing/pdf_ensemble_gpt5nano_3pass_live_ocr_checkpointed.json
+tmp/
