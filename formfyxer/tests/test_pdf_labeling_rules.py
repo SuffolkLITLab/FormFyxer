@@ -9,6 +9,7 @@ from reportlab.pdfgen import canvas
 
 from formfyxer.pdf_wrangling import (
     FormField,
+    _clamp_rect_to_page,
     _is_blank_text_field,
     _extract_unique_text_anchors_from_page,
     _local_anchor_residual_for_point,
@@ -36,6 +37,11 @@ class DummyPageImage:
 
     def save(self, file_obj, format_name: str) -> None:
         file_obj.write(b"dummy")
+
+
+class DummyPage:
+    def __init__(self, width: float = 100.0, height: float = 80.0) -> None:
+        self.MediaBox = [0.0, 0.0, width, height]
 
 
 class TestPdfLabelingRules(unittest.TestCase):
@@ -68,6 +74,11 @@ class TestPdfLabelingRules(unittest.TestCase):
         )
         self.assertAlmostEqual(residual_x, 30.0, places=5)
         self.assertAlmostEqual(residual_y, -10.0, places=5)
+
+    def test_clamp_rect_to_page_handles_oversized_rect(self):
+        page = DummyPage(width=100.0, height=80.0)
+        clamped = _clamp_rect_to_page((-20.0, -10.0, 140.0, 120.0), page)
+        self.assertEqual(clamped, (0.0, 0.0, 100.0, 80.0))
 
     @patch("formfyxer.pdf_wrangling._get_page_anchor_transforms")
     def test_copy_pdf_fields_anchor_adjusts_rectangles(self, mock_get_transforms):

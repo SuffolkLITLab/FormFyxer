@@ -634,7 +634,7 @@ def copy_pdf_fields(
         page_transforms = _get_page_anchor_transforms(
             source_pdf, destination_pdf, source_offset, destination_offset
         )
-    for destination_page, source_page in zip(
+    for page_i, (destination_page, source_page) in enumerate(
         destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
     ):
         if not hasattr(source_page, "Annots"):
@@ -642,7 +642,6 @@ def copy_pdf_fields(
         annots = source_pdf.make_indirect(source_page.Annots)
         copied_annots = list(iter(destination_pdf.copy_foreign(annots)))
         if anchor:
-            page_i = destination_page.index - destination_offset
             page_transform = (
                 page_transforms[page_i]
                 if 0 <= page_i < len(page_transforms)
@@ -801,24 +800,16 @@ def _clamp_rect_to_page(
     right = float(media_box[2])
     top = float(media_box[3])
     x0, y0, x1, y1 = rect
+    page_width = max(0.0, right - left)
+    page_height = max(0.0, top - bottom)
+    width = min(page_width, max(1.0, x1 - x0))
+    height = min(page_height, max(1.0, y1 - y0))
 
-    if x0 < left:
-        dx = left - x0
-        x0 += dx
-        x1 += dx
-    if x1 > right:
-        dx = x1 - right
-        x0 -= dx
-        x1 -= dx
-    if y0 < bottom:
-        dy = bottom - y0
-        y0 += dy
-        y1 += dy
-    if y1 > top:
-        dy = y1 - top
-        y0 -= dy
-        y1 -= dy
-    return (x0, y0, x1, y1)
+    clamped_x0 = min(max(x0, left), right - width) if page_width else left
+    clamped_y0 = min(max(y0, bottom), top - height) if page_height else bottom
+    clamped_x1 = clamped_x0 + width
+    clamped_y1 = clamped_y0 + height
+    return (clamped_x0, clamped_y0, clamped_x1, clamped_y1)
 
 
 def _update_annotation_rect_from_anchor_transform(
@@ -877,11 +868,11 @@ def _get_page_anchor_transforms(
     source_textboxes = _pdf_textboxes_by_page(source_pdf)
     destination_textboxes = _pdf_textboxes_by_page(destination_pdf)
     transforms: List[Optional[PageAnchorTransform]] = []
-    for destination_page, source_page in zip(
+    for page_i, (destination_page, source_page) in enumerate(
         destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
     ):
-        source_idx = source_page.index
-        destination_idx = destination_page.index
+        source_idx = source_offset + page_i
+        destination_idx = destination_offset + page_i
         if source_idx >= len(source_textboxes) or destination_idx >= len(destination_textboxes):
             transforms.append(None)
             continue
