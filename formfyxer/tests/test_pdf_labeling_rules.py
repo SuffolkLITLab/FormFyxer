@@ -212,10 +212,14 @@ class TestPdfLabelingRules(unittest.TestCase):
                 [FormField.make_textbox("field_page_2", (72, 650, 140, 20), 12)],
                 [FormField.make_textbox("field_page_3", (72, 650, 140, 20), 12)],
             ]
-            set_fields(str(base_path), str(labeled_path), fields_per_page, overwrite=True)
+            set_fields(
+                str(base_path), str(labeled_path), fields_per_page, overwrite=True
+            )
 
             loaded_fields = get_existing_pdf_fields(str(labeled_path))
-            self.assertEqual([len(page_fields) for page_fields in loaded_fields], [1, 1, 1])
+            self.assertEqual(
+                [len(page_fields) for page_fields in loaded_fields], [1, 1, 1]
+            )
         finally:
             base_path.unlink(missing_ok=True)
             labeled_path.unlink(missing_ok=True)
@@ -291,7 +295,9 @@ class TestPdfLabelingRules(unittest.TestCase):
 
             loaded_fields = get_existing_pdf_fields(str(patched_path))
             self.assertEqual(len(loaded_fields), 2)
-            self.assertEqual([len(page_fields) for page_fields in loaded_fields], [1, 1])
+            self.assertEqual(
+                [len(page_fields) for page_fields in loaded_fields], [1, 1]
+            )
             self.assertEqual(loaded_fields[0][0].name, "logical_field_1")
             self.assertEqual(loaded_fields[1][0].name, "logical_field_2")
         finally:

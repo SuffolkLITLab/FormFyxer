@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import math
 import re
@@ -532,25 +534,99 @@ def get_existing_pdf_fields(
         for field in iter(in_pdf.Root.AcroForm.Fields)
         for y in _unnest_pdf_fields(field)
     ]
-    i = 0
     pages = list(in_pdf.pages)
+    page_index_by_objgen: Dict[Tuple[int, int], int] = {
+        cast(Tuple[int, int], page.objgen): idx for idx, page in enumerate(pages)
+    }
+    annot_index_by_objgen: Dict[Tuple[int, int], int] = {}
+    for idx, page in enumerate(pages):
+        if not hasattr(page, "Annots"):
+            continue
+        for annot in page.Annots:  # type: ignore
+            annot_index_by_objgen[cast(Tuple[int, int], annot.objgen)] = idx
+
+    def _ordered_pages_from(start_page: Optional[int]) -> List[int]:
+        if not pages:
+            return []
+        if start_page is None or start_page < 0 or start_page >= len(pages):
+            return list(range(len(pages)))
+        return list(range(start_page, len(pages))) + list(range(0, start_page))
+
+    def _resolve_page_without_p(
+        field_data: PikeField,
+        field_info: FormField,
+        last_resolved_page: Optional[int],
+    ) -> int:
+        # First try direct annotation object ownership.
+        mapped_page = annot_index_by_objgen.get(
+            cast(Tuple[int, int], field_data["all"].objgen)
+        )
+        if mapped_page is not None:
+            return mapped_page
+
+        # If possible, honor explicit page markers in generated field names.
+        page_match = re.match(r"^page_(\d+)_", field_data["var_name"])
+        if page_match:
+            explicit_page = int(page_match.group(1))
+            if 0 <= explicit_page < len(pages):
+                return explicit_page
+
+        # Otherwise, use field-order continuity while preferring pages where this
+        # field does not collide with already-assigned fields.
+        ordered_pages = _ordered_pages_from(last_resolved_page)
+        candidate_bbox = field_info.get_bbox()
+        overlap_count_by_page: Dict[int, int] = {}
+        for page_idx in ordered_pages:
+            overlap_count_by_page[page_idx] = sum(
+                1
+                for existing_field in fields_in_pages[page_idx]
+                if intersect_bbox(
+                    candidate_bbox,
+                    existing_field.get_bbox(),
+                    vert_dilation=0,
+                    horiz_dilation=0,
+                )
+            )
+
+        non_overlapping_pages = [
+            page_idx
+            for page_idx in ordered_pages
+            if overlap_count_by_page[page_idx] == 0
+        ]
+        if non_overlapping_pages:
+            return non_overlapping_pages[0]
+
+        # Last heuristic: minimize overlap count, tie-broken by page order.
+        if ordered_pages:
+            return min(
+                ordered_pages, key=lambda page_idx: overlap_count_by_page[page_idx]
+            )
+
+        # Historical fallback.
+        return 0
+
+    last_resolved_page: Optional[int] = None
     for field_i, field in enumerate(all_fields):
-        if len(pages) == 1 or not hasattr(field["all"], "P"):
+        field_info = FormField.from_pikefield(field)
+        if len(pages) == 1:
             # I don't know how exactly fields are associated with pages (they're associated with
             # annotations, and pages have names? Unclear), so just throw it at the beginning
             # if there isn't a page.
             i = 0
-        elif hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
-            continue
-        elif not field["all"].P.objgen == pages[i].objgen:
-            i = -1
-            for idx, page in enumerate(pages):
-                if field["all"].P.objgen == page.objgen:
-                    i = idx
-                    break
+        elif hasattr(field["all"], "P"):
+            if hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
+                continue
+            i = page_index_by_objgen.get(
+                cast(Tuple[int, int], field["all"].P.objgen), -1
+            )
             if i == -1:
                 continue
-        fields_in_pages[i].append(FormField.from_pikefield(field))
+        else:
+            # Some generators omit `/P`. In that case, infer page by using annotation
+            # ownership when possible, then continuity + overlap avoidance.
+            i = _resolve_page_without_p(field, field_info, last_resolved_page)
+        fields_in_pages[i].append(field_info)
+        last_resolved_page = i
     return fields_in_pages
 
 
@@ -635,7 +711,9 @@ def copy_pdf_fields(
             source_pdf, destination_pdf, source_offset, destination_offset
         )
     for page_i, (destination_page, source_page) in enumerate(
-        destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
+        zip(
+            destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
+        )
     ):
         if not hasattr(source_page, "Annots"):
             continue  # no fields on this page, skip
@@ -643,9 +721,7 @@ def copy_pdf_fields(
         copied_annots = list(iter(destination_pdf.copy_foreign(annots)))
         if anchor:
             page_transform = (
-                page_transforms[page_i]
-                if 0 <= page_i < len(page_transforms)
-                else None
+                page_transforms[page_i] if 0 <= page_i < len(page_transforms) else None
             )
             if page_transform:
                 for annot in copied_annots:
@@ -696,7 +772,10 @@ def _extract_unique_text_anchors_from_page(
 
 def _page_size(page) -> Tuple[float, float]:
     media_box = cast(Sequence[Any], page.MediaBox)
-    return (float(media_box[2]) - float(media_box[0]), float(media_box[3]) - float(media_box[1]))
+    return (
+        float(media_box[2]) - float(media_box[0]),
+        float(media_box[3]) - float(media_box[1]),
+    )
 
 
 def _estimate_page_anchor_transform(
@@ -706,7 +785,9 @@ def _estimate_page_anchor_transform(
     destination_page,
 ) -> Optional[PageAnchorTransform]:
     source_anchors = _extract_unique_text_anchors_from_page(source_page_textboxes)
-    destination_anchors = _extract_unique_text_anchors_from_page(destination_page_textboxes)
+    destination_anchors = _extract_unique_text_anchors_from_page(
+        destination_page_textboxes
+    )
     common = sorted(set(source_anchors.keys()) & set(destination_anchors.keys()))
     matched_anchor_pairs = [
         (source_anchors[label], destination_anchors[label]) for label in common
@@ -764,9 +845,7 @@ def _local_anchor_residual_for_point(
         ),
         key=lambda entry: entry[0],
     )
-    candidates = [
-        item for item in nearest[:3] if item[0] <= max_distance
-    ]
+    candidates = [item for item in nearest[:3] if item[0] <= max_distance]
     if not candidates:
         return (0.0, 0.0)
 
@@ -869,11 +948,15 @@ def _get_page_anchor_transforms(
     destination_textboxes = _pdf_textboxes_by_page(destination_pdf)
     transforms: List[Optional[PageAnchorTransform]] = []
     for page_i, (destination_page, source_page) in enumerate(
-        destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
+        zip(
+            destination_pdf.pages[destination_offset:], source_pdf.pages[source_offset:]
+        )
     ):
         source_idx = source_offset + page_i
         destination_idx = destination_offset + page_i
-        if source_idx >= len(source_textboxes) or destination_idx >= len(destination_textboxes):
+        if source_idx >= len(source_textboxes) or destination_idx >= len(
+            destination_textboxes
+        ):
             transforms.append(None)
             continue
         transforms.append(
