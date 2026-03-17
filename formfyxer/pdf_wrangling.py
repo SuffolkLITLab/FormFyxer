@@ -532,13 +532,15 @@ def get_existing_pdf_fields(
         for y in _unnest_pdf_fields(field)
     ]
     pages = list(in_pdf.pages)
-    page_index_by_objgen = {page.objgen: idx for idx, page in enumerate(pages)}
-    annot_index_by_objgen = {}
+    page_index_by_objgen: Dict[Tuple[int, int], int] = {
+        cast(Tuple[int, int], page.objgen): idx for idx, page in enumerate(pages)
+    }
+    annot_index_by_objgen: Dict[Tuple[int, int], int] = {}
     for idx, page in enumerate(pages):
         if not hasattr(page, "Annots"):
             continue
         for annot in page.Annots:  # type: ignore
-            annot_index_by_objgen[annot.objgen] = idx
+            annot_index_by_objgen[cast(Tuple[int, int], annot.objgen)] = idx
 
     for field_i, field in enumerate(all_fields):
         if len(pages) == 1:
@@ -549,13 +551,15 @@ def get_existing_pdf_fields(
         elif hasattr(field["all"], "P"):
             if hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
                 continue
-            i = page_index_by_objgen.get(field["all"].P.objgen, -1)
+            i = page_index_by_objgen.get(
+                cast(Tuple[int, int], field["all"].P.objgen), -1
+            )
             if i == -1:
                 continue
         else:
             # Some generators omit `/P` for widget annotations. In that case, infer the page
             # by matching the annotation object to each page's /Annots array.
-            i = annot_index_by_objgen.get(field["all"].objgen, -1)
+            i = annot_index_by_objgen.get(cast(Tuple[int, int], field["all"].objgen), -1)
             if i == -1:
                 continue
         fields_in_pages[i].append(FormField.from_pikefield(field))
