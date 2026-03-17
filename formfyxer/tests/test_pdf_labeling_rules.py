@@ -4,6 +4,7 @@ from tempfile import NamedTemporaryFile
 from unittest.mock import patch
 
 import numpy as np
+import pikepdf
 from reportlab.pdfgen import canvas
 
 from formfyxer.pdf_wrangling import (
@@ -121,6 +122,41 @@ class TestPdfLabelingRules(unittest.TestCase):
         finally:
             base_path.unlink(missing_ok=True)
             labeled_path.unlink(missing_ok=True)
+
+    def test_get_existing_pdf_fields_keeps_field_without_p_or_annots_mapping(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as patched_tmp:
+            patched_path = Path(patched_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Page 1")
+            c.showPage()
+            c.drawString(72, 720, "Page 2")
+            c.showPage()
+            c.save()
+
+            with pikepdf.Pdf.open(str(base_path), allow_overwriting_input=True) as pdf:
+                logical_only_field = pikepdf.Dictionary(
+                    FT=pikepdf.Name("/Tx"),
+                    T=pikepdf.String("logical_only_field"),
+                    F=4,
+                    Rect=pikepdf.Array([72, 650, 212, 670]),
+                )
+                pdf.Root.AcroForm = pikepdf.Dictionary(
+                    Fields=pikepdf.Array([pdf.make_indirect(logical_only_field)])
+                )
+                pdf.save(str(patched_path))
+
+            loaded_fields = get_existing_pdf_fields(str(patched_path))
+            self.assertEqual(len(loaded_fields), 2)
+            self.assertEqual(len(loaded_fields[0]), 1)
+            self.assertEqual(len(loaded_fields[1]), 0)
+            self.assertEqual(loaded_fields[0][0].name, "logical_only_field")
+        finally:
+            base_path.unlink(missing_ok=True)
+            patched_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

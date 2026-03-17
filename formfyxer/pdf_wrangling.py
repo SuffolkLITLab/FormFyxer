@@ -559,9 +559,9 @@ def get_existing_pdf_fields(
         else:
             # Some generators omit `/P` for widget annotations. In that case, infer the page
             # by matching the annotation object to each page's /Annots array.
-            i = annot_index_by_objgen.get(cast(Tuple[int, int], field["all"].objgen), -1)
-            if i == -1:
-                continue
+            # If the object is not directly referenced in /Annots (for example, logical field
+            # entries with widget kids), preserve historical behavior and keep it on page 0.
+            i = annot_index_by_objgen.get(cast(Tuple[int, int], field["all"].objgen), 0)
         fields_in_pages[i].append(FormField.from_pikefield(field))
     return fields_in_pages
 
