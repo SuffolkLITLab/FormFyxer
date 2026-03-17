@@ -554,19 +554,19 @@ def get_existing_pdf_fields(
         field_info: FormField,
         last_resolved_page: Optional[int],
     ) -> int:
-        # If possible, honor explicit page markers in generated field names.
-        page_match = re.match(r"^page_(\d+)_", field_data["var_name"])
-        if page_match:
-            explicit_page = int(page_match.group(1))
-            if 0 <= explicit_page < len(pages):
-                return explicit_page
-
         # First try direct annotation object ownership.
         mapped_page = annot_index_by_objgen.get(
             cast(Tuple[int, int], field_data["all"].objgen)
         )
         if mapped_page is not None:
             return mapped_page
+
+        # If possible, honor explicit page markers in generated field names.
+        page_match = re.match(r"^page_(\d+)_", field_data["var_name"])
+        if page_match:
+            explicit_page = int(page_match.group(1))
+            if 0 <= explicit_page < len(pages):
+                return explicit_page
 
         # Otherwise, use field-order continuity while preferring pages where this
         # field does not collide with already-assigned fields.
