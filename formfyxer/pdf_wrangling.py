@@ -531,22 +531,31 @@ def get_existing_pdf_fields(
         for field in iter(in_pdf.Root.AcroForm.Fields)
         for y in _unnest_pdf_fields(field)
     ]
-    i = 0
     pages = list(in_pdf.pages)
+    page_index_by_objgen = {page.objgen: idx for idx, page in enumerate(pages)}
+    annot_index_by_objgen = {}
+    for idx, page in enumerate(pages):
+        if not hasattr(page, "Annots"):
+            continue
+        for annot in page.Annots:  # type: ignore
+            annot_index_by_objgen[annot.objgen] = idx
+
     for field_i, field in enumerate(all_fields):
-        if len(pages) == 1 or not hasattr(field["all"], "P"):
+        if len(pages) == 1:
             # I don't know how exactly fields are associated with pages (they're associated with
             # annotations, and pages have names? Unclear), so just throw it at the beginning
             # if there isn't a page.
             i = 0
-        elif hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
-            continue
-        elif not field["all"].P.objgen == pages[i].objgen:
-            i = -1
-            for idx, page in enumerate(pages):
-                if field["all"].P.objgen == page.objgen:
-                    i = idx
-                    break
+        elif hasattr(field["all"], "P"):
+            if hasattr(field["all"].P, "Type") and field["all"].P.Type == "/Template":
+                continue
+            i = page_index_by_objgen.get(field["all"].P.objgen, -1)
+            if i == -1:
+                continue
+        else:
+            # Some generators omit `/P` for widget annotations. In that case, infer the page
+            # by matching the annotation object to each page's /Annots array.
+            i = annot_index_by_objgen.get(field["all"].objgen, -1)
             if i == -1:
                 continue
         fields_in_pages[i].append(FormField.from_pikefield(field))

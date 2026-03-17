@@ -1,13 +1,18 @@
 import unittest
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from unittest.mock import patch
 
 import numpy as np
+from reportlab.pdfgen import canvas
 
 from formfyxer.pdf_wrangling import (
     FormField,
     _is_blank_text_field,
+    get_existing_pdf_fields,
     get_possible_fields,
     improve_names_with_surrounding_text,
+    set_fields,
 )
 
 
@@ -87,6 +92,35 @@ class TestPdfLabelingRules(unittest.TestCase):
         self.assertEqual(
             [field.name for field in fields[0]], ["first_name", "accept_box"]
         )
+
+    def test_get_existing_pdf_fields_infers_page_without_widget_p_pointer(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as labeled_tmp:
+            labeled_path = Path(labeled_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Page 1")
+            c.showPage()
+            c.drawString(72, 720, "Page 2")
+            c.showPage()
+            c.drawString(72, 720, "Page 3")
+            c.showPage()
+            c.save()
+
+            fields_per_page = [
+                [FormField.make_textbox("field_page_1", (72, 650, 140, 20), 12)],
+                [FormField.make_textbox("field_page_2", (72, 650, 140, 20), 12)],
+                [FormField.make_textbox("field_page_3", (72, 650, 140, 20), 12)],
+            ]
+            set_fields(str(base_path), str(labeled_path), fields_per_page, overwrite=True)
+
+            loaded_fields = get_existing_pdf_fields(str(labeled_path))
+            self.assertEqual([len(page_fields) for page_fields in loaded_fields], [1, 1, 1])
+        finally:
+            base_path.unlink(missing_ok=True)
+            labeled_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
