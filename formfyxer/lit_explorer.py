@@ -26,6 +26,8 @@ from .pdf_wrangling import (
     unlock_pdf_in_place,
     is_tagged,
     get_original_text_with_fields,
+    _get_named_parent,
+    _unnest_pdf_fields,
 )
 
 import math
@@ -116,6 +118,53 @@ def _truncate_to_token_limit(
     if len(tokens) <= max_tokens:
         return text
     return encoding.decode(tokens[:max_tokens])
+
+
+def _rewrite_pdf_fields_in_place(
+    in_file: str, field_names: List[str], new_names: List[str]
+) -> None:
+    """Rewrite PDF field names in traversal order, preserving repeated sources.
+
+    For nested field trees we keep the existing parent hierarchy and rewrite only the
+    leaf segment. For flat fields we write the full target name, including dotted
+    names like ``users.name.first``.
+    """
+    if len(field_names) != len(new_names):
+        raise ValueError("field_names and new_names must have the same length")
+
+    my_pdf = pikepdf.Pdf.open(in_file, allow_overwriting_input=True)
+    try:
+        if not hasattr(my_pdf.Root, "AcroForm") or not hasattr(
+            my_pdf.Root.AcroForm, "Fields"
+        ):
+            return
+
+        flattened_fields = [
+            child_field
+            for parent_field in iter(my_pdf.Root.AcroForm.Fields)
+            for child_field in _unnest_pdf_fields(parent_field)
+        ]
+        if len(flattened_fields) != len(field_names):
+            raise ValueError(
+                "PDF field traversal count did not match parsed field-name count"
+            )
+
+        for field_data, old_name, new_name in zip(flattened_fields, field_names, new_names):
+            cleaned_name = re.sub(r"^\*", "", new_name)
+            if old_name == cleaned_name:
+                continue
+
+            target = _get_named_parent(field_data["all"])
+            if not target:
+                continue
+
+            # Nested fields keep their parent hierarchy; flat fields accept full dotted names.
+            target_name = cleaned_name.split(".")[-1] if "." in old_name else cleaned_name
+            target.T = target_name
+
+        my_pdf.save(in_file)
+    finally:
+        my_pdf.close()
 
 
 def _normalize_openai_base_url(openai_base_url: Optional[str]) -> Optional[str]:
@@ -2081,16 +2130,7 @@ def parse_form(
         stats["debug fields"] = debug_fields
     if rewrite:
         try:
-            my_pdf = pikepdf.Pdf.open(in_file, allow_overwriting_input=True)
-            fields_too = (
-                my_pdf.Root.AcroForm.Fields
-            )  # [0]["/Kids"][0]["/Kids"][0]["/Kids"][0]["/Kids"]
-            # print(repr(fields_too))
-            for k, field_name in enumerate(new_names):
-                # print(k,field)
-                fields_too[k].T = re.sub(r"^\*", "", field_name)
-            my_pdf.save(in_file)
-            my_pdf.close()
+            _rewrite_pdf_fields_in_place(in_file, field_names, new_names)
         except Exception as ex:
             stats["error"] = f"could not change form fields: {ex}"
     return stats
