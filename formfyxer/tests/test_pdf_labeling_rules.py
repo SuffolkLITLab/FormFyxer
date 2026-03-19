@@ -10,6 +10,7 @@ from reportlab.pdfgen import canvas
 from formfyxer.pdf_wrangling import (
     FormField,
     _clamp_rect_to_page,
+    _estimate_page_anchor_transform,
     _is_blank_text_field,
     _extract_unique_text_anchors_from_page,
     _local_anchor_residual_for_point,
@@ -80,6 +81,15 @@ class TestPdfLabelingRules(unittest.TestCase):
         clamped = _clamp_rect_to_page((-20.0, -10.0, 140.0, 120.0), page)
         self.assertEqual(clamped, (0.0, 0.0, 100.0, 80.0))
 
+    def test_estimate_page_anchor_transform_requires_anchor_matches(self):
+        transform = _estimate_page_anchor_transform(
+            [],
+            [],
+            DummyPage(width=200.0, height=100.0),
+            DummyPage(width=400.0, height=200.0),
+        )
+        self.assertIsNone(transform)
+
     @patch("formfyxer.pdf_wrangling._get_page_anchor_transforms")
     def test_copy_pdf_fields_anchor_adjusts_rectangles(self, mock_get_transforms):
         with NamedTemporaryFile(suffix=".pdf", delete=False) as source_blank_tmp:
@@ -108,13 +118,7 @@ class TestPdfLabelingRules(unittest.TestCase):
             c.save()
 
             mock_get_transforms.return_value = [
-                {
-                    "scale_x": 1.0,
-                    "scale_y": 1.0,
-                    "shift_x": 20.0,
-                    "shift_y": 10.0,
-                    "matched_anchor_pairs": [],
-                }
+                None
             ]
 
             with pikepdf.Pdf.open(str(source_path)) as source_pdf, pikepdf.Pdf.open(
@@ -126,7 +130,7 @@ class TestPdfLabelingRules(unittest.TestCase):
                     anchor=True,
                 )
                 rect = [float(v) for v in out_pdf.pages[0].Annots[0].Rect]
-                self.assertEqual(rect, [120.0, 210.0, 240.0, 240.0])
+                self.assertEqual(rect, [100.0, 200.0, 220.0, 230.0])
         finally:
             source_blank_path.unlink(missing_ok=True)
             source_path.unlink(missing_ok=True)

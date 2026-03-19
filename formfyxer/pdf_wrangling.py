@@ -792,6 +792,8 @@ def _estimate_page_anchor_transform(
     matched_anchor_pairs = [
         (source_anchors[label], destination_anchors[label]) for label in common
     ]
+    if not matched_anchor_pairs:
+        return None
 
     source_width, source_height = _page_size(source_page)
     destination_width, destination_height = _page_size(destination_page)
