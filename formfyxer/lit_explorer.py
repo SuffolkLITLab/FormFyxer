@@ -953,7 +953,7 @@ Please group these fields into logical screens following the guidelines provided
             duplicates = [field for field, count in field_counts.items() if count > 1]
             raise ValueError(f"Duplicate fields found in response: {duplicates}")
 
-        return screens
+        return {k: v for k, v in screens.items() if v}
 
     except Exception as ex:
         print(f"Failed to parse LLM response or validation failed: {ex}")
