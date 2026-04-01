@@ -99,7 +99,9 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
     )
     @patch("formfyxer.lit_explorer.unlock_pdf_in_place")
     @patch("formfyxer.lit_explorer.pikepdf.open")
-    @patch("formfyxer.lit_explorer.get_openai_api_key_from_sources", return_value="sk-test")
+    @patch(
+        "formfyxer.lit_explorer.get_openai_api_key_from_sources", return_value="sk-test"
+    )
     @patch(
         "formfyxer.lit_explorer.rename_pdf_fields_with_context",
         return_value={
@@ -131,7 +133,9 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
         _mock_is_tagged,
         _mock_needs_calculations,
     ):
-        fake_pdf = SimpleNamespace(pages=[object()], docinfo=SimpleNamespace(Title="Form"))
+        fake_pdf = SimpleNamespace(
+            pages=[object()], docinfo=SimpleNamespace(Title="Form")
+        )
         mock_pikepdf_open.return_value = fake_pdf
 
         with patch(
@@ -174,7 +178,9 @@ class TestLitExplorerPdfLabeling(unittest.TestCase):
         ]
         fake_pdf = SimpleNamespace(
             Root=SimpleNamespace(
-                AcroForm=SimpleNamespace(Fields=[object(), object(), object(), object()])
+                AcroForm=SimpleNamespace(
+                    Fields=[object(), object(), object(), object()]
+                )
             ),
             save=Mock(),
             close=Mock(),

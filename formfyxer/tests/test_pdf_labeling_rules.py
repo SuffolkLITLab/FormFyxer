@@ -117,9 +117,7 @@ class TestPdfLabelingRules(unittest.TestCase):
             c.showPage()
             c.save()
 
-            mock_get_transforms.return_value = [
-                None
-            ]
+            mock_get_transforms.return_value = [None]
 
             with pikepdf.Pdf.open(str(source_path)) as source_pdf, pikepdf.Pdf.open(
                 str(destination_path), allow_overwriting_input=True
@@ -304,6 +302,50 @@ class TestPdfLabelingRules(unittest.TestCase):
             )
             self.assertEqual(loaded_fields[0][0].name, "logical_field_1")
             self.assertEqual(loaded_fields[1][0].name, "logical_field_2")
+        finally:
+            base_path.unlink(missing_ok=True)
+            patched_path.unlink(missing_ok=True)
+
+    def test_get_existing_pdf_fields_keeps_named_parent_widget_fields(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as patched_tmp:
+            patched_path = Path(patched_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Page 1")
+            c.save()
+
+            with pikepdf.Pdf.open(str(base_path), allow_overwriting_input=True) as pdf:
+                page_obj = pdf.pages[0].obj
+                widget = pikepdf.Dictionary(
+                    Type=pikepdf.Name("/Annot"),
+                    Subtype=pikepdf.Name("/Widget"),
+                    Rect=pikepdf.Array([72, 650, 212, 670]),
+                    F=4,
+                    P=page_obj,
+                )
+                widget_ref = pdf.make_indirect(widget)
+                parent = pikepdf.Dictionary(
+                    FT=pikepdf.Name("/Tx"),
+                    T=pikepdf.String("recipient_org"),
+                    Kids=pikepdf.Array([widget_ref]),
+                )
+                parent_ref = pdf.make_indirect(parent)
+                widget.Parent = parent_ref
+                page_obj.Annots = pikepdf.Array([widget_ref])
+                pdf.Root.AcroForm = pikepdf.Dictionary(
+                    Fields=pikepdf.Array([parent_ref])
+                )
+                pdf.save(str(patched_path))
+
+            loaded_fields = get_existing_pdf_fields(str(patched_path))
+            self.assertEqual(len(loaded_fields), 1)
+            self.assertEqual(len(loaded_fields[0]), 1)
+            self.assertEqual(loaded_fields[0][0].name, "recipient_org")
+            self.assertEqual(loaded_fields[0][0].x, 72)
+            self.assertEqual(loaded_fields[0][0].configs["width"], 140.0)
         finally:
             base_path.unlink(missing_ok=True)
             patched_path.unlink(missing_ok=True)

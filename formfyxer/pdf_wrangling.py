@@ -468,30 +468,36 @@ def _unnest_pdf_fields(
         parent_name = []
     if hasattr(field, "T"):
         parent_name.append(str(field.T))
-    if hasattr(field, "FT") and hasattr(field, "F"):
-        # PDF fields have bit flags for specific options. The 17th bit (or hex
-        # 10000) on Buttons mark a "push button", w/o a permanent value
-        # (e.g. "Print this PDF") They aren't really fields, just skip them.
-        if hasattr(field, "Ff") and field.FT == "/Btn" and bool(field.Ff & 0x10000):
-            return []
-        return [{"type": field.FT, "var_name": ".".join(parent_name), "all": field}]
-    elif parent_type and parent_flags and hasattr(field, "F"):
-        if parent_flags and parent_type == "/Btn" and bool(parent_flags & 0x10000):
-            return []
-        return [{"type": parent_type, "var_name": ".".join(parent_name), "all": field}]
-    elif hasattr(field, "Kids"):
+    effective_type = str(field.FT) if hasattr(field, "FT") else parent_type
+    effective_flags = int(field.Ff) if hasattr(field, "Ff") else parent_flags
+
+    if hasattr(field, "Kids"):
         return [
             y
             for x in field.Kids
             for y in _unnest_pdf_fields(
                 x,
                 copy(parent_name),
-                str(field.FT) if hasattr(field, "FT") else None,
-                int(field.Ff) if hasattr(field, "Ff") else None,
+                effective_type,
+                effective_flags,
             )
         ]
-    else:
+
+    if not effective_type:
         return []
+
+    # PDF fields have bit flags for specific options. The 17th bit (or hex
+    # 10000) on Buttons mark a "push button", w/o a permanent value
+    # (e.g. "Print this PDF"). They aren't really fields, just skip them.
+    if effective_type == "/Btn" and bool((effective_flags or 0) & 0x10000):
+        return []
+
+    if hasattr(field, "FT") or hasattr(field, "F"):
+        return [
+            {"type": effective_type, "var_name": ".".join(parent_name), "all": field}
+        ]
+
+    return []
 
 
 def has_fields(pdf_file: str) -> bool:
