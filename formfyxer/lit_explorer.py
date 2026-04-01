@@ -149,7 +149,9 @@ def _rewrite_pdf_fields_in_place(
                 "PDF field traversal count did not match parsed field-name count"
             )
 
-        for field_data, old_name, new_name in zip(flattened_fields, field_names, new_names):
+        for field_data, old_name, new_name in zip(
+            flattened_fields, field_names, new_names
+        ):
             cleaned_name = re.sub(r"^\*", "", new_name)
             if old_name == cleaned_name:
                 continue
@@ -159,7 +161,9 @@ def _rewrite_pdf_fields_in_place(
                 continue
 
             # Nested fields keep their parent hierarchy; flat fields accept full dotted names.
-            target_name = cleaned_name.split(".")[-1] if "." in old_name else cleaned_name
+            target_name = (
+                cleaned_name.split(".")[-1] if "." in old_name else cleaned_name
+            )
             target.T = target_name
 
         my_pdf.save(in_file)
