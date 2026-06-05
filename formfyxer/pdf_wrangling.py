@@ -238,7 +238,11 @@ class FormField:
         )
 
     def get_bbox(self) -> BoundingBoxF:
-        if self.type == FieldType.TEXT or self.type == FieldType.AREA:
+        if (
+            self.type == FieldType.TEXT
+            or self.type == FieldType.AREA
+            or self.type == FieldType.SIGNATURE
+        ):
             return (
                 self.x,
                 self.y,
@@ -340,6 +344,55 @@ def _create_only_fields(
     c.save()
 
 
+def _normalize_signature_fields(pdf: Pdf, signature_field_names: Iterable[str]) -> None:
+    """Convert ReportLab text fields into PDF signature fields.
+
+    ReportLab does not expose an AcroForm signature widget API, so
+    ``_create_only_fields`` creates signature placeholders as text fields. This
+    function changes those generated widgets to ``/FT /Sig`` before they are
+    copied into the destination PDF.
+    """
+    signature_names = {
+        str(field_name).strip()
+        for field_name in signature_field_names
+        if str(field_name).strip()
+    }
+    if not signature_names or not hasattr(pdf.Root, "AcroForm"):
+        return
+
+    converted = 0
+
+    def _normalize_object(obj: Any) -> bool:
+        nonlocal converted
+        if obj is None or not hasattr(obj, "get"):
+            return False
+        field_name = str(obj.get("/T", "") or "").strip()
+        if field_name not in signature_names:
+            return False
+        if str(obj.get("/FT", "")) != "/Sig":
+            converted += 1
+        obj["/FT"] = pikepdf.Name("/Sig")
+        for key in ("/V", "/DV", "/MaxLen", "/Q", "/DS", "/RV"):
+            if key in obj:
+                del obj[key]
+        return True
+
+    for field in pdf.Root.AcroForm.get("/Fields", []):
+        if _normalize_object(field):
+            continue
+        if hasattr(field, "Kids"):
+            for kid in field.Kids:
+                if _normalize_object(kid):
+                    kid["/FT"] = pikepdf.Name("/Sig")
+
+    if converted:
+        try:
+            existing_flags = int(pdf.Root.AcroForm.get("/SigFlags", 0) or 0)
+        except (TypeError, ValueError):
+            existing_flags = 0
+        pdf.Root.AcroForm["/SigFlags"] = existing_flags | 3
+
+
 def set_fields(
     in_file: Union[str, Path, BinaryIO],
     out_file: Union[str, Path, BinaryIO],
@@ -384,6 +437,7 @@ def set_fields(
     if not fields_per_page:
         # Nothing to do, lol
         return
+    fields_per_page = [list(page_fields) for page_fields in fields_per_page]
     in_pdf = Pdf.open(in_file, allow_overwriting_input=overwrite)
     if hasattr(in_pdf.Root, "AcroForm") and not overwrite:
         print("Not going to overwrite the existing AcroForm!")
@@ -392,6 +446,13 @@ def set_fields(
     io_obj = io.BytesIO()
     _create_only_fields(io_obj, fields_per_page)
     temp_pdf = Pdf.open(io_obj)
+    signature_field_names = [
+        field.name
+        for page_fields in fields_per_page
+        for field in page_fields
+        if field.type == FieldType.SIGNATURE
+    ]
+    _normalize_signature_fields(temp_pdf, signature_field_names)
 
     in_pdf = copy_pdf_fields(source_pdf=temp_pdf, destination_pdf=in_pdf)
     in_pdf.save(out_file)
