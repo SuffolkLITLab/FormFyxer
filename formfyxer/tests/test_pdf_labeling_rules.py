@@ -8,6 +8,7 @@ import pikepdf
 from reportlab.pdfgen import canvas
 
 from formfyxer.pdf_wrangling import (
+    FieldType,
     FormField,
     _clamp_rect_to_page,
     _estimate_page_anchor_transform,
@@ -133,6 +134,56 @@ class TestPdfLabelingRules(unittest.TestCase):
             source_blank_path.unlink(missing_ok=True)
             source_path.unlink(missing_ok=True)
             destination_path.unlink(missing_ok=True)
+
+    def test_set_fields_writes_real_signature_fields(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as labeled_tmp:
+            labeled_path = Path(labeled_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Signature")
+            c.save()
+
+            set_fields(
+                str(base_path),
+                str(labeled_path),
+                [
+                    [
+                        FormField(
+                            "users1_signature",
+                            FieldType.SIGNATURE,
+                            72,
+                            650,
+                            font_size=12,
+                            configs={"width": 140, "height": 24},
+                        ),
+                        FormField.make_textbox(
+                            "users1_name", (72, 610, 140, 20), 12
+                        ),
+                    ]
+                ],
+                overwrite=True,
+            )
+
+            with pikepdf.Pdf.open(str(labeled_path)) as pdf:
+                fields = {
+                    str(field.get("/T")): field for field in pdf.Root.AcroForm.Fields
+                }
+                self.assertEqual(str(fields["users1_signature"].get("/FT")), "/Sig")
+                self.assertNotIn("/V", fields["users1_signature"])
+                self.assertNotIn("/DV", fields["users1_signature"])
+                self.assertEqual(str(fields["users1_name"].get("/FT")), "/Tx")
+                self.assertEqual(int(pdf.Root.AcroForm.get("/SigFlags", 0)), 3)
+
+            loaded_fields = get_existing_pdf_fields(str(labeled_path))
+            self.assertEqual(loaded_fields[0][0].type, FieldType.SIGNATURE)
+            self.assertEqual(loaded_fields[0][0].configs["width"], 140.0)
+            self.assertEqual(loaded_fields[0][0].configs["height"], 24.0)
+        finally:
+            base_path.unlink(missing_ok=True)
+            labeled_path.unlink(missing_ok=True)
 
     def test_improve_names_with_preferred_names(self):
         fields = [[FormField.make_textbox("page_0_field_0", (100, 100, 120, 20), 12)]]
