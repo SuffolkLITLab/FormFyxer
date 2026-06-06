@@ -145,11 +145,9 @@ class FormField:
         # If we aren't given options, make our own depending on self.type
         if self.type == FieldType.CHECK_BOX:
             self.configs = {
-                "buttonStyle": "check",
-                "borderColor": magenta,
-                "fillColor": pink,
-                "textColor": blue,
-                "forceBorder": True,
+                "buttonStyle": "cross",
+                "borderWidth": 0,
+                "forceBorder": False,
             }
         elif self.type == FieldType.TEXT:
             self.configs = {"fieldFlags": "doNotScroll"}
