@@ -795,6 +795,8 @@ def copy_pdf_fields(
                     _update_annotation_rect_from_anchor_transform(
                         annot, destination_page, page_transform
                     )
+        for annot in copied_annots:
+            annot["/P"] = destination_page.obj
         if append_fields and hasattr(destination_page, "Annots"):
             destination_page.Annots.extend(copied_annots)
         else:
