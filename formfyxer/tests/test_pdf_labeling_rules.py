@@ -185,6 +185,51 @@ class TestPdfLabelingRules(unittest.TestCase):
             base_path.unlink(missing_ok=True)
             labeled_path.unlink(missing_ok=True)
 
+    def test_set_fields_normalizes_checkbox_style_metadata_for_acrobat(self):
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as base_tmp:
+            base_path = Path(base_tmp.name)
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as labeled_tmp:
+            labeled_path = Path(labeled_tmp.name)
+
+        try:
+            c = canvas.Canvas(str(base_path))
+            c.drawString(72, 720, "Checkboxes")
+            c.save()
+
+            set_fields(
+                str(base_path),
+                str(labeled_path),
+                [
+                    [
+                        FormField(
+                            "cross_box",
+                            FieldType.CHECK_BOX,
+                            72,
+                            650,
+                            configs={"size": 18, "buttonStyle": "cross"},
+                        ),
+                        FormField(
+                            "star_box",
+                            FieldType.CHECK_BOX,
+                            72,
+                            620,
+                            configs={"size": 18, "buttonStyle": "star"},
+                        ),
+                    ]
+                ],
+                overwrite=True,
+            )
+
+            with pikepdf.Pdf.open(str(labeled_path)) as pdf:
+                fields = {str(field.get("/T")): field for field in pdf.Root.AcroForm.Fields}
+                self.assertEqual(str(fields["cross_box"]["/MK"]["/CA"]), "8")
+                self.assertEqual(str(fields["star_box"]["/MK"]["/CA"]), "H")
+                self.assertIn("/Yes", fields["cross_box"]["/AP"]["/N"])
+                self.assertIn("/Yes", fields["star_box"]["/AP"]["/N"])
+        finally:
+            base_path.unlink(missing_ok=True)
+            labeled_path.unlink(missing_ok=True)
+
     def test_improve_names_with_preferred_names(self):
         fields = [[FormField.make_textbox("page_0_field_0", (100, 100, 120, 20), 12)]]
         textboxes = [

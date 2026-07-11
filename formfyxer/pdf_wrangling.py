@@ -145,11 +145,9 @@ class FormField:
         # If we aren't given options, make our own depending on self.type
         if self.type == FieldType.CHECK_BOX:
             self.configs = {
-                "buttonStyle": "check",
-                "borderColor": magenta,
-                "fillColor": pink,
-                "textColor": blue,
-                "forceBorder": True,
+                "buttonStyle": "cross",
+                "borderWidth": 0,
+                "forceBorder": False,
             }
         elif self.type == FieldType.TEXT:
             self.configs = {"fieldFlags": "doNotScroll"}
@@ -377,7 +375,13 @@ def _normalize_signature_fields(pdf: Pdf, signature_field_names: Iterable[str]) 
                 del obj[key]
         return True
 
-    for field in pdf.Root.AcroForm.get("/Fields", []):
+    acroform_fields: Iterable[Any] = (
+        cast(Iterable[Any], pdf.Root.AcroForm["/Fields"])
+        if "/Fields" in pdf.Root.AcroForm
+        else ()
+    )
+
+    for field in acroform_fields:
         if _normalize_object(field):
             continue
         if hasattr(field, "Kids"):
@@ -387,10 +391,68 @@ def _normalize_signature_fields(pdf: Pdf, signature_field_names: Iterable[str]) 
 
     if converted:
         try:
-            existing_flags = int(pdf.Root.AcroForm.get("/SigFlags", 0) or 0)
+            existing_flags_obj = (
+                pdf.Root.AcroForm["/SigFlags"]
+                if "/SigFlags" in pdf.Root.AcroForm
+                else None
+            )
+            existing_flags = int(existing_flags_obj or 0)
         except (TypeError, ValueError):
             existing_flags = 0
         pdf.Root.AcroForm["/SigFlags"] = existing_flags | 3
+
+
+_REPORTLAB_TO_ACROBAT_CHECKBOX_CAPTIONS = {
+    "5": "8",
+    "N": "H",
+}
+
+
+def _normalize_checkbox_fields_for_acrobat(pdf: Pdf) -> None:
+    """Rewrite ReportLab checkbox captions to Acrobat's native style values.
+
+    ReportLab writes legacy ZapfDingbats caption codes into ``/MK /CA`` for some
+    checkbox styles, most notably cross (``5``) and star (``N``). Acrobat
+    renders the saved appearance streams correctly, but its own field editor
+    reads ``/MK /CA`` to decide which checkbox style is selected and falls back
+    to the wrong option when those legacy codes are present.
+    """
+    if not hasattr(pdf.Root, "AcroForm"):
+        return
+
+    checkbox_flag_radio = 1 << 15
+    checkbox_flag_pushbutton = 1 << 16
+
+    def _normalize_object(obj: Any) -> None:
+        if obj is None or not hasattr(obj, "get"):
+            return
+        if str(obj.get("/FT", "")) != "/Btn":
+            return
+        try:
+            flags = int(obj.get("/Ff", 0) or 0)
+        except (TypeError, ValueError):
+            flags = 0
+        if flags & (checkbox_flag_radio | checkbox_flag_pushbutton):
+            return
+        mk = obj.get("/MK")
+        if not isinstance(mk, pikepdf.Dictionary) or "/CA" not in mk:
+            return
+        caption = str(mk.get("/CA") or "")
+        updated = _REPORTLAB_TO_ACROBAT_CHECKBOX_CAPTIONS.get(caption)
+        if updated:
+            mk["/CA"] = pikepdf.String(updated)
+
+    acroform_fields: Iterable[Any] = (
+        cast(Iterable[Any], pdf.Root.AcroForm["/Fields"])
+        if "/Fields" in pdf.Root.AcroForm
+        else ()
+    )
+
+    for field in acroform_fields:
+        _normalize_object(field)
+        if hasattr(field, "Kids"):
+            for kid in field.Kids:
+                _normalize_object(kid)
 
 
 def set_fields(
@@ -453,6 +515,7 @@ def set_fields(
         if field.type == FieldType.SIGNATURE
     ]
     _normalize_signature_fields(temp_pdf, signature_field_names)
+    _normalize_checkbox_fields_for_acrobat(temp_pdf)
 
     in_pdf = copy_pdf_fields(source_pdf=temp_pdf, destination_pdf=in_pdf)
     in_pdf.save(out_file)
